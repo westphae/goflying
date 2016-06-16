@@ -45,16 +45,16 @@ var X0 = State{ // Starting state: all 0's
 	Vx: 0, Vy: 0, Vz: 0,
 	T: 0,
 	M: *matrix.Diagonal([]float64{
-		100 * 100, 100 * 100, 10 * 10, // Reasonable for a GA aircraft
-		(Pi / 20) * (Pi / 20), (Pi / 40) * (Pi / 40), (2 * Pi) * (2 * Pi), // Straight and level is most likely assumption
-		(Pi / 2) * (Pi / 2), (Pi / 2) * (Pi / 2), (2 * Pi) * (2 * Pi), // We also have no idea how it's initially situated
-		20 * 20, 20 * 20, 0.5 * 0.5, // Windspeed is an unknown
+		100*100, 100*100, 10*10, // Reasonable for a GA aircraft
+		(Pi/20)*(Pi/20), (Pi/40)*(Pi/40), (2*Pi)*(2*Pi), // Straight and level is most likely assumption
+		(Pi/2)*(Pi/2), (Pi/2)*(Pi/2), (2*Pi)*(2*Pi), // We also have no idea how it's initially situated
+		20*20, 20*20, 0.5*0.5, // Windspeed is an unknown
 	}),
 }
 
 var VX = State{ // Process uncertainty, per second
 	Ux: 1, Uy: 0.2, Uz: 0.3,
-	Phi: Pi / 720, Theta: Pi / 720, Psi: Pi / 720,
+	Phi: Pi/720, Theta: Pi/720, Psi: Pi/720,
 	Phi0: 1e-6, Theta0: 1e-6, Psi0: 1e-6, // Biases by definition don't evolve (don't let it slip!)
 	Vx: 0.005, Vy: 0.005, Vz: 0.05,
 	T: 1000,
