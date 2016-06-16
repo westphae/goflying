@@ -79,15 +79,15 @@ func (s *State) doTrig() { // Do trig calcs once to save CPU cycles
 
 func (s *State) Predict(c Control, n State) { // Given a control, predict the new state
 	s.doTrig()
-	dt := float64(c.T-s.T) / 1000
+	f := s.calcJacobianState(c)
+	dt := float64(c.T-s.T)/1000
 	s.Ux += dt * (-G*c.Ax + c.R*s.Uy - c.Q*s.Uz - G*s.sTheta)
 	s.Uy += dt * (-G*c.Ay + c.P*s.Uz - c.R*s.Ux - G*s.cTheta*s.sPhi)
 	s.Uz += dt * (-G*c.Az + c.Q*s.Ux - c.P*s.Uy - G*s.cTheta*s.cPhi)
 	s.Phi += dt * (c.P - s.tTheta*s.sPhi*c.Q - s.tTheta*s.cPhi*c.R)
 	s.Theta += dt * (-s.cPhi*c.Q + s.sPhi*c.R)
 	s.Psi += dt * (-s.sPhi/s.cTheta*c.Q - s.cPhi/s.cTheta*c.R)
-	f := s.calcJacobianState(c)
-	tf := dt / float64(n.T)
+	tf := dt / (float64(n.T)/1000)
 	nn := matrix.Diagonal([]float64{
 		n.Ux * n.Ux * tf, n.Uy * n.Uy * tf, n.Uz * n.Uz * tf,
 		n.Phi * n.Phi * tf, n.Theta * n.Theta * tf, n.Psi * n.Psi * tf,
@@ -172,8 +172,8 @@ func (s *State) calcJacobianState(c Control) matrix.DenseMatrix {
 	data[2][4] = +G*s.sTheta*s.cPhi*dt                                   // uz,theta
 	data[2][6] = -data[2][3]                                             // uz,phi0
 	data[2][7] = -data[2][4]                                             // uz,theta0
-	data[3][3] = 1-(s.tTheta*s.cPhi*c.Q-s.sPhi*c.R)*dt                   // phi,phi
-	data[3][4] = -(s.sPhi*c.Q+s.cPhi*c.R)/(s.cTheta*s.cTheta)*dt         // phi,theta
+	data[3][3] = 1-(s.cPhi*c.Q-s.sPhi*c.R)*s.tTheta*dt                   // phi,phi
+	data[3][4] =  -(s.sPhi*c.Q+s.cPhi*c.R)/(s.cTheta*s.cTheta)*dt        // phi,theta
 	data[3][6] = 1-data[3][3]                                            // phi,phi0
 	data[3][7] = -data[3][4]                                             // phi,theta0
 	data[4][3] = +(s.sPhi*c.Q+s.cPhi*c.R)*dt                             // theta,phi
@@ -239,7 +239,6 @@ func (s *State) calcJacobianMeasurement() matrix.DenseMatrix {
 	data[2][7] = -data[2][4]                                                 // wz,theta0
 	data[2][8] = -data[2][5]                                                 // wz,psi0
 	data[2][11] = 1                                                          // wz,vz
-	fmt.Print("\n", data, "\n")
 	hh := *matrix.MakeDenseMatrixStacked(data)
 	return hh
 }
