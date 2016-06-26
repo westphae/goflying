@@ -3,9 +3,100 @@
     <title>Stratux AHRS</title>
     <style>
         ul    { list-style: none; }
+        table   { display: inline; }
     </style>
 </head>
 <body>
+<table>
+    <tr>
+        <th>Ts</th>
+        <th>Tsm</th>
+    </tr>
+    <tr>
+        <td id="Ts"></td>
+        <td id="Tsm"></td>
+    </tr>
+</table>
+<table>
+    <tr>
+        <th>Pitch</th>
+        <td id="Pitch">0</td>
+    </tr>
+    <tr>
+        <th>Roll</th>
+        <td id="Roll">0</td>
+    </tr>
+    <tr>
+        <th>Heading</th>
+        <td id="Heading">0</td>
+    </tr>
+</table>
+<table>
+    <tr>
+        <th></th>
+        <th>Accel</th>
+        <th>Mag</th>
+    </tr>
+    <tr>
+        <th>X</th>
+        <td id="X_accel"></td>
+        <td id="X_mag"></td>
+    </tr>
+    <tr>
+        <th>Y</th>
+        <td id="Y_accel"></td>
+        <td id="Y_mag"></td>
+    </tr>
+    <tr>
+        <th>Z</th>
+        <td id="Z_accel"></td>
+        <td id="Z_mag"></td>
+    </tr>
+</table>
+<table>
+    <tr>
+        <th></th>
+        <th>Accel</th>
+        <th>Gyro</th>
+        <th>Mag</th>
+    </tr>
+    <tr>
+        <th>X</th>
+        <td id="Ax">0</td>
+        <td id="Gx">0</td>
+        <td id="Mx">0</td>
+    </tr>
+    <tr>
+        <th>Y</th>
+        <td id="Ay">0</td>
+        <td id="Gy">0</td>
+        <td id="My">0</td>
+    </tr>
+    <tr>
+        <th>Z</th>
+        <td id="Az">0</td>
+        <td id="Gz">0</td>
+        <td id="Mz">0</td>
+    </tr>
+</table>
+<table>
+    <tr>
+        <th>Qw</th>
+        <td id="Qw"></td>
+    </tr>
+    <tr>
+        <th>Qx</th>
+        <td id="Qx"></td>
+    </tr>
+    <tr>
+        <th>Qy</th>
+        <td id="Qy"></td>
+    </tr>
+    <tr>
+        <th>Qz</th>
+        <td id="Qz"></td>
+    </tr>
+</table>
 <ul id="messages"></ul>
 <script>
     var socket = null;
@@ -18,9 +109,13 @@
             alert("Connection has been closed.");
         }
         socket.onmessage = function(e) {
-            var entry = document.createElement("li");
-            entry.appendChild(document.createTextNode(e.data));
-            messages.appendChild(entry);
+            var msg = JSON.parse(e.data);
+            for (var f in msg) {
+                document.getElementById(f).innerHTML = msg[f].toPrecision(3);
+            }
+//            var entry = document.createElement("li");
+//            entry.appendChild(document.createTextNode(msg));
+//            messages.appendChild(entry);
         }
     }
 </script>

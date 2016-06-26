@@ -1,11 +1,11 @@
 package main
 
 import (
-	"fmt"
 	"log"
-	//"github.com/westphae/linux-mpu9150/mpu"
 	"math/rand"
 	"time"
+	"encoding/json"
+	//"github.com/westphae/linux-mpu9150/mpu"
 )
 
 // Loop:
@@ -80,14 +80,13 @@ func (ml *MPUListener) run() {
 
 
 		log.Println("Sending IMUData to forward channel")
-		ml.r.forward <- []byte(fmt.Sprintf("%f,%f,%f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
-			ml.mpu.Pitch, ml.mpu.Roll, ml.mpu.Heading,
-			ml.mpu.Gx, ml.mpu.Gy, ml.mpu.Gz, ml.mpu.Ax, ml.mpu.Ay, ml.mpu.Az,
-			ml.mpu.Qx, ml.mpu.Qy, ml.mpu.Qz, ml.mpu.Qw,
-			ml.mpu.Mx, ml.mpu.My, ml.mpu.Mz,
-			ml.mpu.Ts, ml.mpu.Tsm,
-			ml.mpu.X_accel, ml.mpu.Y_accel, ml.mpu.Z_accel, ml.mpu.X_mag, ml.mpu.Y_mag, ml.mpu.Z_mag))
-		//log.Printf("T: %d\n", ml.mpu.Ts)
+		msg, err := json.Marshal(ml.mpu)
+		if err != nil {
+			log.Println("Couldn't marshall json data")
+			continue
+		}
+		ml.r.forward <- msg
+
 		time.Sleep(5*time.Second)
 	}
 }
