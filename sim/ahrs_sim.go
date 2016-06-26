@@ -13,7 +13,7 @@ import (
 	"sort"
 
 	"github.com/skelterjohn/go.matrix"
-	"github.com/westphae/ahrs"
+	"github.com/westphae/goflying/ahrs"
 )
 
 const (
