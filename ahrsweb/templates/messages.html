@@ -1,0 +1,28 @@
+<html>
+<head>
+    <title>Stratux AHRS</title>
+    <style>
+        ul    { list-style: none; }
+    </style>
+</head>
+<body>
+<ul id="messages"></ul>
+<script>
+    var socket = null;
+    var messages = document.getElementById("messages");
+    if (!window["WebSocket"]) {
+        alert("Error: Your browser does not support web sockets.")
+    } else {
+        socket = new WebSocket("ws://{{.Host}}/room");
+        socket.onclose = function() {
+            alert("Connection has been closed.");
+        }
+        socket.onmessage = function(e) {
+            var entry = document.createElement("li");
+            entry.appendChild(document.createTextNode(e.data));
+            messages.appendChild(entry);
+        }
+    }
+</script>
+</body>
+</html>
