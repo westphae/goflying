@@ -4,6 +4,18 @@
     <style>
         ul    { list-style: none; }
         table   { display: inline; }
+        .earth  {
+            stroke-width: 0;
+            fill: Brown;
+        }
+        .horizon {
+            stroke-width: 2;
+            color: Yellow;
+        }
+        .sky  {
+            stroke-width: 0;
+            fill: SkyBlue;
+        }
     </style>
 </head>
 <body>
@@ -97,25 +109,137 @@
         <td id="Qz"></td>
     </tr>
 </table>
+<div id="ai"></div>
 <ul id="messages"></ul>
+<script src="d3.min.js" charset="utf-8"></script>
 <script>
-    var socket = null;
-    var messages = document.getElementById("messages");
+
+    function formatVar(k, v) {
+        var fmt;
+        switch (k) {
+        case "Pitch":
+        case "Roll":
+        case "Heading":
+                vv = v;
+            fmt = "<+6.2f";
+            break;
+        case "Gx":
+        case "Gy":
+        case "Gz":
+        case "Ax":
+        case "Ay":
+        case "Az":
+        case "Mx":
+        case "My":
+        case "Mz":
+        case "X_accel":
+        case "Y_accel":
+        case "Z_accel":
+        case "X_mag":
+        case "Y_mag":
+        case "Z_mag":
+            vv = v/65536;
+            fmt = "<+6.4f";
+            break;
+        case "Qw":
+        case "Qx":
+        case "Qy":
+        case "Qz":
+            vv = v/4294967296;
+            fmt = "<+6.4f";
+            break;
+        default:
+            vv = v;
+            fmt = "6d";
+        }
+        return d3.format(fmt)(vv);
+    }
+
+    function updateTable(data) {
+        for (var f in data) {
+            d3.select("#"+f).text(formatVar(f, data[f]));
+        }
+    }
+
+    function updateMessageList(data) {
+//        var messages = document.getElementById("messages");
+//            var entry = document.createElement("li");
+//            entry.appendChild(document.createTextNode(data));
+//            messages.appendChild(entry);
+    }
+
+    function updateAI(data) {
+        D0[0].theta = data.Pitch;
+        D0[1].theta = data.Pitch;
+        D0[0].phi = data.Roll;
+        D0[1].phi = data.Roll;
+        sky.attr("d", sky_gen);
+        earth.attr("d", earth_gen);
+        horizon.attr("d", horizon_gen);
+    }
+
+    // Draw AI
+    var width = 400, height=400;
+
+    const DEG = Math.PI/180;
+
+    var D0 = [{theta: 0, phi: 0, side: -1}, {theta: 0, phi: 0, side: +1}];
+
+    function x(d) {
+        return width*(d.side+1)/2
+    }
+
+    function y(d) {
+        return height*(90-d.theta*DEG)/180 - d.side*width/2*Math.tan(d.phi*DEG)
+    }
+
+    var svg = d3.select("#ai").append("svg")
+            .attr("width", width)
+            .attr("height", height)
+            .append("g");
+
+    var sky_gen = d3.svg.area()
+            .x(x)
+            .y0(y)
+            .y1(0);
+
+    var horizon_gen = d3.svg.line()
+            .x(x)
+            .y(y);
+
+    var earth_gen = d3.svg.area()
+            .x(x)
+            .y0(y)
+            .y1(height);
+
+    var sky = svg.append("path")
+            .attr("class", "sky")
+            .datum(D0)
+            .attr("d", sky_gen);
+
+    var earth = svg.append("path")
+            .attr("class", "earth")
+            .datum(D0)
+            .attr("d", earth_gen);
+
+    var horizon = svg.append("path")
+            .attr("class", "horizon")
+            .datum(D0)
+            .attr("d", horizon_gen);
+
     if (!window["WebSocket"]) {
         alert("Error: Your browser does not support web sockets.")
     } else {
-        socket = new WebSocket("ws://{{.Host}}/room");
+        var socket = new WebSocket("ws://{{.Host}}/room");
         socket.onclose = function() {
-            alert("Connection has been closed.");
+//            alert("Connection has been closed.");
+            console.log("Socket has been closed.");
         }
         socket.onmessage = function(e) {
             var msg = JSON.parse(e.data);
-            for (var f in msg) {
-                document.getElementById(f).innerHTML = msg[f].toPrecision(3);
-            }
-//            var entry = document.createElement("li");
-//            entry.appendChild(document.createTextNode(msg));
-//            messages.appendChild(entry);
+            updateTable(msg);
+            updateMessageList(msg);
+            updateAI(msg);
         }
     }
 </script>

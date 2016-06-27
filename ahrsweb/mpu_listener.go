@@ -44,6 +44,7 @@ func NewMPUListener(r *room) MPUListener {
 }
 
 func (ml *MPUListener) run() {
+	ml.mpu = new(IMUData)
 	for {
 		var err error
 		//ml.mpu, err = mpu.ReadMPUAll()
@@ -52,10 +53,9 @@ func (ml *MPUListener) run() {
 		}
 
 		log.Println("Populating an IMUData")
-		ml.mpu = new(IMUData)
-		ml.mpu.Pitch = rand.Float32()
-		ml.mpu.Roll = rand.Float32()
-		ml.mpu.Heading = rand.Float32()
+		ml.mpu.Pitch += 0.0*rand.Float32()
+		ml.mpu.Roll -= 0.4*rand.Float32()
+		ml.mpu.Heading += rand.Float32()
 		ml.mpu.Gx = int16(rand.Int())
 		ml.mpu.Gy = int16(rand.Int())
 		ml.mpu.Gz = int16(rand.Int())
@@ -87,6 +87,6 @@ func (ml *MPUListener) run() {
 		}
 		ml.r.forward <- msg
 
-		time.Sleep(5*time.Second)
+		time.Sleep(time.Duration(100)*time.Millisecond)
 	}
 }

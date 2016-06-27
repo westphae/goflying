@@ -35,6 +35,7 @@ func main() {
 	flag.Parse() // parse the flags
 	r := newRoom()
 	http.Handle("/", &templateHandler{filename: "messages.html"})
+	http.HandleFunc("/d3.min.js", func(w http.ResponseWriter, r *http.Request) { http.ServeFile(w, r, "js/d3.min.js") })
 	http.Handle("/room", r)
 	log.Println("Web handler started, running room & listener")
 	// get the room going
