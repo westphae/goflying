@@ -8,28 +8,35 @@ import (
 	"math"
 )
 
-type State struct { // Order here also defines order in the matrices below
-	Ux, Uy, Uz             float64            // True airspeed, sideslip speed and mush speed, aircraft (accelerated) frame
-	Phi, Theta, Psi        float64            // Roll, pitch and heading, radians - relates aircraft to earth frame
-	Phi0, Theta0, Psi0     float64            // Roll, pitch and heading biases due to placement on stratux, radians
-	Vx, Vy, Vz             float64            // Windspeed in N/W, E/W and U/D directions, knots, latlong axes, earth (inertial) frame
-	T                      uint32             // Timestamp when last updated
-	M                      matrix.DenseMatrix // Covariance matrix of state uncertainty, same order as above vars
-	sPhi, cPhi             float64            // sin(Phi-Phi0), cos(Phi-Phi0)
-	sTheta, cTheta, tTheta float64            // sin(Theta-Theta0), cos(Theta-Theta0), tan(Theta-Theta0)
-	sPsi, cPsi             float64            // sin(Psi-Psi0), cos(Psi-Psi0)
+// State holds the complete information describing the state of the aircraft
+// Order within State also defines order in the matrices below
+type State struct {
+	U1, U2, U3     float64            // Quaternion for airspeed, aircraft (accelerated) frame
+	E0, E1, E2, E3 float64            // Quaternion for roll, pitch and heading - relates aircraft to earth frame
+	V1, V2, V3     float64            // Quaternion describing windspeed, latlong axes, earth (inertial) frame
+	M1, M2, M3     float64            // Quaternion describing reference magnetometer direction, earth (inertial) frame
+	T              uint32             // Timestamp when last updated
+	M              matrix.DenseMatrix // Covariance matrix of state uncertainty, same order as above vars
+
+	F0, F1, F2, F3 float64 // Calibration quaternion describing roll, pitch and heading biases due to placement of stratux, aircraft frame
+	f11, f12, f13,
+	f21, f22, f23,
+	f31, f32, f33 float64 // After calibration, these are quaterion fragments for rotating stratux to level
 }
 
+// Control holds the control inputs for the Kalman filter: gyro change and accelerations
 type Control struct {
-	P, Q, R    float64 // Gyro change in roll, pitch, heading axes, rad/s, aircraft (accelerated) frame
-	Ax, Ay, Az float64 // Accelerometer change in f/b, l/r, and u/d axes, g's, aircraft (accelerated) frame
-	T          uint32  // Timestamp of readings
+	H0, H1, H2, H3 float64 // Quaternion holding gyro change in roll, pitch, heading axes, aircraft (accelerated) frame
+	A1, A2, A3     float64 // Quaternion holding accelerometer change, g's, aircraft (accelerated) frame
+	T              uint32  // Timestamp of readings
 }
 
+// Measurement holds the measurements used for updating the Kalman filter: groundspeed, true airspeed, magnetometer
+// Note: airspeed and magnetometer may not be available until appropriate sensors are working
 type Measurement struct { // Order here also defines order in the matrices below
-	Wx, Wy, Wz float64 // GPS speed in N/S, E/W and U/D directions, knots, latlong axes, earth (inertial) frame
-	Sx, Sy, Sz float64 // Measured airspeed, sideslip speed and mush speed, knots, aircraft (accelerated) frame
-	Mx, My, Mz float64 // Magnetometer readings in f/b, l/r, and u/d axes, aircraft (accelerated) frame
+	W1, W2, W3 float64 // Quaternion holding GPS speed in N/S, E/W and U/D directions, knots, latlong axes, earth (inertial) frame
+	U1, U2, U3 float64 // Quaternion holding measured airspeed, knots, aircraft (accelerated) frame
+	M1, M2, M3 float64 // Quaternion holding magnetometer readings, aircraft (accelerated) frame
 	T          uint32  // Timestamp of GPS, airspeed and magnetometer readings
 }
 
@@ -38,158 +45,213 @@ const (
 	Pi = math.Pi
 )
 
-var X0 = State{ // Starting state: all 0's
-	Ux: 0, Uy: 0, Uz: 0,
-	Phi: 0, Theta: 0, Psi: 0,
-	Phi0: 0, Theta0: 0, Psi0: 0,
-	Vx: 0, Vy: 0, Vz: 0,
-	T: 0,
+var X0 = State{ // Starting state: vector quantities are all 0's
+	U1: 50, // Reasonable starting airspeed for GA aircraft
+	E0: 1,  // Zero rotation has real part 1
 	M: *matrix.Diagonal([]float64{
-		100*100, 100*100, 10*10, // Reasonable for a GA aircraft
-		(Pi/20)*(Pi/20), (Pi/40)*(Pi/40), (2*Pi)*(2*Pi), // Straight and level is most likely assumption
-		(Pi/2)*(Pi/2), (Pi/2)*(Pi/2), (2*Pi)*(2*Pi), // We also have no idea how it's initially situated
-		20*20, 20*20, 0.5*0.5, // Windspeed is an unknown
+		100 * 100, 100 * 100, 10 * 10, // Reasonable for a GA aircraft
+		2, 2, 2, 2, // Initial orientation is highly uncertain
+		20 * 20, 20 * 20, 0.5 * 0.5, // Windspeed is an unknown
+		2, 2, 2, // Magnetometer is an unknown
 	}),
 }
 
 var VX = State{ // Process uncertainty, per second
-	Ux: 1, Uy: 0.2, Uz: 0.3,
-	Phi: Pi/720, Theta: Pi/720, Psi: Pi/720,
-	Phi0: 1e-6, Theta0: 1e-6, Psi0: 1e-6, // Biases by definition don't evolve (don't let it slip!)
-	Vx: 0.005, Vy: 0.005, Vz: 0.05,
+	U1: 1, U2: 0.2, U3: 0.3,
+	E0: 1e-2, E1: 1e-2, E2: 1e-2, E3: 1e-2,
+	V1: 0.005, V2: 0.005, V3: 0.05,
+	M1: 0.005, M2: 0.005, M3: 0.005,
 	T: 1000,
 }
 
 var VM = Measurement{
-	Wx: 0.5, Wy: 0.5, Wz: 0.5, // GPS uncertainty is small
-	Sx: 0.5, Sy: 0.1, Sz: 0.1, // Also airspeed
-	Mx: 0.1, My: 0.1, Mz: 0.1, // Also magnetometer
+	W1: 0.5, W2: 0.5, W3: 0.5, // GPS uncertainty is small
+	U1: 0.5, U2: 0.1, U3: 0.1, // Also airspeed
+	M1: 0.1, M2: 0.1, M3: 0.1, // Also magnetometer
 	T: 0,
 }
 
-func (s *State) doTrig() { // Do trig calcs once to save CPU cycles
-	s.sPhi = math.Sin(s.Phi - s.Phi0)
-	s.cPhi = math.Cos(s.Phi - s.Phi0)
-	s.sTheta = math.Sin(s.Theta - s.Theta0)
-	s.cTheta = math.Cos(s.Theta - s.Theta0)
-	s.tTheta = math.Tan(s.Theta - s.Theta0)
-	s.sPsi = math.Sin(s.Psi - s.Psi0)
-	s.cPsi = math.Cos(s.Psi - s.Psi0)
+// Calibrate performs a calibration, determining the quaternion to rotate it to
+// be effectively level
+func (s *State) Calibrate() {
+	//TODO: Do the calibration to determine the Fi
+	// Persist last known to storage
+	// Initial is last known
+	// If no GPS or GPS stationary, assume straight and level: Ai is down
+	// If GPS speed, assume heading = track
+	s.F0 = 1
+	s.F1 = 0
+	s.F2 = 0
+	s.F3 = 0
+
+	// Set the quaternion fragments
+	s.f11 = 2 * (+s.F0*s.F0 + s.F1*s.F1 - 0.5)
+	s.f12 = 2 * (-s.F0*s.F3 + s.F1*s.F2)
+	s.f13 = 2 * (+s.F0*s.F2 + s.F1*s.F3)
+	s.f21 = 2 * (+s.F0*s.F3 + s.F2*s.F1)
+	s.f22 = 2 * (+s.F0*s.F0 + s.F2*s.F2 - 0.5)
+	s.f23 = 2 * (-s.F0*s.F1 + s.F2*s.F3)
+	s.f31 = 2 * (-s.F0*s.F2 + s.F3*s.F1)
+	s.f32 = 2 * (+s.F0*s.F1 + s.F3*s.F2)
+	s.f33 = 2 * (+s.F0*s.F0 + s.F3*s.F3 - 0.5)
 }
 
-func (s *State) Predict(c Control, n State) { // Given a control, predict the new state
-	s.doTrig()
+// Predict performs the prediction phase of the Kalman filter given the control inputs
+func (s *State) Predict(c Control, n State) {
 	f := s.calcJacobianState(c)
-	dt := float64(c.T-s.T)/1000
-	s.Ux += dt * (-G*c.Ax + c.R*s.Uy - c.Q*s.Uz - G*s.sTheta)
-	s.Uy += dt * (-G*c.Ay + c.P*s.Uz - c.R*s.Ux - G*s.cTheta*s.sPhi)
-	s.Uz += dt * (-G*c.Az + c.Q*s.Ux - c.P*s.Uy - G*s.cTheta*s.cPhi)
-	s.Phi += dt * (c.P - s.tTheta*s.sPhi*c.Q - s.tTheta*s.cPhi*c.R)
-	s.Theta += dt * (-s.cPhi*c.Q + s.sPhi*c.R)
-	s.Psi += dt * (-s.sPhi/s.cTheta*c.Q - s.cPhi/s.cTheta*c.R)
-	tf := dt / (float64(n.T)/1000)
+	dt := float64(c.T-s.T) / 1000
+
+	// Apply the calibration quaternion F to rotate the stratux sensors to level
+	h0 := c.H0
+	h1 := c.H0 + c.H1*s.f11 + c.H2*s.f12 + c.H3*s.f13
+	h2 := c.H0 + c.H1*s.f21 + c.H2*s.f22 + c.H3*s.f23
+	h3 := c.H0 + c.H1*s.f31 + c.H2*s.f32 + c.H3*s.f33
+
+	a1 := c.A1*s.f11 + c.A2*s.f12 + c.A3*s.f13
+	a2 := c.A1*s.f21 + c.A2*s.f22 + c.A3*s.f23
+	a3 := c.A1*s.f31 + c.A2*s.f32 + c.A3*s.f33
+
+	// Some nice intermediate variables
+	p := 2 * (s.E0*h1 - s.E1*h0 - s.E2*h3 + s.E3*h2)
+	q := 2 * (s.E0*h2 + s.E1*h3 - s.E2*h0 - s.E3*h1)
+	r := 2 * (s.E0*h3 - s.E1*h2 + s.E2*h1 - s.E3*h0)
+
+	s.U1 += dt * (2*G*(s.E3*s.E1-s.E0*s.E2) - G*a1 + r*s.U2 - q*s.U3)
+	s.U2 += dt * (2*G*(s.E3*s.E2+s.E0*s.E1) - G*a2 + p*s.U3 - r*s.U1)
+	s.U3 += dt * (2*G*(s.E3*s.E3+s.E0*s.E0-0.5) - G*a3 + q*s.U1 - p*s.U2)
+
+	s.E0 += dt * h0
+	s.E1 += dt * h1
+	s.E2 += dt * h2
+	s.E3 += dt * h3
+
+	// s.Vx and s.Mx are all unchanged
+
+	s.T = c.T
+
+	tf := dt / (float64(n.T) / 1000)
 	nn := matrix.Diagonal([]float64{
-		n.Ux * n.Ux * tf, n.Uy * n.Uy * tf, n.Uz * n.Uz * tf,
-		n.Phi * n.Phi * tf, n.Theta * n.Theta * tf, n.Psi * n.Psi * tf,
-		n.Phi0 * n.Phi0 * tf, n.Theta0 * n.Theta0 * tf, n.Psi0 * n.Psi0 * tf,
-		n.Vx * n.Vx * tf, n.Vy * n.Vy * tf, n.Vz * n.Vz * tf,
+		n.U1 * n.U1 * tf, n.U2 * n.U2 * tf, n.U3 * n.U3 * tf,
+		n.E0 * n.E0 * tf, n.E1 * n.E1 * tf, n.E2 * n.E2 * tf, n.E3 * n.E3 * tf,
+		n.V1 * n.V1 * tf, n.V2 * n.V2 * tf, n.V3 * n.V3 * tf,
 	})
 	s.M = *matrix.Sum(matrix.Product(&f, matrix.Product(&s.M, f.Transpose())), nn)
-	s.T = c.T
 }
 
 func (s *State) Update(m Measurement, n Measurement) {
 	z := s.predictMeasurement()
 	y := matrix.MakeDenseMatrix([]float64{
-		m.Wx - z.Wx, m.Wy - z.Wy, m.Wz - z.Wz,
-		m.Sx - z.Sx, m.Sy - z.Sy, m.Sz - z.Sz,
-		m.Mx - z.Mx, m.My - z.My, m.Mz - z.Mz,
+		m.W1 - z.W1, m.W2 - z.W2, m.W3 - z.W3,
+		m.U1 - z.U1, m.U2 - z.U2, m.U3 - z.U3,
+		m.M1 - z.M1, m.M2 - z.M2, m.M3 - z.M3,
 	}, 9, 1)
 	h := s.calcJacobianMeasurement()
 	nn := matrix.Diagonal([]float64{
-		n.Wx * n.Wx, n.Wy * n.Wy, n.Wz * n.Wz,
-		n.Sx * n.Sx, n.Sy * n.Sy, n.Sz * n.Sz,
-		n.Mx * n.Mx, n.My * n.My, n.Mz * n.Mz,
+		n.W1 * n.W1, n.W2 * n.W2, n.W3 * n.W3,
+		n.U1 * n.U1, n.U2 * n.U2, n.U3 * n.U3,
+		n.M1 * n.M1, n.M2 * n.M2, n.M3 * n.M3,
 	})
 	ss := *matrix.Sum(matrix.Product(&h, matrix.Product(&s.M, h.Transpose())), nn)
 	m2, err := ss.Inverse()
 	if err != nil {
-		fmt.Printf("Can't invert %s", ss)
+		fmt.Println("Can't invert Kalman gain matrix")
 	}
 	kk := matrix.Product(&s.M, matrix.Product(h.Transpose(), m2))
 	su := matrix.Product(kk, y)
-	s.Ux += su.Get(0, 0)
-	s.Uy += su.Get(1, 0)
-	s.Uz += su.Get(2, 0)
-	s.Phi += su.Get(3, 0)
-	s.Theta += su.Get(4, 0)
-	s.Psi += su.Get(5, 0)
-	s.Phi0 += su.Get(6, 0)
-	s.Theta0 += su.Get(7, 0)
-	s.Psi0 += su.Get(8, 0)
-	s.Vx += su.Get(9, 0)
-	s.Vy += su.Get(10, 0)
-	s.Vz += su.Get(11, 0)
+	s.U1 += su.Get(0, 0)
+	s.U2 += su.Get(1, 0)
+	s.U3 += su.Get(2, 0)
+	s.E0 += su.Get(3, 0)
+	s.E1 += su.Get(4, 0)
+	s.E2 += su.Get(5, 0)
+	s.E3 += su.Get(6, 0)
+	s.V1 += su.Get(7, 0)
+	s.V2 += su.Get(8, 0)
+	s.V3 += su.Get(9, 0)
+	s.M1 += su.Get(10, 0)
+	s.M2 += su.Get(11, 0)
+	s.M3 += su.Get(12, 0)
 	s.T = m.T
-	s.M = *matrix.Product(matrix.Difference(matrix.Eye(12), matrix.Product(kk, &h)), &s.M)
+	s.M = *matrix.Product(matrix.Difference(matrix.Eye(13), matrix.Product(kk, &h)), &s.M)
 }
 
 func (s *State) predictMeasurement() Measurement {
 	var m Measurement
-	s.doTrig()
-	m.Wx = s.Vx +
-		+(s.sPsi*s.cTheta)*s.Ux +
-		-(s.sPsi*s.sTheta*s.sPhi+s.cPsi*s.cPhi)*s.Uy +
-		-(s.sPsi*s.sTheta*s.cPhi-s.cPsi*s.sPhi)*s.Uz
-	m.Wy = s.Vy +
-		+(s.cPsi*s.cTheta)*s.Ux +
-		-(s.cPsi*s.sTheta*s.sPhi-s.sPsi*s.cPhi)*s.Uy +
-		-(s.cPsi*s.sTheta*s.cPhi+s.sPsi*s.sPhi)*s.Uz
-	m.Wz = s.Vz +
-		s.sTheta*s.Ux +
-		s.cTheta*s.sPhi*s.Uy +
-		s.cTheta*s.cPhi*s.Uz
+	m.W1 = s.V1 +
+		2*s.U1*(s.E1*s.E1+s.E0*s.E0-0.5) +
+		2*s.U2*(s.E1*s.E2-s.E0*s.E3) +
+		2*s.U3*(s.E1*s.E3+s.E0*s.E2)
+	m.W2 = s.V2 +
+		2*s.U1*(s.E2*s.E1+s.E0*s.E3) +
+		2*s.U2*(s.E2*s.E2+s.E0*s.E0-0.5) +
+		2*s.U3*(s.E2*s.E3-s.E0*s.E1)
+	m.W3 = s.V3 +
+		2*s.U1*(s.E3*s.E1-s.E0*s.E2) +
+		2*s.U2*(s.E3*s.E2+s.E0*s.E1) +
+		2*s.U3*(s.E3*s.E3+s.E0*s.E0-0.5)
+
+	m.U1 = s.U1
+	m.U2 = s.U2
+	m.U3 = s.U3
+
+	m.M1 = 2*s.M1*(s.E1*s.E1+s.E0*s.E0-0.5) +
+		2*s.M2*(s.E1*s.E2-s.E0*s.E3) +
+		2*s.M3*(s.E1*s.E3+s.E0*s.E2)
+	m.M2 = 2*s.M1*(s.E2*s.E1+s.E0*s.E3) +
+		2*s.M2*(s.E2*s.E2+s.E0*s.E0-0.5) +
+		2*s.M3*(s.E2*s.E3-s.E0*s.E1)
+	m.M3 = 2*s.M1*(s.E3*s.E1-s.E0*s.E2) +
+		2*s.M2*(s.E3*s.E2+s.E0*s.E1) +
+		2*s.M3*(s.E3*s.E3+s.E0*s.E0-0.5)
+
 	return m
 }
 
 func (s *State) calcJacobianState(c Control) matrix.DenseMatrix {
 	dt := float64(c.T-s.T) / 1000
-	data := make([][]float64, 12)
-	for i := 0; i < 12; i++ {
-		data[i] = make([]float64, 12)
+	data := make([][]float64, 13)
+	for i := 0; i < 13; i++ {
+		data[i] = make([]float64, 13)
 	}
-	s.doTrig()
-	data[0][0] = 1                                                       // ux,ux
-	data[0][4] = -G*s.cTheta*dt                                          // ux,theta
-	data[0][7] = -data[0][4]                                             // ux,theta0
-	data[1][1] = 1                                                       // uy,uy
-	data[1][3] = -G*s.cTheta*s.cPhi*dt                                   // uy,phi
-	data[1][4] = +G*s.sTheta*s.sPhi*dt                                   // uy,theta
-	data[1][6] = -data[1][3]                                             // uy,phi0
-	data[1][7] = -data[1][4]                                             // uy,theta0
-	data[2][2] = 1                                                       // uz,uz
-	data[2][3] = +G*s.cTheta*s.sPhi*dt                                   // uz,phi
-	data[2][4] = +G*s.sTheta*s.cPhi*dt                                   // uz,theta
-	data[2][6] = -data[2][3]                                             // uz,phi0
-	data[2][7] = -data[2][4]                                             // uz,theta0
-	data[3][3] = 1-(s.cPhi*c.Q-s.sPhi*c.R)*s.tTheta*dt                   // phi,phi
-	data[3][4] =  -(s.sPhi*c.Q+s.cPhi*c.R)/(s.cTheta*s.cTheta)*dt        // phi,theta
-	data[3][6] = 1-data[3][3]                                            // phi,phi0
-	data[3][7] = -data[3][4]                                             // phi,theta0
-	data[4][3] = +(s.sPhi*c.Q+s.cPhi*c.R)*dt                             // theta,phi
-	data[4][4] = 1                                                       // theta,theta
-	data[4][6] = -data[4][3]                                             // theta,phi0
-	data[5][3] = -(s.cPhi*c.Q-s.sPhi*c.R)/s.cTheta*dt                    // psi,phi
-	data[5][4] = -(s.sPhi*c.Q-s.cPhi*c.R)*s.tTheta/s.cTheta*dt           // psi,theta
-	data[5][5] = 1                                                       // phi0,phi0
-	data[5][6] = -data[5][3]                                             // psi,phi0
-	data[5][7] = -data[5][4]                                             // psi,theta0
-	data[6][6] = 1                                                       // phi0,phi0
-	data[7][7] = 1                                                       // theta0,theta0
-	data[8][8] = 1                                                       // psi0,psi0
-	data[9][9] = 1                                                       // vx,vx
-	data[10][10] = 1                                                     // vy,vy
-	data[11][11] = 1                                                     // vz,vz
+
+	// Apply the calibration quaternion F to rotate the stratux sensors to level
+	h0 := c.H0
+	h1 := c.H0 + c.H1*s.f11 + c.H2*s.f12 + c.H3*s.f13
+	h2 := c.H0 + c.H1*s.f21 + c.H2*s.f22 + c.H3*s.f23
+	h3 := c.H0 + c.H1*s.f31 + c.H2*s.f32 + c.H3*s.f33
+
+	data[0][0] = 1                                                     // U1,U1
+	data[0][1] = dt * (2*s.E0*h3 - 2*s.E1*h2 + 2*s.E2*h1 - 2*s.E3*h0)  // U1,U2
+	data[0][2] = dt * (-2*s.E0*h2 - 2*s.E1*h3 + 2*s.E2*h0 + 2*s.E3*h1) // U1,U3
+	data[0][3] = dt * (-2*s.E2*G - 2*h2*s.U3 + 2*h3*s.U2)              // U1/E0
+	data[0][4] = dt * (2*s.E3*G - 2*h2*s.U2 - 2*h3*s.U3)               // U1/E1
+	data[0][5] = dt * (-2*s.E0*G + 2*h0*s.U3 + 2*h1*s.U2)              // U1/E2
+	data[0][6] = dt * (2*s.E1*G - 2*h0*s.U2 + 2*h1*s.U3)               // U1/E3
+	data[1][0] = dt * (-2*s.E0*h3 + 2*s.E1*h2 - 2*s.E2*h1 + 2*s.E3*h0) // U2/U1
+	data[1][1] = 1                                                     // U2/U2
+	data[1][2] = dt * (2*s.E0*h1 - 2*s.E1*h0 - 2*s.E2*h3 + 2*s.E3*h2)  // U2/U3
+	data[1][3] = dt * (2*s.E1*G + 2*h1*s.U3 - 2*h3*s.U1)               // U2/E0
+	data[1][4] = dt * (2*s.E0*G - 2*h0*s.U3 + 2*h2*s.U1)               // U2/E1
+	data[1][5] = dt * (2*s.E3*G - 2*h1*s.U1 - 2*h3*s.U3)               // U2/E2
+	data[1][6] = dt * (2*s.E2*G + 2*h0*s.U1 + 2*h2*s.U3)               // U2/E3
+	data[2][0] = dt * (2*s.E0*h2 + 2*s.E1*h3 - 2*s.E2*h0 - 2*s.E3*h1)  // U3/U1
+	data[2][1] = dt * (-2*s.E0*h1 + 2*s.E1*h0 + 2*s.E2*h3 - 2*s.E3*h2) // U3/U2
+	data[2][2] = 1                                                     // U3/U3
+	data[2][3] = dt * (2*s.E0*G - 2*h1*s.U2 + 2*h2*s.U1)               // U3/E0
+	data[2][4] = dt * (-2*s.E1*G + 2*h0*s.U2 + 2*h3*s.U1)              // U3/E1
+	data[2][5] = dt * (-2*s.E2*G - 2*h0*s.U1 + 2*h3*s.U2)              // U3/E2
+	data[2][6] = dt * (2*s.E3*G - 2*h1*s.U1 - 2*h2*s.U2)               // U3/E3
+	data[3][3] = 1                                                     // E0/E0
+	data[4][4] = 1                                                     // E1/E1
+	data[5][5] = 1                                                     // E2/E2
+	data[6][6] = 1                                                     // E3/E3
+	data[7][7] = 1                                                     // V1/V1
+	data[8][8] = 1                                                     // V2/V2
+	data[9][9] = 1                                                     // V3/V3
+	data[10][10] = 1                                                   // M1/M1
+	data[11][11] = 1                                                   // M2/M2
+	data[12][12] = 1                                                   // M3/M3
+
 	ff := *matrix.MakeDenseMatrixStacked(data)
 	return ff
 }
@@ -197,48 +259,58 @@ func (s *State) calcJacobianState(c Control) matrix.DenseMatrix {
 func (s *State) calcJacobianMeasurement() matrix.DenseMatrix {
 	data := make([][]float64, 9)
 	for i := 0; i < 9; i++ {
-		data[i] = make([]float64, 12)
+		data[i] = make([]float64, 13)
 	}
-	s.doTrig()
-	data[0][0] = s.sPsi * s.cTheta                                           // wx,ux
-	data[0][1] = -(s.sPsi*s.sTheta*s.sPhi + s.cPsi*s.cPhi)                   // wx,uy
-	data[0][2] = -(s.sPsi*s.sTheta*s.cPhi - s.cPsi*s.sPhi)                   // wx,uz
-	data[0][3] = -(s.sPsi*s.sTheta*s.cPhi-s.cPsi*s.sPhi)*s.Uy +
-		(s.sPsi*s.sTheta*s.sPhi+s.cPsi*s.cPhi)*s.Uz                      // wx,phi
-	data[0][4] = -(s.sPsi*s.sTheta*s.Ux +
-		s.sPsi*s.cTheta*s.sPhi*s.Uy +
-		s.sPsi*s.cTheta*s.cPhi*s.Uz)                                     // wx,theta
-	data[0][5] = +(s.cPsi*s.cTheta*s.Ux -
-		(s.cPsi*s.sTheta*s.sPhi-s.sPsi*s.cPhi)*s.Uy -
-		(s.cPsi*s.sTheta*s.cPhi+s.sPsi*s.sPhi)*s.Uz)                     // wx,psi
-	data[0][6] = -data[0][3]                                                 // wx,phi0
-	data[0][7] = -data[0][4]                                                 // wx,theta0
-	data[0][8] = -data[0][5]                                                 // wx,psi0
-	data[0][9] = 1                                                           // wx,vx
-	data[1][0] = s.cPsi * s.cTheta                                           // wy,ux
-	data[1][1] = -(s.cPsi*s.sTheta*s.sPhi - s.sPsi*s.cPhi)                   // wy,uy
-	data[1][2] = -(s.cPsi*s.sTheta*s.cPhi + s.sPsi*s.sPhi)                   // wy,uz
-	data[1][3] = -(s.cPsi*s.sTheta*s.cPhi+s.sPsi*s.sPhi)*s.Uy +
-		(s.cPsi*s.sTheta*s.sPhi-s.sPsi*s.cPhi)*s.Uz                      // wy,phi
-	data[1][4] = -(s.cPsi*s.sTheta*s.Ux +
-		s.cPsi*s.cTheta*s.sPhi*s.Uy +
-		s.cPsi*s.cTheta*s.cPhi*s.Uz)                                     // wy,theta
-	data[1][5] = -s.sPsi*s.cTheta*s.Ux +
-		(s.sPsi*s.sTheta*s.sPhi+s.cPsi*s.cPhi)*s.Uy +
-		(s.sPsi*s.sTheta*s.cPhi-s.cPsi*s.sPhi)*s.Uz                      // wy,psi
-	data[1][6] = -data[1][3]                                                 // wy,phi0
-	data[1][7] = -data[1][4]                                                 // wy,theta0
-	data[1][8] = -data[1][5]                                                 // wy,psi0
-	data[1][10] = 1                                                          // wy,vy
-	data[2][0] = s.sTheta                                                    // wz,ux
-	data[2][1] = s.cTheta * s.sPhi                                           // wz,uy
-	data[2][2] = s.cTheta * s.cPhi                                           // wz,uz
-	data[2][3] = s.cTheta*s.cPhi*s.Uy - s.cTheta*s.sPhi*s.Uz                 // wz,phi
-	data[2][4] = s.cTheta*s.Ux - s.sTheta*s.sPhi*s.Uy - s.sTheta*s.cPhi*s.Uz // wz,theta
-	data[2][6] = -data[2][3]                                                 // wz,phi0
-	data[2][7] = -data[2][4]                                                 // wz,theta0
-	data[2][8] = -data[2][5]                                                 // wz,psi0
-	data[2][11] = 1                                                          // wz,vz
+
+	data[0][0] = s.E0**2 + s.E1**2 - s.E2**2 - s.E3**2    // W1/U1
+	data[0][1] = -2*s.E0*s.E3 + 2*s.E1*s.E2               // W1/U2
+	data[0][2] = 2*s.E0*s.E2 + 2*s.E1*s.E3                // W1/U3
+	data[0][3] = 2*s.E0*s.U1 + 2*s.E2*s.U3 - 2*s.E3*s.U2  // W1/E0
+	data[0][4] = 2*s.E1*s.U1 + 2*s.E2*s.U2 + 2*s.E3*s.U3  // W1/E1
+	data[0][5] = 2*s.E0*s.U3 + 2*s.E1*s.U2 - 2*s.E2*s.U1  // W1/E2
+	data[0][6] = -2*s.E0*s.U2 + 2*s.E1*s.U3 - 2*s.E3*s.U1 // W1/E3
+	data[0][7] = 1                                        // W1/V1
+	data[1][0] = 2*s.E0*s.E3 + 2*s.E1*s.E2                // W2/U1
+	data[1][1] = s.E0**2 - s.E1**2 + s.E2**2 - s.E3**2    // W2/U2
+	data[1][2] = -2*s.E0*s.E1 + 2*s.E2*s.E3               // W2/U3
+	data[1][3] = 2*s.E0*s.U2 - 2*s.E1*s.U3 + 2*s.E3*s.U1  // W2/E0
+	data[1][4] = -2*s.E0*s.U3 - 2*s.E1*s.U2 + 2*s.E2*s.U1 // W2/E1
+	data[1][5] = 2*s.E1*s.U1 + 2*s.E2*s.U2 + 2*s.E3*s.U3  // W2/E2
+	data[1][6] = 2*s.E0*s.U1 + 2*s.E2*s.U3 - 2*s.E3*s.U2  // W2/E3
+	data[1][8] = 1                                        // W2/V2
+	data[2][0] = -2*s.E0*s.E2 + 2*s.E1*s.E3               // W3/U1
+	data[2][1] = 2*s.E0*s.E1 + 2*s.E2*s.E3                // W3/U2
+	data[2][2] = s.E0**2 - s.E1**2 - s.E2**2 + s.E3**2    // W3/U3
+	data[2][3] = 2*s.E0*s.U3 + 2*s.E1*s.U2 - 2*s.E2*s.U1  // W3/E0
+	data[2][4] = 2*s.E0*s.U2 - 2*s.E1*s.U3 + 2*s.E3*s.U1  // W3/E1
+	data[2][5] = -2*s.E0*s.U1 - 2*s.E2*s.U3 + 2*s.E3*s.U2 // W3/E2
+	data[2][6] = 2*s.E1*s.U1 + 2*s.E2*s.U2 + 2*s.E3*s.U3  // W3/E3
+	data[2][9] = 1                                        // W3/V3
+	data[3][0] = 1                                        // U1/U1
+	data[4][1] = 1                                        // U2/U2
+	data[5][2] = 1                                        // U3/U3
+	data[6][3] = 2*s.E0*s.M1 + 2*s.E2*s.M3 - 2*s.E3*s.M2  // M1/E0
+	data[6][4] = 2*s.E1*s.M1 + 2*s.E2*s.M2 + 2*s.E3*s.M3  // M1/E1
+	data[6][5] = 2*s.E0*s.M3 + 2*s.E1*s.M2 - 2*s.E2*s.M1  // M1/E2
+	data[6][6] = -2*s.E0*s.M2 + 2*s.E1*s.M3 - 2*s.E3*s.M1 // M1/E3
+	data[6][10] = s.E0**2 + s.E1**2 - s.E2**2 - s.E3**2   // M1/M1
+	data[6][11] = -2*s.E0*s.E3 + 2*s.E1*s.E2              // M1/M2
+	data[6][12] = 2*s.E0*s.E2 + 2*s.E1*s.E3               // M1/M3
+	data[7][3] = 2*s.E0*s.M2 - 2*s.E1*s.M3 + 2*s.E3*s.M1  // M2/E0
+	data[7][4] = -2*s.E0*s.M3 - 2*s.E1*s.M2 + 2*s.E2*s.M1 // M2/E1
+	data[7][5] = 2*s.E1*s.M1 + 2*s.E2*s.M2 + 2*s.E3*s.M3  // M2/E2
+	data[7][6] = 2*s.E0*s.M1 + 2*s.E2*s.M3 - 2*s.E3*s.M2  // M2/E3
+	data[7][10] = 2*s.E0*s.E3 + 2*s.E1*s.E2               // M2/M1
+	data[7][11] = s.E0**2 - s.E1**2 + s.E2**2 - s.E3**2   // M2/M2
+	data[7][12] = -2*s.E0*s.E1 + 2*s.E2*s.E3              // M2/M3
+	data[8][3] = 2*s.E0*s.M3 + 2*s.E1*s.M2 - 2*s.E2*s.M1  // M3/E0
+	data[8][4] = 2*s.E0*s.M2 - 2*s.E1*s.M3 + 2*s.E3*s.M1  // M3/E1
+	data[8][5] = -2*s.E0*s.M1 - 2*s.E2*s.M3 + 2*s.E3*s.M2 // M3/E2
+	data[8][6] = 2*s.E1*s.M1 + 2*s.E2*s.M2 + 2*s.E3*s.M3  // M3/E3
+	data[8][10] = -2*s.E0*s.E2 + 2*s.E1*s.E3              // M3/M1
+	data[8][11] = 2*s.E0*s.E1 + 2*s.E2*s.E3               // M3/M2
+	data[8][12] = s.E0**2 - s.E1**2 - s.E2**2 + s.E3**2   // M3/M3
+
 	hh := *matrix.MakeDenseMatrixStacked(data)
 	return hh
 }
