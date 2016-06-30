@@ -63,6 +63,7 @@ func main() {
 	case "rand":
 		ml = new(RandListener)
 	case "sim":
+		// ml = new(SimListener)
 	case "mpu":
 		if runtime.GOARCH != "arm" {
 			log.Println("--src can only be mpu on arm architecture")
