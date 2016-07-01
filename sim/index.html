@@ -51,7 +51,7 @@
                 }));
 
         var data = actual.map(function(d, i) {
-            if (["Phi", "Theta", "Psi", "Phi0", "Theta0", "Psi0"].indexOf(v) > -1) {
+            if (["Phi", "Theta", "Psi"].indexOf(v) > -1) {
                 k = DEG;
             } else {
                 k = 1;
@@ -188,12 +188,12 @@
         makeChart("Phi");
         makeChart("Theta");
         makeChart("Psi");
-        makeChart("Phi0");
-        makeChart("Theta0");
-        makeChart("Psi0");
         makeChart("Vx");
         makeChart("Vy");
         makeChart("Vz");
+        makeChart("Mx");
+        makeChart("My");
+        makeChart("Mz");
     }
 
 </script>

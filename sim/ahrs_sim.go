@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"sort"
-	"sync"
 
 	"github.com/skelterjohn/go.matrix"
 	"github.com/westphae/goflying/ahrs"
@@ -30,20 +29,17 @@ type Situation struct {
 	phi0, theta0, psi0 []float64 // base attitude, rad [adjust for position of stratu1 on glareshield]
 	v1, v2, v3         []float64 // windspeed, kts, earth frame [N/S, E/W, and U/D]
 	m1, m2, m3         []float64 // magnetometer reading
-	init               sync.Once // only convert from euler to quaternions once
-	e0, e1, e2, e3     []float64 // rotation quaternion, calculated based on phi/theta/psi
-	f0, f1, f2, f3     []float64 // calibration quaternion, calculated based on phi/theta/psi
 }
 
 // ToQuaternion calculates the 0,1,2,3 components of the rotation quaternion
 // corresponding to the Tait-Bryan angles phi, theta, psi
 func ToQuaternion(phi, theta, psi float64) (float64, float64, float64, float64) {
-	cphi := math.Cos(-phi / 2)
-	sphi := math.Sin(-phi / 2)
-	ctheta := math.Cos(-theta / 2)
-	stheta := math.Sin(-theta / 2)
-	cpsi := math.Cos(-psi / 2)
-	spsi := math.Sin(-psi / 2)
+	cphi := math.Cos(phi/2)
+	sphi := math.Sin(phi/2)
+	ctheta := math.Cos(theta/2)
+	stheta := math.Sin(theta/2)
+	cpsi := math.Cos(psi/2)
+	spsi := math.Sin(psi/2)
 
 	q0 := cphi*ctheta*cpsi + sphi*stheta*spsi
 	q1 := sphi*ctheta*cpsi - cphi*stheta*spsi
@@ -55,9 +51,12 @@ func ToQuaternion(phi, theta, psi float64) (float64, float64, float64, float64) 
 // FromQuaternion calculates the Tait-Bryan angles phi, theta, phi corresponding to
 // the quaternion
 func FromQuaternion(q0, q1, q2, q3 float64) (float64, float64, float64) {
-	phi := math.Atan2(2*(q0*q1+q2*q3), 2*(q1*q1+q2*q2)-1)
-	theta := math.Asin(2 * (q3*q1 - q0*q2))
-	psi := math.Atan2(2*(q0*q3+q1*q2), 2*(q2*q2+q3*q3)-1)
+	phi := math.Atan2(2*(q0*q1+q2*q3), q0*q0-q1*q1-q2*q2+q3*q3)
+	theta := math.Asin(2*(q0*q2-q3*q1)/math.Sqrt(q0*q0+q1*q1+q2*q2+q3*q3))
+	psi := math.Atan2(2*(q0*q3+q1*q2), q0*q0+q1*q1-q2*q2-q3*q3)
+	if psi < -1e-6 {
+		psi += 2*math.Pi
+	}
 	return phi, theta, psi
 }
 
@@ -71,35 +70,30 @@ func (s *Situation) interpolate(t float64) (ahrs.State, error) {
 		ix = sort.SearchFloat64s(s.t, t) - 1
 	}
 
-	s.init.Do(func() {
-		fmt.Println("interpolate running init")
-		s.e0 = make([]float64, len(s.t))
-		s.e1 = make([]float64, len(s.t))
-		s.e2 = make([]float64, len(s.t))
-		s.e3 = make([]float64, len(s.t))
-		s.f0 = make([]float64, len(s.t))
-		s.f1 = make([]float64, len(s.t))
-		s.f2 = make([]float64, len(s.t))
-		s.f3 = make([]float64, len(s.t))
-		for i := 0; i < len(s.t); i++ {
-			s.e0[i], s.e1[i], s.e2[i], s.e3[i] = ToQuaternion(s.phi[i], s.theta[i], s.phi[i])
-			s.f0[i], s.f1[i], s.f2[i], s.f3[i] = ToQuaternion(s.phi0[i], s.theta0[i], s.phi0[i])
-		}
-	})
-
 	f := (s.t[ix+1] - t) / (s.t[ix+1] - s.t[ix])
+	e0, e1, e2, e3 := ToQuaternion(
+		f*s.phi[ix] + (1-f)*s.phi[ix+1],
+		f*s.theta[ix] + (1-f)*s.theta[ix+1],
+		f*s.psi[ix] + (1-f)*s.psi[ix+1] )
+	ee := math.Sqrt(e0*e0+e1*e1+e2*e2+e3*e3)
+	f0, f1, f2, f3 := ToQuaternion(
+		f*s.phi0[ix] + (1-f)*s.phi0[ix+1],
+		f*s.theta0[ix] + (1-f)*s.theta0[ix+1],
+		f*s.psi0[ix] + (1-f)*s.psi0[ix+1] )
+	ff := math.Sqrt(f0*f0+f1*f1+f2*f2+f3*f3)
+
 	return ahrs.State{
 		U1: f*s.u1[ix] + (1-f)*s.u1[ix+1],
 		U2: f*s.u2[ix] + (1-f)*s.u2[ix+1],
 		U3: f*s.u3[ix] + (1-f)*s.u3[ix+1],
-		E0: f*s.e0[ix] + (1-f)*s.e0[ix+1],
-		E1: f*s.e1[ix] + (1-f)*s.e1[ix+1],
-		E2: f*s.e2[ix] + (1-f)*s.e2[ix+1],
-		E3: f*s.e3[ix] + (1-f)*s.e3[ix+1],
-		F0: f*s.f0[ix] + (1-f)*s.f0[ix+1],
-		F1: f*s.f1[ix] + (1-f)*s.f1[ix+1],
-		F2: f*s.f2[ix] + (1-f)*s.f2[ix+1],
-		F3: f*s.f3[ix] + (1-f)*s.f3[ix+1],
+		E0: e0/ee,
+		E1: e1/ee,
+		E2: e2/ee,
+		E3: e3/ee,
+		F0: f0/ff,
+		F1: f1/ff,
+		F2: f2/ff,
+		F3: f3/ff,
 		V1: f*s.v1[ix] + (1-f)*s.v1[ix+1],
 		V2: f*s.v2[ix] + (1-f)*s.v2[ix+1],
 		V3: f*s.v3[ix] + (1-f)*s.v3[ix+1],
@@ -121,35 +115,12 @@ func (s *Situation) derivative(t float64) (ahrs.State, error) {
 		ix = sort.SearchFloat64s(s.t, t) - 1
 	}
 
-	s.init.Do(func() {
-		fmt.Println("derivative running init")
-		s.e0 = make([]float64, len(s.t))
-		s.e1 = make([]float64, len(s.t))
-		s.e2 = make([]float64, len(s.t))
-		s.e3 = make([]float64, len(s.t))
-		s.f0 = make([]float64, len(s.t))
-		s.f1 = make([]float64, len(s.t))
-		s.f2 = make([]float64, len(s.t))
-		s.f3 = make([]float64, len(s.t))
-		for i := 0; i < len(s.e0); i++ {
-			s.e0[i], s.e1[i], s.e2[i], s.e3[i] = ToQuaternion(s.phi[i], s.theta[i], s.phi[i])
-			s.f0[i], s.f1[i], s.f2[i], s.f3[i] = ToQuaternion(s.phi0[i], s.theta0[i], s.phi0[i])
-		}
-	})
-
 	dt := s.t[ix+1] - s.t[ix]
 	return ahrs.State{
 		U1: (s.u1[ix+1] - s.u1[ix]) / dt,
 		U2: (s.u2[ix+1] - s.u2[ix]) / dt,
 		U3: (s.u3[ix+1] - s.u3[ix]) / dt,
-		E0: (s.e0[ix+1] - s.e0[ix]) / dt,
-		E1: (s.e1[ix+1] - s.e1[ix]) / dt,
-		E2: (s.e2[ix+1] - s.e2[ix]) / dt,
-		E3: (s.e3[ix+1] - s.e3[ix]) / dt,
-		F0: (s.f0[ix+1] - s.f0[ix]) / dt,
-		F1: (s.f1[ix+1] - s.f1[ix]) / dt,
-		F2: (s.f2[ix+1] - s.f2[ix]) / dt,
-		F3: (s.f3[ix+1] - s.f3[ix]) / dt,
+		//TODO: Es and Fs
 		V1: (s.v1[ix+1] - s.v1[ix]) / dt,
 		V2: (s.v2[ix+1] - s.v2[ix]) / dt,
 		V3: (s.v3[ix+1] - s.v3[ix]) / dt,
@@ -244,8 +215,8 @@ var sitTurnDef = Situation{                                     // start, initia
 	u2:     []float64{0, 0, 0, 0, 0, 0},
 	u3:     []float64{0, 0, 0, 0, 0, 0},
 	phi:    []float64{0, 0, bank, bank, 0, 0},
-	theta:  []float64{0, 0, math.Pi / 90, math.Pi / 90, 0, 0},
-	psi:    []float64{0, 0, 0, 2 * math.Pi, 2 * math.Pi, 2 * math.Pi},
+	theta:  []float64{0, 0, math.Pi/90, math.Pi/90, 0, 0},
+	psi:    []float64{0, 0, 0, 2*math.Pi, 2*math.Pi, 2*math.Pi},
 	phi0:   []float64{0, 0, 0, 0, 0, 0},
 	theta0: []float64{0, 0, 0, 0, 0, 0},
 	psi0:   []float64{0, 0, 0, 0, 0, 0},
@@ -264,25 +235,25 @@ func main() {
 		panic(err)
 	}
 	defer fActual.Close()
-	fmt.Fprint(fActual, "T,Ux,Uy,Uz,Phi,Theta,Psi,Phi0,Theta0,Psi0,Vx,Vy,Vz\n")
+	fmt.Fprint(fActual, "T,Ux,Uy,Uz,Phi,Theta,Psi,Vx,Vy,Vz,Mx,My,Mz\n")
 	fKalman, err := os.Create("k_kalman.csv")
 	if err != nil {
 		panic(err)
 	}
 	defer fKalman.Close()
-	fmt.Fprint(fKalman, "T,Ux,Uy,Uz,Phi,Theta,Psi,Phi0,Theta0,Psi0,Vx,Vy,Vz\n")
+	fmt.Fprint(fKalman, "T,Ux,Uy,Uz,Phi,Theta,Psi,Vx,Vy,Vz,Mx,My,Mz\n")
 	fPredict, err := os.Create("k_predict.csv")
 	if err != nil {
 		panic(err)
 	}
 	defer fPredict.Close()
-	fmt.Fprint(fPredict, "T,Ux,Uy,Uz,Phi,Theta,Psi,Phi0,Theta0,Psi0,Vx,Vy,Vz\n")
+	fmt.Fprint(fPredict, "T,Ux,Uy,Uz,Phi,Theta,Psi,Vx,Vy,Vz,Mx,My,Mz\n")
 	fVar, err := os.Create("k_var.csv")
 	if err != nil {
 		panic(err)
 	}
 	defer fVar.Close()
-	fmt.Fprint(fVar, "T,Ux,Uy,Uz,Phi,Theta,Psi,Phi0,Theta0,Psi0,Vx,Vy,Vz\n")
+	fmt.Fprint(fVar, "T,Ux,Uy,Uz,Phi,Theta,Psi,Vx,Vy,Vz,Mx,My,Mz\n")
 	fControl, err := os.Create("k_control.csv")
 	if err != nil {
 		panic(err)
@@ -294,7 +265,7 @@ func main() {
 		panic(err)
 	}
 	defer fMeas.Close()
-	fmt.Fprint(fMeas, "T,Wx,Wy,Wz\n")
+	fmt.Fprint(fMeas, "T,Wx,Wy,Wz,Mx,My,Mz,Ux,Uy,Uz\n")
 
 	s := ahrs.X0 // Initialize Kalman with a sensible starting state
 	fmt.Println("Running Simulation")
@@ -305,10 +276,9 @@ func main() {
 			panic(err)
 		}
 		phi, theta, psi := FromQuaternion(s0.E0, s0.E1, s0.E2, s0.E3)
-		phi0, theta0, psi0 := FromQuaternion(s0.F0, s0.F1, s0.F2, s0.F3)
 		fmt.Fprintf(fActual, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
 			float64(s0.T)/1000, s0.U1, s0.U2, s0.U3, phi, theta, psi,
-			phi0, theta0, psi0, s0.V1, s0.V2, s0.V3)
+			s0.V1, s0.V2, s0.V3, s0.M1, s0.M2, s0.M3)
 
 		c, err := sitTurnDef.control(t)
 		if err != nil {
@@ -320,10 +290,9 @@ func main() {
 			float64(c.T)/1000, P, Q, R, c.A1, c.A2, c.A3)
 		s.Predict(c, ahrs.VX)
 		phi, theta, psi = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
-		phi0, theta0, psi0 = FromQuaternion(s.F0, s.F1, s.F2, s.F3)
 		fmt.Fprintf(fPredict, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
 			float64(s.T)/1000, s.U1, s.U2, s.U3, phi, theta, psi,
-			phi0, theta0, psi0, s.V1, s.V2, s.V3)
+			s.V1, s.V2, s.V3, s.M1, s.M2, s.M3)
 
 		m, err := sitTurnDef.measurement(t)
 		if err != nil {
@@ -332,17 +301,17 @@ func main() {
 		}
 		fmt.Fprintf(fMeas, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
 			float64(m.T)/1000, m.W1, m.W2, m.W3, m.M1, m.M2, m.M3, m.U1, m.U2, m.U3)
-		s.Update(m, ahrs.VM)
+		//s.Update(m, ahrs.VM)
 		phi, theta, psi = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
-		phi0, theta0, psi0 = FromQuaternion(s.F0, s.F1, s.F2, s.F3)
 		fmt.Fprintf(fKalman, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
 			float64(s.T)/1000, s.U1, s.U2, s.U3, phi, theta, psi,
-			phi0, theta0, psi0, s.V1, s.V2, s.V3)
+			s.V1, s.V2, s.V3, s.M1, s.M2, s.M3)
 		fmt.Fprintf(fVar, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
 			float64(s.T)/1000, math.Sqrt(s.M.Get(0, 0)), math.Sqrt(s.M.Get(1, 1)), math.Sqrt(s.M.Get(2, 2)),
+			//TODO: Calculate variance of Tait-Bryan from Quaternions
 			math.Sqrt(s.M.Get(3, 3)), math.Sqrt(s.M.Get(4, 4)), math.Sqrt(s.M.Get(5, 5)),
-			math.Sqrt(s.M.Get(6, 6)), math.Sqrt(s.M.Get(7, 7)), math.Sqrt(s.M.Get(8, 8)),
-			math.Sqrt(s.M.Get(9, 9)), math.Sqrt(s.M.Get(10, 10)), math.Sqrt(s.M.Get(11, 11)),
+			math.Sqrt(s.M.Get(7, 7)), math.Sqrt(s.M.Get(8, 8)), math.Sqrt(s.M.Get(9, 9)),
+			math.Sqrt(s.M.Get(10, 10)), math.Sqrt(s.M.Get(11, 11)), math.Sqrt(s.M.Get(12, 12)),
 		)
 
 		/*

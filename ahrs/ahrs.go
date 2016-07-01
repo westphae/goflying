@@ -49,10 +49,10 @@ var X0 = State{ // Starting state: vector quantities are all 0's
 	U1: 50, // Reasonable starting airspeed for GA aircraft
 	E0: 1,  // Zero rotation has real part 1
 	M: *matrix.Diagonal([]float64{
-		100 * 100, 100 * 100, 10 * 10, // Reasonable for a GA aircraft
-		2, 2, 2, 2, // Initial orientation is highly uncertain
+		100 * 100, 10 * 10, 10 * 10, // Reasonable for a GA aircraft
+		1, 1, 1, 1, // Initial orientation is highly uncertain
 		20 * 20, 20 * 20, 0.5 * 0.5, // Windspeed is an unknown
-		2, 2, 2, // Magnetometer is an unknown
+		1, 1, 1, // Magnetometer is an unknown
 	}),
 }
 
