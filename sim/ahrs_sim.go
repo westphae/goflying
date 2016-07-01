@@ -107,23 +107,44 @@ func (s *Situation) derivative(t float64) (ahrs.State, error) {
 	if t < s.t[0] || t > s.t[len(s.t)-1] {
 		return ahrs.State{}, errors.New("requested time is outside of scenario")
 	}
-	ix := 0
-	if t > s.t[0] {
-		ix = sort.SearchFloat64s(s.t, t) - 1
+
+	var t0, t1, dt float64
+	if t < s.t[0]+0.05 {
+		t0 = s.t[0]
+		dt = 0.05
+		t1 = t0+dt
+	} else if t > s.t[len(s.t)-1]-0.05 {
+		t1 = s.t[len(s.t)-1]
+		dt = 0.05
+		t0 = t1 - dt
+	} else {
+		dt = 0.1
+		t0 = t - dt/2
+		t1 = t + dt/2
 	}
 
-	dt := s.t[ix+1] - s.t[ix]
+	s0, _ := s.interpolate(t0)
+	s1, _ := s.interpolate(t1)
+
+
 	return ahrs.State{
-		U1: (s.u1[ix+1] - s.u1[ix]) / dt,
-		U2: (s.u2[ix+1] - s.u2[ix]) / dt,
-		U3: (s.u3[ix+1] - s.u3[ix]) / dt,
-		//TODO: Es and Fs
-		V1: (s.v1[ix+1] - s.v1[ix]) / dt,
-		V2: (s.v2[ix+1] - s.v2[ix]) / dt,
-		V3: (s.v3[ix+1] - s.v3[ix]) / dt,
-		M1: (s.m1[ix+1] - s.m1[ix]) / dt,
-		M2: (s.m2[ix+1] - s.m2[ix]) / dt,
-		M3: (s.m3[ix+1] - s.m3[ix]) / dt,
+		U1: (s0.U1 - s1.U1) / dt,
+		U2: (s0.U2 - s1.U2) / dt,
+		U3: (s0.U3 - s1.U3) / dt,
+		E0: (s0.E0 - s1.E0) / dt,
+		E1: (s0.E1 - s1.E1) / dt,
+		E2: (s0.E2 - s1.E2) / dt,
+		E3: (s0.E3 - s1.E3) / dt,
+		F0: (s0.F0 - s1.F0) / dt,
+		F1: (s0.F1 - s1.F1) / dt,
+		F2: (s0.F2 - s1.F2) / dt,
+		F3: (s0.F3 - s1.F3) / dt,
+		V1: (s0.V1 - s1.V1) / dt,
+		V2: (s0.V2 - s1.V2) / dt,
+		V3: (s0.V3 - s1.V3) / dt,
+		M1: (s0.M1 - s1.M1) / dt,
+		M2: (s0.M2 - s1.M2) / dt,
+		M3: (s0.M3 - s1.M3) / dt,
 		T:  uint32(t*1000 + 0.5), // easy rounding for uint
 		M:  matrix.DenseMatrix{},
 	}, nil
