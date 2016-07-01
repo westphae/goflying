@@ -74,10 +74,10 @@
                 .range([height, 0])
                 .domain([
                     d3.min(data.slice(5, data.length-1), function(v) {
-                            return v.lower;
+                            return d3.min([v.lower, v.actual]);
                         }),
                     d3.max(data.slice(5, data.length-1), function (v) {
-                            return v.upper;
+                            return d3.max([v.upper, v.actual]);
                     })
                 ]);
 
