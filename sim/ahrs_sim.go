@@ -16,10 +16,7 @@ import (
 	"github.com/westphae/goflying/ahrs"
 )
 
-const (
-	dt  = 0.1
-	deg = 180 / math.Pi
-)
+const dt  = 0.1
 
 // Situation defines a scenario by piecewise-linear interpolation
 type Situation struct {
@@ -100,7 +97,7 @@ func (s *Situation) interpolate(t float64) (ahrs.State, error) {
 		M1: f*s.m1[ix] + (1-f)*s.m1[ix+1],
 		M2: f*s.m2[ix] + (1-f)*s.m2[ix+1],
 		M3: f*s.m3[ix] + (1-f)*s.m3[ix+1],
-		T:  uint32(t*1000 + 0.5),
+		T:  uint32(t*1000 + 0.5), // easy rounding for uint
 		M:  matrix.DenseMatrix{},
 	}, nil
 }
