@@ -134,6 +134,7 @@ func (s *State) Predict(c Control, n State) {
 		n.U1 * n.U1 * tf, n.U2 * n.U2 * tf, n.U3 * n.U3 * tf,
 		n.E0 * n.E0 * tf, n.E1 * n.E1 * tf, n.E2 * n.E2 * tf, n.E3 * n.E3 * tf,
 		n.V1 * n.V1 * tf, n.V2 * n.V2 * tf, n.V3 * n.V3 * tf,
+		n.M1 * n.M1 * tf, n.M2 * n.M2 * tf, n.M3 * n.M3 * tf,
 	})
 	s.M = *matrix.Sum(matrix.Product(&f, matrix.Product(&s.M, f.Transpose())), nn)
 }
