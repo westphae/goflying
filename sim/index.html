@@ -37,8 +37,8 @@
 <script>
 
     var DEG = 57.295780,
-            actual, kalman, variance,
-            remaining = 3;
+            actual, predict, kalman, variance, control, measure,
+            remaining = 6;
 
     function makeChart(v) {
         var margin = {top: 5, right: 35, bottom: 20, left: 35},
@@ -58,6 +58,7 @@
             }
             return {T: +d.T,
                 actual: k*d[v],
+                predict: k*predict[i][v],
                 kalman: k*kalman[i][v],
                 lower: k*kalman[i][v]-k*variance[i][v],
                 upper: k*kalman[i][v]+k*variance[i][v]
@@ -122,10 +123,10 @@
                 .attr("dy", ".71em")
                 .style("text-anchor", "end");
 
-        var lines = chart.selectAll(".city")
+        var lines = chart.selectAll(".lines")
                 .data([data])
                 .enter().append("g")
-                .attr("class", "city");
+                .attr("class", "lines");
 
         lines.append("path")
                 .attr("class", "area")
@@ -144,13 +145,19 @@
 
         lines.append("path")
                 .attr("class", "line")
-                .attr("d", line("kalman"))
-                .style("stroke", color(v));
+                .attr("d", line("actual"))
+                .style("stroke", "Black");
 
         lines.append("path")
                 .attr("class", "line")
-                .attr("d", line("actual"))
-                .style("stroke", "Black");
+                .attr("d", line("predict"))
+                .style("stroke", color(v))
+                .style("stroke-dasharray", "5,10");
+
+        lines.append("path")
+                .attr("class", "line")
+                .attr("d", line("kalman"))
+                .style("stroke", color(v));
 
         chart.append("text")
                 .attr("x", width/2)
@@ -168,16 +175,38 @@
         if (!--remaining) makeAll();
     });
 
+    d3.csv("k_predict.csv", function (error, data) {
+        if (error) throw error;
+
+        predict = data;
+        if (!--remaining) makeAll();
+    });
+
     d3.csv("k_kalman.csv", function (error, data) {
         if (error) throw error;
 
         kalman = data;
         if (!--remaining) makeAll();
     });
+
     d3.csv("k_var.csv", function (error, data) {
         if (error) throw error;
 
         variance = data;
+        if (!--remaining) makeAll();
+    });
+
+    d3.csv("k_control.csv", function (error, data) {
+        if (error) throw error;
+
+        control = data;
+        if (!--remaining) makeAll();
+    });
+
+    d3.csv("k_meas.csv", function (error, data) {
+        if (error) throw error;
+
+        measure = data;
         if (!--remaining) makeAll();
     });
 
