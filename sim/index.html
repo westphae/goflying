@@ -40,7 +40,7 @@
             actual, predict, kalman, variance, control, measure,
             remaining = 6;
 
-    function makeChart(v) {
+    function MakeStateChart(v) {
         var margin = {top: 5, right: 35, bottom: 20, left: 35},
                 width = 450 - margin.left - margin.right,
                 height = 250 - margin.top - margin.bottom;
@@ -168,6 +168,99 @@
                 .text(v);
     }
 
+    function MakeCMChart(v) {
+        var margin = {top: 5, right: 35, bottom: 20, left: 35},
+                width = 450 - margin.left - margin.right,
+                height = 250 - margin.top - margin.bottom;
+
+        var color = d3.scale.category10()
+                .domain( d3.keys(measure[0]).filter(function (key) {
+                    return key !== "T";
+                }).concat( d3.keys(control[0]).filter(function (key) {
+                    return key !== "T";
+                })
+                ));
+
+        if (d3.keys(measure[0]).indexOf(v)>-1) {
+            dat = measure;
+        } else {
+            dat = control;
+        }
+        var data = dat.map(function(d, i) {
+            if (["P", "Q", "R"].indexOf(v) > -1) {
+                k = DEG;
+            } else {
+                k = 1;
+            }
+            return {T: +d.T,
+                y: k*d[v]
+            };
+        });
+
+        var x = d3.scale.linear()
+                .range([0, width])
+                .domain(d3.extent(data, function (d) {
+                    return +d.T;
+                }));
+
+        var y = d3.scale.linear()
+                .range([height, 0])
+                .domain(d3.extent(data, function(d) {
+                    return +d.y;
+                }));
+
+        var xAxis = d3.svg.axis()
+                .scale(x)
+                .orient("bottom");
+
+        var yAxis = d3.svg.axis()
+                .scale(y)
+                .orient("left");
+
+        var line = d3.svg.line()
+                    .interpolate("basis")
+                    .x(function (d) { return x(d.T); })
+                    .y(function (d) { return y(d.y); });
+
+        var chart = d3.select("body").append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+        chart.append("g")
+                .attr("class", "x axis")
+                .attr("transform", "translate(0," + height + ")")
+                .call(xAxis);
+
+        chart.append("g")
+                .attr("class", "y axis")
+                .call(yAxis)
+                .append("text")
+                .attr("transform", "rotate(-90)")
+                .attr("y", 6)
+                .attr("dy", ".71em")
+                .style("text-anchor", "end");
+
+        var lines = chart.selectAll(".lines")
+                .data([data])
+                .enter().append("g")
+                .attr("class", "lines");
+
+        lines.append("path")
+                .attr("class", "line")
+                .attr("d", line)
+                .style("stroke", color(v));
+
+        chart.append("text")
+                .attr("x", width/2)
+                .attr("y", margin.top)
+                .attr("text-anchor", "middle")
+                .attr("alignment-baseline", "hanging")
+                .style("font-size", "12px")
+                .text(v);
+    }
+
     d3.csv("k_state.csv", function (error, data) {
         if (error) throw error;
 
@@ -211,18 +304,33 @@
     });
 
     function makeAll() {
-        makeChart("Ux");
-        makeChart("Uy");
-        makeChart("Uz");
-        makeChart("Phi");
-        makeChart("Theta");
-        makeChart("Psi");
-        makeChart("Vx");
-        makeChart("Vy");
-        makeChart("Vz");
-        makeChart("Mx");
-        makeChart("My");
-        makeChart("Mz");
+        MakeStateChart("Ux");
+        MakeStateChart("Uy");
+        MakeStateChart("Uz");
+        MakeStateChart("Phi");
+        MakeStateChart("Theta");
+        MakeStateChart("Psi");
+        MakeStateChart("Vx");
+        MakeStateChart("Vy");
+        MakeStateChart("Vz");
+        MakeStateChart("Mx");
+        MakeStateChart("My");
+        MakeStateChart("Mz");
+        MakeCMChart("P");
+        MakeCMChart("Q");
+        MakeCMChart("R");
+        MakeCMChart("Ax");
+        MakeCMChart("Ay");
+        MakeCMChart("Az");
+        MakeCMChart("Wx");
+        MakeCMChart("Wy");
+        MakeCMChart("Wz");
+        MakeCMChart("Mx");
+        MakeCMChart("My");
+        MakeCMChart("Mz");
+        MakeCMChart("Ux");
+        MakeCMChart("Uy");
+        MakeCMChart("Uz");
     }
 
 </script>
