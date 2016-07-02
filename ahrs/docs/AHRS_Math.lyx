@@ -1,0 +1,521 @@
+#LyX 2.2 created this file. For more info see http://www.lyx.org/
+\lyxformat 508
+\begin_document
+\begin_header
+\save_transient_properties true
+\origin unavailable
+\textclass article
+\use_default_options true
+\maintain_unincluded_children false
+\language english
+\language_package default
+\inputencoding auto
+\fontencoding global
+\font_roman "default" "default"
+\font_sans "default" "default"
+\font_typewriter "default" "default"
+\font_math "auto" "auto"
+\font_default_family default
+\use_non_tex_fonts false
+\font_sc false
+\font_osf false
+\font_sf_scale 100 100
+\font_tt_scale 100 100
+\graphics default
+\default_output_format default
+\output_sync 0
+\bibtex_command default
+\index_command default
+\paperfontsize default
+\use_hyperref false
+\papersize default
+\use_geometry false
+\use_package amsmath 1
+\use_package amssymb 1
+\use_package cancel 1
+\use_package esint 1
+\use_package mathdots 1
+\use_package mathtools 1
+\use_package mhchem 1
+\use_package stackrel 1
+\use_package stmaryrd 1
+\use_package undertilde 1
+\cite_engine basic
+\cite_engine_type default
+\biblio_style plain
+\use_bibtopic false
+\use_indices false
+\paperorientation portrait
+\suppress_date false
+\justification true
+\use_refstyle 1
+\index Index
+\shortcut idx
+\color #008000
+\end_index
+\secnumdepth 3
+\tocdepth 3
+\paragraph_separation indent
+\paragraph_indentation default
+\quotes_language english
+\papercolumns 1
+\papersides 1
+\paperpagestyle default
+\tracking_changes false
+\output_changes false
+\html_math_output 0
+\html_css_as_file 0
+\html_be_strict false
+\end_header
+
+\begin_body
+
+\begin_layout Title
+AHRS Mathematics
+\end_layout
+
+\begin_layout Author
+Dr.
+ Eric Rodney Westphal
+\end_layout
+
+\begin_layout Date
+July 2016
+\end_layout
+
+\begin_layout Abstract
+Derivations of the mathematics used for driving an AHRS for stratux.
+\end_layout
+
+\begin_layout Section*
+Coordinate Frames
+\end_layout
+
+\begin_layout Enumerate
+Inertial Earth frame (subscript e), coordinates are lat/long/alt:
+\end_layout
+
+\begin_deeper
+\begin_layout Enumerate
+positive x to the east
+\end_layout
+
+\begin_layout Enumerate
+positive y to the north
+\end_layout
+
+\begin_layout Enumerate
+positive z up
+\end_layout
+
+\begin_layout Enumerate
+Used for GPS data and wind estimates
+\end_layout
+
+\end_deeper
+\begin_layout Enumerate
+Non-inertial aircraft frame (subscript a), coordinates relative to stratux
+ position:
+\end_layout
+
+\begin_deeper
+\begin_layout Enumerate
+positive x forward 
+\end_layout
+
+\begin_layout Enumerate
+positive y to the right wing 
+\end_layout
+
+\begin_layout Enumerate
+positive z up 
+\end_layout
+
+\begin_layout Enumerate
+used for AHRS--this is our main frame 
+\end_layout
+
+\end_deeper
+\begin_layout Enumerate
+Non-inertial sensor frame (subscript s), coordinates relative to stratux
+ position: 
+\end_layout
+
+\begin_deeper
+\begin_layout Enumerate
+positive x roughly toward the nose 
+\end_layout
+
+\begin_layout Enumerate
+positive y roughly toward the right wing 
+\end_layout
+
+\begin_layout Enumerate
+positive z roughly up 
+\end_layout
+
+\begin_layout Enumerate
+used to correct for random placement of stratux on glareshield; it is assumed
+ stationary for these derivations 
+\end_layout
+
+\end_deeper
+\begin_layout Section*
+Quaternions and Vectors
+\end_layout
+
+\begin_layout Description
+\begin_inset Formula $q_{sa}$
+\end_inset
+
+ quaternion to rotate from aircraft frame 
+\begin_inset Formula $a$
+\end_inset
+
+ to sensor frame 
+\begin_inset Formula $s$
+\end_inset
+
+
+\end_layout
+
+\begin_layout Description
+\begin_inset Formula $q_{ea}$
+\end_inset
+
+ quaternion to rotate from aircraft frame 
+\begin_inset Formula $a$
+\end_inset
+
+ to earth frame 
+\begin_inset Formula $e$
+\end_inset
+
+
+\end_layout
+
+\begin_layout Description
+\begin_inset Formula $h_{s}$
+\end_inset
+
+ quaternion of rates measured by gyroscope
+\end_layout
+
+\begin_layout Description
+\begin_inset Formula $a_{s}$
+\end_inset
+
+ vector of accelerations measured by accelerometer
+\end_layout
+
+\begin_layout Description
+\begin_inset Formula $u_{a}$
+\end_inset
+
+ vector of true airspeed (plus sideslip and mush wind if aircraft not aligned
+ into slipstream)
+\end_layout
+
+\begin_layout Description
+\begin_inset Formula $v_{e}$
+\end_inset
+
+ vector of windspeed, steady/stochastic, 
+\begin_inset Formula $\dot{v}_{e}=0$
+\end_inset
+
+
+\end_layout
+
+\begin_layout Description
+\begin_inset Formula $x_{e}$
+\end_inset
+
+ vector of aircraft position
+\end_layout
+
+\begin_layout Description
+\begin_inset Formula $w_{e}$
+\end_inset
+
+ vector of groundspeed, 
+\begin_inset Formula $w_{e}=\dot{x_{e}}$
+\end_inset
+
+
+\end_layout
+
+\begin_layout Description
+\begin_inset Formula $y_{s}$
+\end_inset
+
+ vector of arbitrary point; for sensor, 
+\begin_inset Formula $\ddot{y}_{s}=a_{s}$
+\end_inset
+
+
+\end_layout
+
+\begin_layout Section*
+Kinematics
+\end_layout
+
+\begin_layout Standard
+To understand what the stratux sensors see, consider some point 
+\begin_inset Formula $y_{s}$
+\end_inset
+
+ in the (non-inertial) sensor frame.
+ Then in the inertial earth frame, its coordinates are
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\[
+y_{e}=x_{e}+q_{ea}q_{as}y_{s}q_{sa}q_{ae}
+\]
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Its speed and acceleration are then 
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\begin{eqnarray*}
+\dot{y}_{e} & = & \dot{x}_{e}+\dot{q}_{ea}q_{as}y_{s}q_{sa}q_{ae}+q_{ea}q_{as}\dot{y}_{s}q_{sa}q_{ae}+q_{ea}q_{as}y_{s}q_{sa}\dot{q}_{ae}\\
+\ddot{y}_{e} & = & \ddot{x}_{e}+\ddot{q}_{ea}q_{as}y_{s}q_{sa}q_{ae}+2\dot{q}_{ea}q_{as}\dot{y}_{s}q_{sa}q_{ae}+2\dot{q}_{ea}q_{as}y_{s}q_{sa}\dot{q}_{ae}\\
+ &  & +q_{ea}q_{as}\ddot{y}_{s}q_{sa}q_{ae}+2q_{ea}q_{as}\dot{y}_{s}q_{sa}\dot{q}_{ae}+q_{ea}q_{as}y_{s}q_{sa}\ddot{q}_{ae}
+\end{eqnarray*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+The gyro and accelerometer on the stratux measure the forces felt by a free
+ particle at the sensor position, so 
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\[
+\ddot{y}_{e}=g_{e},\dot{y}_{e}=0,y_{e}=0
+\]
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+So this equation simplifies to
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\[
+g_{e}=\ddot{x}_{e}+q_{ea}q_{as}\ddot{y}_{s}q_{sa}q_{ae}
+\]
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+or
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\[
+\ddot{x}_{e}=g_{e}-q_{ea}q_{as}\ddot{y}_{s}q_{sa}q_{ae}
+\]
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Now the speed of the aircraft in the earth frame (measured by the GPS) is
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\[
+w_{e}=q_{ea}u_{a}q_{ae}+v_{e}
+\]
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+so
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\begin{eqnarray*}
+\ddot{x}_{e} & = & \dot{w}_{e}\\
+ & = & \dot{q}_{ea}u_{a}q_{ae}+q_{ea}\dot{u}_{a}q_{ae}+q_{ea}u_{a}\dot{q}_{ae}+\dot{v}_{e}\\
+ & = & g_{e}-q_{ea}q_{as}\ddot{y}_{s}q_{sa}q_{ae}
+\end{eqnarray*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\[
+q_{ea}\dot{u}_{a}q_{ae}=g_{e}-q_{ea}q_{as}\ddot{y}_{s}q_{sa}q_{ae}-\dot{q}_{ea}u_{a}q_{ae}-q_{ea}u_{a}\dot{q}_{ae}
+\]
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\[
+\dot{u}_{a}=q_{ae}g_{e}q_{ea}-q_{as}\ddot{y}_{s}q_{sa}-q_{ae}\dot{q}_{ea}u_{a}-u_{a}\dot{q}_{ae}q_{ea}
+\]
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Now 
+\begin_inset Formula $q_{ae}q_{ea}=1$
+\end_inset
+
+, so 
+\begin_inset Formula $\dot{q}_{ae}q_{ea}+q_{ae}\dot{q}_{ea}=0$
+\end_inset
+
+ or 
+\begin_inset Formula $\dot{q}_{ae}q_{ea}=-q_{ae}\dot{q}_{ea}$
+\end_inset
+
+, so
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\[
+\dot{u}_{a}=q_{ae}g_{e}q_{ea}-q_{as}\ddot{y}_{s}q_{sa}-q_{ae}\dot{q}_{ea}u_{a}+u_{a}q_{ae}\dot{q}_{ea}
+\]
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Now, we have all these derivatives of the rotation matrices around; we measure
+ the rotation rate in the sensor frame, 
+\begin_inset Formula $h_{s}$
+\end_inset
+
+, so how do we relate the two? To make things easier, work with the gyro
+ rate transformed to the airplane frame, 
+\begin_inset Formula $h_{a}=q_{as}h_{s}q_{sa}$
+\end_inset
+
+, as we can trivially transform back to 
+\begin_inset Formula $h_{s}$
+\end_inset
+
+ later since 
+\begin_inset Formula $q_{as}$
+\end_inset
+
+ is stationary.
+\end_layout
+
+\begin_layout Standard
+Using the Taylor Series expansion of 
+\begin_inset Formula $q_{ea}$
+\end_inset
+
+, after an infinitesimal time 
+\begin_inset Formula $dt$
+\end_inset
+
+, the new rotation quaternion becomes 
+\begin_inset Formula $q_{ea}\rightarrow q_{ea}+\dot{q}_{ea}dt$
+\end_inset
+
+.
+ We must get the same rotation whether we simply rotate by 
+\begin_inset Formula $q_{ea}$
+\end_inset
+
+ or if we first applying the gyro rate 
+\begin_inset Formula $h_{a}$
+\end_inset
+
+ for an infinitesimal time and then rotating into the airplane frame with
+ the new rotation
+\begin_inset Formula $q_{ea}+\dot{q}_{ea}dt$
+\end_inset
+
+, so
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\begin{eqnarray*}
+q_{ea} & = & (q_{ea}+\dot{q}_{ea}dt)(1+\tfrac{1}{2}h_{a}dt)\\
+q_{ea} & = & q_{ea}+\tfrac{1}{2}q_{ea}h_{a}dt+\dot{q}_{ea}dt\\
+\dot{q}_{ea} & = & -\tfrac{1}{2}q_{ea}h_{a}\\
+\dot{q}_{ea} & = & -\tfrac{1}{2}q_{ea}q_{as}h_{s}q_{sa}\\
+q_{ae}\dot{q}_{ea} & = & -\tfrac{1}{2}q_{as}h_{s}q_{sa}
+\end{eqnarray*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+So our kinematic equations are
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\[
+\dot{u}_{a}=q_{ae}g_{e}q_{ea}-q_{as}a_{s}q_{sa}+\tfrac{1}{2}q_{as}h_{s}q_{sa}u_{a}-\tfrac{1}{2}u_{a}q_{as}h_{s}q_{sa}
+\]
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\[
+\dot{q}_{ea}=-\tfrac{1}{2}q_{ea}q_{as}h_{s}q_{sa}
+\]
+
+\end_inset
+
+
+\end_layout
+
+\end_body
+\end_document
