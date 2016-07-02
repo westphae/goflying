@@ -16,7 +16,7 @@ import (
 	"github.com/westphae/goflying/ahrs"
 )
 
-const dt  = 0.1
+const dt = 0.1
 
 // Situation defines a scenario by piecewise-linear interpolation
 type Situation struct {
@@ -31,12 +31,12 @@ type Situation struct {
 // ToQuaternion calculates the 0,1,2,3 components of the rotation quaternion
 // corresponding to the Tait-Bryan angles phi, theta, psi
 func ToQuaternion(phi, theta, psi float64) (float64, float64, float64, float64) {
-	cphi := math.Cos(phi/2)
-	sphi := math.Sin(phi/2)
-	ctheta := math.Cos(theta/2)
-	stheta := math.Sin(theta/2)
-	cpsi := math.Cos(psi/2)
-	spsi := math.Sin(psi/2)
+	cphi := math.Cos(phi / 2)
+	sphi := math.Sin(phi / 2)
+	ctheta := math.Cos(theta / 2)
+	stheta := math.Sin(theta / 2)
+	cpsi := math.Cos(psi / 2)
+	spsi := math.Sin(psi / 2)
 
 	q0 := cphi*ctheta*cpsi + sphi*stheta*spsi
 	q1 := sphi*ctheta*cpsi - cphi*stheta*spsi
@@ -49,10 +49,10 @@ func ToQuaternion(phi, theta, psi float64) (float64, float64, float64, float64) 
 // the quaternion
 func FromQuaternion(q0, q1, q2, q3 float64) (float64, float64, float64) {
 	phi := math.Atan2(2*(q0*q1+q2*q3), q0*q0-q1*q1-q2*q2+q3*q3)
-	theta := math.Asin(2*(q0*q2-q3*q1)/math.Sqrt(q0*q0+q1*q1+q2*q2+q3*q3))
+	theta := math.Asin(2 * (q0*q2 - q3*q1) / math.Sqrt(q0*q0+q1*q1+q2*q2+q3*q3))
 	psi := math.Atan2(2*(q0*q3+q1*q2), q0*q0+q1*q1-q2*q2-q3*q3)
 	if psi < -1e-6 {
-		psi += 2*math.Pi
+		psi += 2 * math.Pi
 	}
 	return phi, theta, psi
 }
@@ -69,28 +69,28 @@ func (s *Situation) interpolate(t float64) (ahrs.State, error) {
 
 	f := (s.t[ix+1] - t) / (s.t[ix+1] - s.t[ix])
 	e0, e1, e2, e3 := ToQuaternion(
-		f*s.phi[ix] + (1-f)*s.phi[ix+1],
-		f*s.theta[ix] + (1-f)*s.theta[ix+1],
-		f*s.psi[ix] + (1-f)*s.psi[ix+1] )
-	ee := math.Sqrt(e0*e0+e1*e1+e2*e2+e3*e3)
+		f*s.phi[ix]+(1-f)*s.phi[ix+1],
+		f*s.theta[ix]+(1-f)*s.theta[ix+1],
+		f*s.psi[ix]+(1-f)*s.psi[ix+1])
+	ee := math.Sqrt(e0*e0 + e1*e1 + e2*e2 + e3*e3)
 	f0, f1, f2, f3 := ToQuaternion(
-		f*s.phi0[ix] + (1-f)*s.phi0[ix+1],
-		f*s.theta0[ix] + (1-f)*s.theta0[ix+1],
-		f*s.psi0[ix] + (1-f)*s.psi0[ix+1] )
-	ff := math.Sqrt(f0*f0+f1*f1+f2*f2+f3*f3)
+		f*s.phi0[ix]+(1-f)*s.phi0[ix+1],
+		f*s.theta0[ix]+(1-f)*s.theta0[ix+1],
+		f*s.psi0[ix]+(1-f)*s.psi0[ix+1])
+	ff := math.Sqrt(f0*f0 + f1*f1 + f2*f2 + f3*f3)
 
 	return ahrs.State{
 		U1: f*s.u1[ix] + (1-f)*s.u1[ix+1],
 		U2: f*s.u2[ix] + (1-f)*s.u2[ix+1],
 		U3: f*s.u3[ix] + (1-f)*s.u3[ix+1],
-		E0: e0/ee,
-		E1: e1/ee,
-		E2: e2/ee,
-		E3: e3/ee,
-		F0: f0/ff,
-		F1: f1/ff,
-		F2: f2/ff,
-		F3: f3/ff,
+		E0: e0 / ee,
+		E1: e1 / ee,
+		E2: e2 / ee,
+		E3: e3 / ee,
+		F0: f0 / ff,
+		F1: f1 / ff,
+		F2: f2 / ff,
+		F3: f3 / ff,
 		V1: f*s.v1[ix] + (1-f)*s.v1[ix+1],
 		V2: f*s.v2[ix] + (1-f)*s.v2[ix+1],
 		V3: f*s.v3[ix] + (1-f)*s.v3[ix+1],
@@ -112,7 +112,7 @@ func (s *Situation) derivative(t float64) (ahrs.State, error) {
 	if t < s.t[0]+0.05 {
 		t0 = s.t[0]
 		dt = 0.05
-		t1 = t0+dt
+		t1 = t0 + dt
 	} else if t > s.t[len(s.t)-1]-0.05 {
 		t1 = s.t[len(s.t)-1]
 		dt = 0.05
@@ -125,7 +125,6 @@ func (s *Situation) derivative(t float64) (ahrs.State, error) {
 
 	s0, _ := s.interpolate(t0)
 	s1, _ := s.interpolate(t1)
-
 
 	return ahrs.State{
 		U1: (s0.U1 - s1.U1) / dt,
@@ -169,6 +168,11 @@ func (s *Situation) control(t float64) (ahrs.Control, error) {
 	f32 := 2 * (-x.F0*x.F1 + x.F3*x.F2)
 	f33 := 2 * (+x.F0*x.F0 + x.F3*x.F3 - 0.5)
 
+	h0 := 2 * (dx.E0*x.E0 + dx.E1*x.E1 + dx.E2*x.E2 + dx.E3*x.E3)
+	h1 := 2 * (dx.E1*x.E0 - dx.E0*x.E1 + dx.E3*x.E2 - dx.E2*x.E3)
+	h2 := 2 * (dx.E2*x.E0 - dx.E3*x.E1 - dx.E0*x.E2 + dx.E1*x.E3)
+	h3 := 2 * (dx.E3*x.E0 + dx.E2*x.E1 - dx.E1*x.E2 - dx.E0*x.E3)
+
 	y1 := -2*(x.E0*x.E2-x.E1*x.E3) + (-dx.U1+
 		+2*x.U2*(x.E0*dx.E3-x.E1*dx.E2+x.E2*dx.E1-x.E3*dx.E0)+
 		-2*x.U3*(x.E0*dx.E2+x.E1*dx.E3-x.E2*dx.E0-x.E3*dx.E1))/ahrs.G
@@ -180,10 +184,10 @@ func (s *Situation) control(t float64) (ahrs.Control, error) {
 		-dx.U3)/ahrs.G
 
 	c := ahrs.Control{
-		H0: dx.E0,
-		H1: dx.E0 + dx.E1*f11 + dx.E2*f12 + dx.E3*f13,
-		H2: dx.E0 + dx.E1*f21 + dx.E2*f22 + dx.E3*f23,
-		H3: dx.E0 + dx.E1*f31 + dx.E2*f32 + dx.E3*f33,
+		H0: h0,
+		H1: h0 + h1*f11 + h2*f12 + h3*f13,
+		H2: h0 + h1*f21 + h2*f22 + h3*f23,
+		H3: h0 + h1*f31 + h2*f32 + h3*f33,
 		A1: y1*f11 + y2*f12 + y3*f13,
 		A2: y1*f21 + y2*f22 + y3*f23,
 		A3: y1*f31 + y2*f32 + y3*f33,
@@ -233,8 +237,8 @@ var sitTurnDef = Situation{                                     // start, initia
 	u2:     []float64{0, 0, 0, 0, 0, 0},
 	u3:     []float64{0, 0, 0, 0, 0, 0},
 	phi:    []float64{0, 0, bank, bank, 0, 0},
-	theta:  []float64{0, 0, math.Pi/90, math.Pi/90, 0, 0},
-	psi:    []float64{0, 0, 0, 2*math.Pi, 2*math.Pi, 2*math.Pi},
+	theta:  []float64{0, 0, math.Pi / 90, math.Pi / 90, 0, 0},
+	psi:    []float64{0, 0, 0, 2 * math.Pi, 2 * math.Pi, 2 * math.Pi},
 	phi0:   []float64{0, 0, 0, 0, 0, 0},
 	theta0: []float64{0, 0, 0, 0, 0, 0},
 	psi0:   []float64{0, 0, 0, 0, 0, 0},
@@ -303,9 +307,8 @@ func main() {
 			fmt.Printf("Error calculating control value at time %f: %s", t, err.Error())
 			panic(err)
 		}
-		P, Q, R := FromQuaternion(c.H0, c.H1, c.H2, c.H3)
 		fmt.Fprintf(fControl, "%f,%f,%f,%f,%f,%f,%f\n",
-			float64(c.T)/1000, P, Q, R, c.A1, c.A2, c.A3)
+			float64(c.T)/1000, 2*c.H1, 2*c.H2, 2*c.H3, c.A1, c.A2, c.A3)
 		s.Predict(c, ahrs.VX)
 		phi, theta, psi = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
 		fmt.Fprintf(fPredict, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
