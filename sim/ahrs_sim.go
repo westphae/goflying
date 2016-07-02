@@ -22,8 +22,8 @@ const dt = 0.1
 type Situation struct {
 	t                  []float64 // times for situation, s
 	u1, u2, u3         []float64 // airspeed, kts, aircraft frame [F/B, R/L, and U/D]
-	phi, theta, psi    []float64 // attitude, rad [roll, pitch, heading]
-	phi0, theta0, psi0 []float64 // base attitude, rad [adjust for position of stratu1 on glareshield]
+	phi, theta, psi    []float64 // attitude, rad [roll R/L, pitch U/D, heading N->E->S->W]
+	phi0, theta0, psi0 []float64 // base attitude, rad [adjust for position of stratux on glareshield]
 	v1, v2, v3         []float64 // windspeed, kts, earth frame [N/S, E/W, and U/D]
 	m1, m2, m3         []float64 // magnetometer reading
 }
@@ -31,6 +31,7 @@ type Situation struct {
 // ToQuaternion calculates the 0,1,2,3 components of the rotation quaternion
 // corresponding to the Tait-Bryan angles phi, theta, psi
 func ToQuaternion(phi, theta, psi float64) (float64, float64, float64, float64) {
+	psi = psi - math.Pi/2	// We want psi=0 means north, psi=Pi/2 means east
 	cphi := math.Cos(phi / 2)
 	sphi := math.Sin(phi / 2)
 	ctheta := math.Cos(theta / 2)
@@ -50,7 +51,7 @@ func ToQuaternion(phi, theta, psi float64) (float64, float64, float64, float64) 
 func FromQuaternion(q0, q1, q2, q3 float64) (float64, float64, float64) {
 	phi := math.Atan2(2*(q0*q1+q2*q3), q0*q0-q1*q1-q2*q2+q3*q3)
 	theta := math.Asin(2 * (q0*q2 - q3*q1) / math.Sqrt(q0*q0+q1*q1+q2*q2+q3*q3))
-	psi := math.Atan2(2*(q0*q3+q1*q2), q0*q0+q1*q1-q2*q2-q3*q3)
+	psi := math.Pi/2 + math.Atan2(2*(q0*q3+q1*q2), q0*q0+q1*q1-q2*q2-q3*q3)
 	if psi < -1e-6 {
 		psi += 2 * math.Pi
 	}
