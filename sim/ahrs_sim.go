@@ -175,17 +175,16 @@ func (s *Situation) control(t float64) (ahrs.Control, error) {
 	h3 := 2 * (dx.E3*x.E0 + dx.E2*x.E1 - dx.E1*x.E2 - dx.E0*x.E3)
 
 	y1 := -2*(x.E0*x.E2-x.E1*x.E3) + (-dx.U1+
-		+2*x.U2*(x.E0*dx.E3-x.E1*dx.E2+x.E2*dx.E1-x.E3*dx.E0)+
-		-2*x.U3*(x.E0*dx.E2+x.E1*dx.E3-x.E2*dx.E0-x.E3*dx.E1))/ahrs.G
-	y2 := +2*(x.E0*x.E1+x.E2*x.E3) + (-2*x.U1*(x.E0*dx.E3-x.E1*dx.E2+x.E2*dx.E1-x.E3*dx.E0)+
+		+2*x.U2*(x.E0*h3-x.E1*h2+x.E2*h1-x.E3*h0)+
+		-2*x.U3*(x.E0*h2+x.E1*h3-x.E2*h0-x.E3*h1))/ahrs.G
+	y2 := +2*(x.E0*x.E1+x.E2*x.E3) + (-2*x.U1*(x.E0*h3-x.E1*h2+x.E2*h1-x.E3*h0)+
 		-dx.U2+
-		+2*x.U3*(x.E0*dx.E1-x.E1*dx.E0-x.E2*dx.E3+x.E3*dx.E2))/ahrs.G
-	y3 := +2*(x.E0*x.E0+x.E3*x.E3-0.5) + (+2*x.U1*(x.E0*dx.E2+x.E1*dx.E3-x.E2*dx.E0-x.E3*dx.E1)+
-		-2*x.U2*(x.E0*dx.E1-x.E1*dx.E0-x.E2*dx.E3+x.E3*dx.E2)+
+		+2*x.U3*(x.E0*h1-x.E1*h0-x.E2*h3+x.E3*h2))/ahrs.G
+	y3 := +2*(x.E0*x.E0+x.E3*x.E3-0.5) + (+2*x.U1*(x.E0*h2+x.E1*h3-x.E2*h0-x.E3*h1)+
+		-2*x.U2*(x.E0*h1-x.E1*h0-x.E2*h3+x.E3*h2)+
 		-dx.U3)/ahrs.G
 
 	c := ahrs.Control{
-		H0: h0,
 		H1: h0 + h1*f11 + h2*f12 + h3*f13,
 		H2: h0 + h1*f21 + h2*f22 + h3*f23,
 		H3: h0 + h1*f31 + h2*f32 + h3*f33,

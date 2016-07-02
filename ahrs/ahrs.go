@@ -11,10 +11,10 @@ import (
 // State holds the complete information describing the state of the aircraft
 // Order within State also defines order in the matrices below
 type State struct {
-	U1, U2, U3     float64            // Quaternion for airspeed, aircraft (accelerated) frame
-	E0, E1, E2, E3 float64            // Quaternion for roll, pitch and heading - relates aircraft to earth frame
-	V1, V2, V3     float64            // Quaternion describing windspeed, latlong axes, earth (inertial) frame
-	M1, M2, M3     float64            // Quaternion describing reference magnetometer direction, earth (inertial) frame
+	U1, U2, U3     float64            // Vector for airspeed, aircraft (accelerated) frame
+	E0, E1, E2, E3 float64            // Quaternion rotating aircraft to earth frame
+	V1, V2, V3     float64            // Vector describing windspeed, latlong axes, earth (inertial) frame
+	M1, M2, M3     float64            // Vector describing reference magnetometer direction, earth (inertial) frame
 	T              uint32             // Timestamp when last updated
 	M              matrix.DenseMatrix // Covariance matrix of state uncertainty, same order as above vars
 
@@ -26,8 +26,8 @@ type State struct {
 
 // Control holds the control inputs for the Kalman filter: gyro change and accelerations
 type Control struct {
-	H0, H1, H2, H3 float64 // Quaternion holding gyro change in roll, pitch, heading axes, aircraft (accelerated) frame
-	A1, A2, A3     float64 // Quaternion holding accelerometer change, g's, aircraft (accelerated) frame
+	H1, H2, H3 float64 // Vector of gyro rates in roll, pitch, heading axes, aircraft (accelerated) frame
+	A1, A2, A3     float64 // Vector holding accelerometer readings, g's, aircraft (accelerated) frame
 	T              uint32  // Timestamp of readings
 }
 
@@ -42,7 +42,6 @@ type Measurement struct { // Order here also defines order in the matrices below
 
 const (
 	G  = 32.1740 / 1.687810 // Acceleration due to gravity, kt/s
-	Pi = math.Pi
 )
 
 var X0 = State{ // Starting state: vector quantities are all 0's
@@ -69,6 +68,15 @@ var VM = Measurement{
 	U1: 0.5, U2: 0.1, U3: 0.1, // Also airspeed
 	M1: 0.1, M2: 0.1, M3: 0.1, // Also magnetometer
 	T: 0,
+}
+
+// normalize normalizes the E quaternion in State s
+func (s *State) normalize() {
+	ee := math.Sqrt(s.E0*s.E0 + s.E1*s.E1 + s.E2*s.E2 + s.E3*s.E3)
+	s.E0 /= ee
+	s.E1 /= ee
+	s.E2 /= ee
+	s.E3 /= ee
 }
 
 // Calibrate performs a calibration, determining the quaternion to rotate it to
@@ -102,28 +110,23 @@ func (s *State) Predict(c Control, n State) {
 	dt := float64(c.T-s.T) / 1000
 
 	// Apply the calibration quaternion F to rotate the stratux sensors to level
-	h0 := c.H0
-	h1 := c.H0 + c.H1*s.f11 + c.H2*s.f12 + c.H3*s.f13
-	h2 := c.H0 + c.H1*s.f21 + c.H2*s.f22 + c.H3*s.f23
-	h3 := c.H0 + c.H1*s.f31 + c.H2*s.f32 + c.H3*s.f33
+	h1 := c.H1*s.f11 + c.H2*s.f12 + c.H3*s.f13
+	h2 := c.H1*s.f21 + c.H2*s.f22 + c.H3*s.f23
+	h3 := c.H1*s.f31 + c.H2*s.f32 + c.H3*s.f33
 
 	a1 := c.A1*s.f11 + c.A2*s.f12 + c.A3*s.f13
 	a2 := c.A1*s.f21 + c.A2*s.f22 + c.A3*s.f23
 	a3 := c.A1*s.f31 + c.A2*s.f32 + c.A3*s.f33
 
-	// Some nice intermediate variables
-	p := 2 * (s.E0*h1 - s.E1*h0 - s.E2*h3 + s.E3*h2)
-	q := 2 * (s.E0*h2 + s.E1*h3 - s.E2*h0 - s.E3*h1)
-	r := 2 * (s.E0*h3 - s.E1*h2 + s.E2*h1 - s.E3*h0)
+	s.U1 += dt * (-2*G*(s.E3*s.E1+s.E0*s.E2)     - G*a1 - h3*s.U2 + h2*s.U3)
+	s.U2 += dt * (-2*G*(s.E3*s.E2-s.E0*s.E1)     - G*a2 - h1*s.U3 + h3*s.U1)
+	s.U3 += dt * (-2*G*(s.E3*s.E3+s.E0*s.E0-0.5) - G*a3 - h2*s.U1 + h1*s.U2)
 
-	s.U1 += dt * (2*G*(s.E3*s.E1-s.E0*s.E2) - G*a1 + r*s.U2 - q*s.U3)
-	s.U2 += dt * (2*G*(s.E3*s.E2+s.E0*s.E1) - G*a2 + p*s.U3 - r*s.U1)
-	s.U3 += dt * (2*G*(s.E3*s.E3+s.E0*s.E0-0.5) - G*a3 + q*s.U1 - p*s.U2)
-
-	s.E0 += dt * h0
-	s.E1 += dt * h1
-	s.E2 += dt * h2
-	s.E3 += dt * h3
+	s.E0 += 0.5 * dt * (-h1*s.E1          - h2*s.E2          - h3*s.E3)
+	s.E1 += 0.5 * dt * (+h1*(s.E0 - s.E1) + h2*(s.E3 - s.E2) - h3*(s.E2 + s.E3))
+	s.E2 += 0.5 * dt * (-h1*(s.E3 + s.E1) + h2*(s.E0 - s.E2) + h3*(s.E1 - s.E3))
+	s.E3 += 0.5 * dt * (+h1*(s.E2 - s.E1) - h2*(s.E1 + s.E2) + h3*(s.E0 - s.E3))
+	s.normalize()
 
 	// s.Vx and s.Mx are all unchanged
 
@@ -139,6 +142,7 @@ func (s *State) Predict(c Control, n State) {
 	s.M = *matrix.Sum(matrix.Product(&f, matrix.Product(&s.M, f.Transpose())), nn)
 }
 
+//TODO: this
 func (s *State) Update(m Measurement, n Measurement) {
 	z := s.predictMeasurement()
 	y := matrix.MakeDenseMatrix([]float64{
@@ -166,6 +170,7 @@ func (s *State) Update(m Measurement, n Measurement) {
 	s.E1 += su.Get(4, 0)
 	s.E2 += su.Get(5, 0)
 	s.E3 += su.Get(6, 0)
+	s.normalize()
 	s.V1 += su.Get(7, 0)
 	s.V2 += su.Get(8, 0)
 	s.V3 += su.Get(9, 0)
@@ -180,28 +185,28 @@ func (s *State) predictMeasurement() Measurement {
 	var m Measurement
 	m.W1 = s.V1 +
 		2*s.U1*(s.E1*s.E1+s.E0*s.E0-0.5) +
-		2*s.U2*(s.E1*s.E2-s.E0*s.E3) +
-		2*s.U3*(s.E1*s.E3+s.E0*s.E2)
+		2*s.U2*(s.E1*s.E2+s.E0*s.E3) +
+		2*s.U3*(s.E1*s.E3-s.E0*s.E2)
 	m.W2 = s.V2 +
-		2*s.U1*(s.E2*s.E1+s.E0*s.E3) +
+		2*s.U1*(s.E2*s.E1-s.E0*s.E3) +
 		2*s.U2*(s.E2*s.E2+s.E0*s.E0-0.5) +
-		2*s.U3*(s.E2*s.E3-s.E0*s.E1)
+		2*s.U3*(s.E2*s.E3+s.E0*s.E1)
 	m.W3 = s.V3 +
-		2*s.U1*(s.E3*s.E1-s.E0*s.E2) +
-		2*s.U2*(s.E3*s.E2+s.E0*s.E1) +
+		2*s.U1*(s.E3*s.E1+s.E0*s.E2) +
+		2*s.U2*(s.E3*s.E2-s.E0*s.E1) +
 		2*s.U3*(s.E3*s.E3+s.E0*s.E0-0.5)
 
 	m.U1 = s.U1
 	m.U2 = s.U2
 	m.U3 = s.U3
 
-	m.M1 = 2*s.M1*(s.E1*s.E1+s.E0*s.E0-0.5) +
+	m.M1 =  2*s.M1*(s.E1*s.E1+s.E0*s.E0-0.5) +
 		2*s.M2*(s.E1*s.E2-s.E0*s.E3) +
 		2*s.M3*(s.E1*s.E3+s.E0*s.E2)
-	m.M2 = 2*s.M1*(s.E2*s.E1+s.E0*s.E3) +
+	m.M2 =  2*s.M1*(s.E2*s.E1+s.E0*s.E3) +
 		2*s.M2*(s.E2*s.E2+s.E0*s.E0-0.5) +
 		2*s.M3*(s.E2*s.E3-s.E0*s.E1)
-	m.M3 = 2*s.M1*(s.E3*s.E1-s.E0*s.E2) +
+	m.M3 =  2*s.M1*(s.E3*s.E1-s.E0*s.E2) +
 		2*s.M2*(s.E3*s.E2+s.E0*s.E1) +
 		2*s.M3*(s.E3*s.E3+s.E0*s.E0-0.5)
 
@@ -216,31 +221,30 @@ func (s *State) calcJacobianState(c Control) matrix.DenseMatrix {
 	}
 
 	// Apply the calibration quaternion F to rotate the stratux sensors to level
-	h0 := c.H0
-	h1 := c.H0 + c.H1*s.f11 + c.H2*s.f12 + c.H3*s.f13
-	h2 := c.H0 + c.H1*s.f21 + c.H2*s.f22 + c.H3*s.f23
-	h3 := c.H0 + c.H1*s.f31 + c.H2*s.f32 + c.H3*s.f33
+	h1 := c.H1*s.f11 + c.H2*s.f12 + c.H3*s.f13
+	h2 := c.H1*s.f21 + c.H2*s.f22 + c.H3*s.f23
+	h3 := c.H1*s.f31 + c.H2*s.f32 + c.H3*s.f33
 
 	data[0][0] = 1                                                     // U1,U1
-	data[0][1] = dt * (2*s.E0*h3 - 2*s.E1*h2 + 2*s.E2*h1 - 2*s.E3*h0)  // U1,U2
-	data[0][2] = dt * (-2*s.E0*h2 - 2*s.E1*h3 + 2*s.E2*h0 + 2*s.E3*h1) // U1,U3
+	data[0][1] = dt * (2*s.E0*h3 - 2*s.E1*h2 + 2*s.E2*h1)  // U1,U2
+	data[0][2] = dt * (-2*s.E0*h2 - 2*s.E1*h3 + 2*s.E3*h1) // U1,U3
 	data[0][3] = dt * (-2*s.E2*G - 2*h2*s.U3 + 2*h3*s.U2)              // U1/E0
 	data[0][4] = dt * (2*s.E3*G - 2*h2*s.U2 - 2*h3*s.U3)               // U1/E1
-	data[0][5] = dt * (-2*s.E0*G + 2*h0*s.U3 + 2*h1*s.U2)              // U1/E2
-	data[0][6] = dt * (2*s.E1*G - 2*h0*s.U2 + 2*h1*s.U3)               // U1/E3
-	data[1][0] = dt * (-2*s.E0*h3 + 2*s.E1*h2 - 2*s.E2*h1 + 2*s.E3*h0) // U2/U1
+	data[0][5] = dt * (-2*s.E0*G + 2*h1*s.U2)              // U1/E2
+	data[0][6] = dt * (2*s.E1*G + 2*h1*s.U3)               // U1/E3
+	data[1][0] = dt * (-2*s.E0*h3 + 2*s.E1*h2 - 2*s.E2*h1) // U2/U1
 	data[1][1] = 1                                                     // U2/U2
-	data[1][2] = dt * (2*s.E0*h1 - 2*s.E1*h0 - 2*s.E2*h3 + 2*s.E3*h2)  // U2/U3
+	data[1][2] = dt * (2*s.E0*h1 - 2*s.E2*h3 + 2*s.E3*h2)  // U2/U3
 	data[1][3] = dt * (2*s.E1*G + 2*h1*s.U3 - 2*h3*s.U1)               // U2/E0
-	data[1][4] = dt * (2*s.E0*G - 2*h0*s.U3 + 2*h2*s.U1)               // U2/E1
+	data[1][4] = dt * (2*s.E0*G + 2*h2*s.U1)               // U2/E1
 	data[1][5] = dt * (2*s.E3*G - 2*h1*s.U1 - 2*h3*s.U3)               // U2/E2
-	data[1][6] = dt * (2*s.E2*G + 2*h0*s.U1 + 2*h2*s.U3)               // U2/E3
-	data[2][0] = dt * (2*s.E0*h2 + 2*s.E1*h3 - 2*s.E2*h0 - 2*s.E3*h1)  // U3/U1
-	data[2][1] = dt * (-2*s.E0*h1 + 2*s.E1*h0 + 2*s.E2*h3 - 2*s.E3*h2) // U3/U2
+	data[1][6] = dt * (2*s.E2*G + 2*h2*s.U3)               // U2/E3
+	data[2][0] = dt * (2*s.E0*h2 + 2*s.E1*h3 - 2*s.E3*h1)  // U3/U1
+	data[2][1] = dt * (-2*s.E0*h1 + 2*s.E2*h3 - 2*s.E3*h2) // U3/U2
 	data[2][2] = 1                                                     // U3/U3
 	data[2][3] = dt * (2*s.E0*G - 2*h1*s.U2 + 2*h2*s.U1)               // U3/E0
-	data[2][4] = dt * (-2*s.E1*G + 2*h0*s.U2 + 2*h3*s.U1)              // U3/E1
-	data[2][5] = dt * (-2*s.E2*G - 2*h0*s.U1 + 2*h3*s.U2)              // U3/E2
+	data[2][4] = dt * (-2*s.E1*G + 2*h3*s.U1)              // U3/E1
+	data[2][5] = dt * (-2*s.E2*G + 2*h3*s.U2)              // U3/E2
 	data[2][6] = dt * (2*s.E3*G - 2*h1*s.U1 - 2*h2*s.U2)               // U3/E3
 	data[3][3] = 1                                                     // E0/E0
 	data[4][4] = 1                                                     // E1/E1
