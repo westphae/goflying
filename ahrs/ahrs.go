@@ -4,8 +4,9 @@ package ahrs
 
 import (
 	"fmt"
-	"github.com/skelterjohn/go.matrix"
 	"math"
+
+	"github.com/skelterjohn/go.matrix"
 )
 
 // State holds the complete information describing the state of the aircraft
@@ -27,8 +28,8 @@ type State struct {
 // Control holds the control inputs for the Kalman filter: gyro change and accelerations
 type Control struct {
 	H1, H2, H3 float64 // Vector of gyro rates in roll, pitch, heading axes, aircraft (accelerated) frame
-	A1, A2, A3     float64 // Vector holding accelerometer readings, g's, aircraft (accelerated) frame
-	T              uint32  // Timestamp of readings
+	A1, A2, A3 float64 // Vector holding accelerometer readings, g's, aircraft (accelerated) frame
+	T          uint32  // Timestamp of readings
 }
 
 // Measurement holds the measurements used for updating the Kalman filter: groundspeed, true airspeed, magnetometer
@@ -41,10 +42,11 @@ type Measurement struct { // Order here also defines order in the matrices below
 }
 
 const (
-	G  = 32.1740 / 1.687810 // Acceleration due to gravity, kt/s
+	G = 32.1740 / 1.687810 // G is the acceleration due to gravity, kt/s
 )
 
-var X0 = State{ // Starting state: vector quantities are all 0's
+// X0 is a starting state: vector quantities are all 0's
+var X0 = State{
 	U1: 50, // Reasonable starting airspeed for GA aircraft
 	E0: 1,  // Zero rotation has real part 1
 	M: *matrix.Diagonal([]float64{
@@ -55,7 +57,8 @@ var X0 = State{ // Starting state: vector quantities are all 0's
 	}),
 }
 
-var VX = State{ // Process uncertainty, per second
+// VX represents process uncertainties, per second
+var VX = State{
 	U1: 1, U2: 0.2, U3: 0.3,
 	E0: 1e-2, E1: 1e-2, E2: 1e-2, E3: 1e-2,
 	V1: 0.005, V2: 0.005, V3: 0.05,
@@ -63,6 +66,7 @@ var VX = State{ // Process uncertainty, per second
 	T: 1000,
 }
 
+// VM represents measurement uncertainties
 var VM = Measurement{
 	W1: 0.5, W2: 0.5, W3: 0.5, // GPS uncertainty is small
 	U1: 0.5, U2: 0.1, U3: 0.1, // Also airspeed
@@ -118,14 +122,14 @@ func (s *State) Predict(c Control, n State) {
 	a2 := c.A1*s.f21 + c.A2*s.f22 + c.A3*s.f23
 	a3 := c.A1*s.f31 + c.A2*s.f32 + c.A3*s.f33
 
-	s.U1 += dt * (-2*G*(s.E3*s.E1+s.E0*s.E2)     - G*a1 - h3*s.U2 + h2*s.U3)
-	s.U2 += dt * (-2*G*(s.E3*s.E2-s.E0*s.E1)     - G*a2 - h1*s.U3 + h3*s.U1)
-	s.U3 += dt * (-2*G*(s.E3*s.E3+s.E0*s.E0-0.5) - G*a3 - h2*s.U1 + h1*s.U2)
+	s.U1 += dt * (2*G*(s.E3*s.E1+s.E0*s.E2) - G*a1 - h3*s.U2 + h2*s.U3)
+	s.U2 += dt * (2*G*(s.E3*s.E2-s.E0*s.E1) - G*a2 - h1*s.U3 + h3*s.U1)
+	s.U3 += dt * (2*G*(s.E3*s.E3+s.E0*s.E0-0.5) - G*a3 - h2*s.U1 + h1*s.U2)
 
-	s.E0 += 0.5 * dt * (-h1*s.E1          - h2*s.E2          - h3*s.E3)
-	s.E1 += 0.5 * dt * (+h1*(s.E0 - s.E1) + h2*(s.E3 - s.E2) - h3*(s.E2 + s.E3))
-	s.E2 += 0.5 * dt * (-h1*(s.E3 + s.E1) + h2*(s.E0 - s.E2) + h3*(s.E1 - s.E3))
-	s.E3 += 0.5 * dt * (+h1*(s.E2 - s.E1) - h2*(s.E1 + s.E2) + h3*(s.E0 - s.E3))
+	s.E0 += 0.5 * dt * (-h1*s.E1 - h2*s.E2 - h3*s.E3)
+	s.E1 += 0.5 * dt * (+h1*(s.E0-s.E1) + h2*(s.E3-s.E2) - h3*(s.E2+s.E3))
+	s.E2 += 0.5 * dt * (-h1*(s.E3+s.E1) + h2*(s.E0-s.E2) + h3*(s.E1-s.E3))
+	s.E3 += 0.5 * dt * (+h1*(s.E2-s.E1) - h2*(s.E1+s.E2) + h3*(s.E0-s.E3))
 	s.normalize()
 
 	// s.Vx and s.Mx are all unchanged
@@ -142,8 +146,9 @@ func (s *State) Predict(c Control, n State) {
 	s.M = *matrix.Sum(matrix.Product(&f, matrix.Product(&s.M, f.Transpose())), nn)
 }
 
-//TODO: this
+// Update runs the update step of the Kalman filter, correcting the state given the measurements
 func (s *State) Update(m Measurement, n Measurement) {
+	//TODO: this
 	z := s.predictMeasurement()
 	y := matrix.MakeDenseMatrix([]float64{
 		m.W1 - z.W1, m.W2 - z.W2, m.W3 - z.W3,
@@ -200,13 +205,13 @@ func (s *State) predictMeasurement() Measurement {
 	m.U2 = s.U2
 	m.U3 = s.U3
 
-	m.M1 =  2*s.M1*(s.E1*s.E1+s.E0*s.E0-0.5) +
+	m.M1 = 2*s.M1*(s.E1*s.E1+s.E0*s.E0-0.5) +
 		2*s.M2*(s.E1*s.E2-s.E0*s.E3) +
 		2*s.M3*(s.E1*s.E3+s.E0*s.E2)
-	m.M2 =  2*s.M1*(s.E2*s.E1+s.E0*s.E3) +
+	m.M2 = 2*s.M1*(s.E2*s.E1+s.E0*s.E3) +
 		2*s.M2*(s.E2*s.E2+s.E0*s.E0-0.5) +
 		2*s.M3*(s.E2*s.E3-s.E0*s.E1)
-	m.M3 =  2*s.M1*(s.E3*s.E1-s.E0*s.E2) +
+	m.M3 = 2*s.M1*(s.E3*s.E1-s.E0*s.E2) +
 		2*s.M2*(s.E3*s.E2+s.E0*s.E1) +
 		2*s.M3*(s.E3*s.E3+s.E0*s.E0-0.5)
 
@@ -225,37 +230,37 @@ func (s *State) calcJacobianState(c Control) matrix.DenseMatrix {
 	h2 := c.H1*s.f21 + c.H2*s.f22 + c.H3*s.f23
 	h3 := c.H1*s.f31 + c.H2*s.f32 + c.H3*s.f33
 
-	data[0][0] = 1                                                     // U1,U1
+	data[0][0] = 1                                         // U1,U1
 	data[0][1] = dt * (2*s.E0*h3 - 2*s.E1*h2 + 2*s.E2*h1)  // U1,U2
 	data[0][2] = dt * (-2*s.E0*h2 - 2*s.E1*h3 + 2*s.E3*h1) // U1,U3
-	data[0][3] = dt * (-2*s.E2*G - 2*h2*s.U3 + 2*h3*s.U2)              // U1/E0
-	data[0][4] = dt * (2*s.E3*G - 2*h2*s.U2 - 2*h3*s.U3)               // U1/E1
+	data[0][3] = dt * (-2*s.E2*G - 2*h2*s.U3 + 2*h3*s.U2)  // U1/E0
+	data[0][4] = dt * (2*s.E3*G - 2*h2*s.U2 - 2*h3*s.U3)   // U1/E1
 	data[0][5] = dt * (-2*s.E0*G + 2*h1*s.U2)              // U1/E2
 	data[0][6] = dt * (2*s.E1*G + 2*h1*s.U3)               // U1/E3
 	data[1][0] = dt * (-2*s.E0*h3 + 2*s.E1*h2 - 2*s.E2*h1) // U2/U1
-	data[1][1] = 1                                                     // U2/U2
+	data[1][1] = 1                                         // U2/U2
 	data[1][2] = dt * (2*s.E0*h1 - 2*s.E2*h3 + 2*s.E3*h2)  // U2/U3
-	data[1][3] = dt * (2*s.E1*G + 2*h1*s.U3 - 2*h3*s.U1)               // U2/E0
+	data[1][3] = dt * (2*s.E1*G + 2*h1*s.U3 - 2*h3*s.U1)   // U2/E0
 	data[1][4] = dt * (2*s.E0*G + 2*h2*s.U1)               // U2/E1
-	data[1][5] = dt * (2*s.E3*G - 2*h1*s.U1 - 2*h3*s.U3)               // U2/E2
+	data[1][5] = dt * (2*s.E3*G - 2*h1*s.U1 - 2*h3*s.U3)   // U2/E2
 	data[1][6] = dt * (2*s.E2*G + 2*h2*s.U3)               // U2/E3
 	data[2][0] = dt * (2*s.E0*h2 + 2*s.E1*h3 - 2*s.E3*h1)  // U3/U1
 	data[2][1] = dt * (-2*s.E0*h1 + 2*s.E2*h3 - 2*s.E3*h2) // U3/U2
-	data[2][2] = 1                                                     // U3/U3
-	data[2][3] = dt * (2*s.E0*G - 2*h1*s.U2 + 2*h2*s.U1)               // U3/E0
+	data[2][2] = 1                                         // U3/U3
+	data[2][3] = dt * (2*s.E0*G - 2*h1*s.U2 + 2*h2*s.U1)   // U3/E0
 	data[2][4] = dt * (-2*s.E1*G + 2*h3*s.U1)              // U3/E1
 	data[2][5] = dt * (-2*s.E2*G + 2*h3*s.U2)              // U3/E2
-	data[2][6] = dt * (2*s.E3*G - 2*h1*s.U1 - 2*h2*s.U2)               // U3/E3
-	data[3][3] = 1                                                     // E0/E0
-	data[4][4] = 1                                                     // E1/E1
-	data[5][5] = 1                                                     // E2/E2
-	data[6][6] = 1                                                     // E3/E3
-	data[7][7] = 1                                                     // V1/V1
-	data[8][8] = 1                                                     // V2/V2
-	data[9][9] = 1                                                     // V3/V3
-	data[10][10] = 1                                                   // M1/M1
-	data[11][11] = 1                                                   // M2/M2
-	data[12][12] = 1                                                   // M3/M3
+	data[2][6] = dt * (2*s.E3*G - 2*h1*s.U1 - 2*h2*s.U2)   // U3/E3
+	data[3][3] = 1                                         // E0/E0
+	data[4][4] = 1                                         // E1/E1
+	data[5][5] = 1                                         // E2/E2
+	data[6][6] = 1                                         // E3/E3
+	data[7][7] = 1                                         // V1/V1
+	data[8][8] = 1                                         // V2/V2
+	data[9][9] = 1                                         // V3/V3
+	data[10][10] = 1                                       // M1/M1
+	data[11][11] = 1                                       // M2/M2
+	data[12][12] = 1                                       // M3/M3
 
 	ff := *matrix.MakeDenseMatrixStacked(data)
 	return ff

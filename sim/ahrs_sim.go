@@ -16,7 +16,10 @@ import (
 	"github.com/westphae/goflying/ahrs"
 )
 
-const dt = 0.1
+const (
+	dt = 0.1
+	pi = math.Pi
+)
 
 // Situation defines a scenario by piecewise-linear interpolation
 type Situation struct {
@@ -32,7 +35,7 @@ type Situation struct {
 // corresponding to the Tait-Bryan angles phi, theta, psi
 func ToQuaternion(phi, theta, psi float64) (float64, float64, float64, float64) {
 	phi = -phi            // We want psi positive to mean a roll to the right
-	psi = psi - math.Pi/2 // We want psi=0 means north, psi=Pi/2 means east
+	psi = psi - pi/2 // We want psi=0 means north, psi=Pi/2 means east
 	cphi := math.Cos(phi / 2)
 	sphi := math.Sin(phi / 2)
 	ctheta := math.Cos(theta / 2)
@@ -52,9 +55,9 @@ func ToQuaternion(phi, theta, psi float64) (float64, float64, float64, float64) 
 func FromQuaternion(q0, q1, q2, q3 float64) (float64, float64, float64) {
 	phi := math.Atan2(-2*(q0*q1-q2*q3), q0*q0-q1*q1-q2*q2+q3*q3)
 	theta := math.Asin(2 * (q0*q2 + q3*q1) / math.Sqrt(q0*q0+q1*q1+q2*q2+q3*q3))
-	psi := math.Pi/2 + math.Atan2(2*(q0*q3-q1*q2), q0*q0+q1*q1-q2*q2-q3*q3)
+	psi := pi/2 + math.Atan2(2*(q0*q3-q1*q2), q0*q0+q1*q1-q2*q2-q3*q3)
 	if psi < -1e-6 {
-		psi += 2 * math.Pi
+		psi += 2 * pi
 	}
 	return phi, theta, psi
 }
@@ -129,23 +132,23 @@ func (s *Situation) derivative(t float64) (ahrs.State, error) {
 	s1, _ := s.interpolate(t1)
 
 	return ahrs.State{
-		U1: (s0.U1 - s1.U1) / dt,
-		U2: (s0.U2 - s1.U2) / dt,
-		U3: (s0.U3 - s1.U3) / dt,
-		E0: (s0.E0 - s1.E0) / dt,
-		E1: (s0.E1 - s1.E1) / dt,
-		E2: (s0.E2 - s1.E2) / dt,
-		E3: (s0.E3 - s1.E3) / dt,
-		F0: (s0.F0 - s1.F0) / dt,
-		F1: (s0.F1 - s1.F1) / dt,
-		F2: (s0.F2 - s1.F2) / dt,
-		F3: (s0.F3 - s1.F3) / dt,
-		V1: (s0.V1 - s1.V1) / dt,
-		V2: (s0.V2 - s1.V2) / dt,
-		V3: (s0.V3 - s1.V3) / dt,
-		M1: (s0.M1 - s1.M1) / dt,
-		M2: (s0.M2 - s1.M2) / dt,
-		M3: (s0.M3 - s1.M3) / dt,
+		U1: (s1.U1 - s0.U1) / dt,
+		U2: (s1.U2 - s0.U2) / dt,
+		U3: (s1.U3 - s0.U3) / dt,
+		E0: (s1.E0 - s0.E0) / dt,
+		E1: (s1.E1 - s0.E1) / dt,
+		E2: (s1.E2 - s0.E2) / dt,
+		E3: (s1.E3 - s0.E3) / dt,
+		F0: (s1.F0 - s0.F0) / dt,
+		F1: (s1.F1 - s0.F1) / dt,
+		F2: (s1.F2 - s0.F2) / dt,
+		F3: (s1.F3 - s0.F3) / dt,
+		V1: (s1.V1 - s0.V1) / dt,
+		V2: (s1.V2 - s0.V2) / dt,
+		V3: (s1.V3 - s0.V3) / dt,
+		M1: (s1.M1 - s0.M1) / dt,
+		M2: (s1.M2 - s0.M2) / dt,
+		M3: (s1.M3 - s0.M3) / dt,
 		T:  uint32(t*1000 + 0.5), // easy rounding for uint
 		M:  matrix.DenseMatrix{},
 	}, nil
@@ -170,25 +173,18 @@ func (s *Situation) control(t float64) (ahrs.Control, error) {
 	f32 := 2 * (-x.F0*x.F1 + x.F3*x.F2)
 	f33 := 2 * (+x.F0*x.F0 + x.F3*x.F3 - 0.5)
 
-	h0 := 2 * (dx.E0*x.E0 + dx.E1*x.E1 + dx.E2*x.E2 + dx.E3*x.E3)
 	h1 := 2 * (dx.E1*x.E0 - dx.E0*x.E1 + dx.E3*x.E2 - dx.E2*x.E3)
 	h2 := 2 * (dx.E2*x.E0 - dx.E3*x.E1 - dx.E0*x.E2 + dx.E1*x.E3)
 	h3 := 2 * (dx.E3*x.E0 + dx.E2*x.E1 - dx.E1*x.E2 - dx.E0*x.E3)
 
-	y1 := -2*(x.E0*x.E2-x.E1*x.E3) + (-dx.U1+
-		+2*x.U2*(x.E0*h3-x.E1*h2+x.E2*h1-x.E3*h0)+
-		-2*x.U3*(x.E0*h2+x.E1*h3-x.E2*h0-x.E3*h1))/ahrs.G
-	y2 := +2*(x.E0*x.E1+x.E2*x.E3) + (-2*x.U1*(x.E0*h3-x.E1*h2+x.E2*h1-x.E3*h0)+
-		-dx.U2+
-		+2*x.U3*(x.E0*h1-x.E1*h0-x.E2*h3+x.E3*h2))/ahrs.G
-	y3 := +2*(x.E0*x.E0+x.E3*x.E3-0.5) + (+2*x.U1*(x.E0*h2+x.E1*h3-x.E2*h0-x.E3*h1)+
-		-2*x.U2*(x.E0*h1-x.E1*h0-x.E2*h3+x.E3*h2)+
-		-dx.U3)/ahrs.G
+	y1 := -2*(+x.E0*x.E2 + x.E3*x.E1)       + (-dx.U1 + h2*x.U3 - h3*x.U2)/ahrs.G
+	y2 := -2*(-x.E0*x.E1 + x.E3*x.E2)       + (-dx.U2 + h3*x.U1 - h1*x.U3)/ahrs.G
+	y3 := -2*(+x.E0*x.E0 + x.E3*x.E3 - 0.5) + (-dx.U3 + h1*x.U2 - h2*x.U1)/ahrs.G
 
 	c := ahrs.Control{
-		H1: h0 + h1*f11 + h2*f12 + h3*f13,
-		H2: h0 + h1*f21 + h2*f22 + h3*f23,
-		H3: h0 + h1*f31 + h2*f32 + h3*f33,
+		H1: h1*f11 + h2*f12 + h3*f13,
+		H2: h1*f21 + h2*f22 + h3*f23,
+		H3: h1*f31 + h2*f32 + h3*f33,
 		A1: y1*f11 + y2*f12 + y3*f13,
 		A2: y1*f21 + y2*f22 + y3*f23,
 		A3: y1*f31 + y2*f32 + y3*f33,
@@ -204,23 +200,28 @@ func (s *Situation) measurement(t float64) (ahrs.Measurement, error) {
 	}
 	x, _ := s.interpolate(t)
 
-	e11 := 2 * (+x.E0*x.E0 + x.E1*x.E1 - 0.5)
-	e12 := 2 * (-x.E0*x.E3 + x.E1*x.E2)
-	e13 := 2 * (+x.E0*x.E2 + x.E1*x.E3)
-	e21 := 2 * (+x.E0*x.E3 + x.E2*x.E1)
-	e22 := 2 * (+x.E0*x.E0 + x.E2*x.E2 - 0.5)
-	e23 := 2 * (-x.E0*x.E1 + x.E2*x.E3)
-	e31 := 2 * (-x.E0*x.E2 + x.E3*x.E1)
-	e32 := 2 * (+x.E0*x.E1 + x.E3*x.E2)
-	e33 := 2 * (+x.E0*x.E0 + x.E3*x.E3 - 0.5)
-
 	m := ahrs.Measurement{
-		W1: x.U1*e11 + x.U2*e12 + x.U3*e13 + x.V1,
-		W2: x.U1*e21 + x.U2*e22 + x.U3*e23 + x.V2,
-		W3: x.U1*e31 + x.U2*e32 + x.U3*e33 + x.V3,
-		M1: x.M1*e11 + x.M2*e12 + x.M3*e13,
-		M2: x.M1*e21 + x.M2*e22 + x.M3*e23,
-		M3: x.M1*e31 + x.M2*e32 + x.M3*e33,
+		W1: x.V1 +
+			x.U1*2*(+x.E0*x.E0 + x.E1*x.E1 - 0.5) +
+			x.U2*2*(+x.E0*x.E3 + x.E1*x.E2) +
+			x.U3*2*(-x.E0*x.E2 + x.E1*x.E3),
+		W2: x.V2 +
+			x.U1*2*(-x.E0*x.E3 + x.E2*x.E1) +
+			x.U2*2*(+x.E0*x.E0 + x.E2*x.E2 - 0.5) +
+			x.U3*2*(+x.E0*x.E1 + x.E2*x.E3),
+		W3: x.V3 +
+			x.U1*2*(+x.E0*x.E2 + x.E3*x.E1) +
+			x.U2*2*(-x.E0*x.E1 + x.E3*x.E2) +
+			x.U3*2*(+x.E0*x.E0 + x.E3*x.E3 - 0.5),
+		M1: x.M1*2*(+x.E0*x.E0 + x.E1*x.E1 - 0.5) +
+			x.M2*2*(-x.E0*x.E3 + x.E1*x.E2) +
+			x.M3*2*(+x.E0*x.E2 + x.E1*x.E3),
+		M2: x.M1*2*(+x.E0*x.E3 + x.E2*x.E1) +
+			x.M2*2*(+x.E0*x.E0 + x.E2*x.E2 - 0.5) +
+			x.M3*2*(-x.E0*x.E1 + x.E2*x.E3),
+		M3: x.M1*2*(-x.E0*x.E2 + x.E3*x.E1) +
+			x.M2*2*(+x.E0*x.E1 + x.E3*x.E2) +
+			x.M3*2*(+x.E0*x.E0 + x.E3*x.E3 - 0.5),
 		U1: x.U1,
 		U2: x.U2,
 		U3: x.U3,
@@ -231,18 +232,18 @@ func (s *Situation) measurement(t float64) (ahrs.Measurement, error) {
 
 // Data to define a piecewise-linear turn, with entry and exit
 var airspeed = 120.0                                            // Nice airspeed for maneuvers, kts
-var bank = math.Atan((2 * math.Pi * airspeed) / (ahrs.G * 120)) // Bank angle for std rate turn at given airspeed
+var bank = math.Atan((2 * pi * airspeed) / (ahrs.G * 120)) // Bank angle for std rate turn at given airspeed
 var sitTurnDef = Situation{                                     // start, initiate roll-in, end roll-in, initiate roll-out, end roll-out, end
 	t:      []float64{0, 10, 15, 135, 140, 150},
 	u1:     []float64{airspeed, airspeed, airspeed, airspeed, airspeed, airspeed},
 	u2:     []float64{0, 0, 0, 0, 0, 0},
 	u3:     []float64{0, 0, 0, 0, 0, 0},
 	phi:    []float64{0, 0, bank, bank, 0, 0},
-	theta:  []float64{0, 0, math.Pi / 90, math.Pi / 90, 0, 0},
-	psi:    []float64{0, 0, 0, 2 * math.Pi, 2 * math.Pi, 2 * math.Pi},
+	theta:  []float64{0, 0, pi/90, pi/90, 0, 0},
+	psi:    []float64{0, 0, 0, 2*pi, 2*pi, 2*pi},
 	phi0:   []float64{0, 0, 0, 0, 0, 0},
 	theta0: []float64{0, 0, 0, 0, 0, 0},
-	psi0:   []float64{0, 0, 0, 0, 0, 0},
+	psi0:   []float64{pi/2, pi/2, pi/2, pi/2, pi/2, pi/2},
 	v1:     []float64{3, 3, 3, 3, 3, 3},
 	v2:     []float64{4, 4, 4, 4, 4, 4},
 	v3:     []float64{0, 0, 0, 0, 0, 0},
@@ -308,8 +309,9 @@ func main() {
 			fmt.Printf("Error calculating control value at time %f: %s", t, err.Error())
 			panic(err)
 		}
+		p, q, r := -2*c.H1, 2*c.H2, 2*c.H3	// Our definition of phi is reversed
 		fmt.Fprintf(fControl, "%f,%f,%f,%f,%f,%f,%f\n",
-			float64(c.T)/1000, 2*c.H1, 2*c.H2, 2*c.H3, c.A1, c.A2, c.A3)
+			float64(c.T)/1000, p, q, r, c.A1, c.A2, c.A3)
 		s.Predict(c, ahrs.VX)
 		phi, theta, psi = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
 		fmt.Fprintf(fPredict, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",

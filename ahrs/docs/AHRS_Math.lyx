@@ -469,7 +469,7 @@ Using the Taylor Series expansion of
 \end_inset
 
  for an infinitesimal time and then rotating into the airplane frame with
- the new rotation
+ the new rotation 
 \begin_inset Formula $q_{ea}+\dot{q}_{ea}dt$
 \end_inset
 

@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
-	"github.com/westphae/quaternion"
 	"math"
 	"testing"
+
+	"github.com/westphae/quaternion"
 )
 
 const pi = math.Pi
