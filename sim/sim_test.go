@@ -33,35 +33,50 @@ func TestRoundTrips(t *testing.T) {
 }
 
 func TestSpecificToQuaternion(t *testing.T) {
-	const (
+	var (
 		c30 = math.Sqrt(3)/2
 		c60 = 0.5
 	)
-	phis :=   []float64{0,    0,  0,     0,       0,    0, pi/3, pi/3}
-	thetas := []float64{0,    0,  0,     0,       0, pi/3,    0,    0}
-	psis :=   []float64{0, pi/2, pi, 4*pi/3, 3*pi/2, pi/2, pi/2,    0}
-	w1s :=    []float64{0,    1,  0,   -c30,     -1,  c60,    1,    0}
-	w2s :=    []float64{1,    0, -1,   -c60,      0,    0,    0,    1}
-	w3s :=    []float64{0,    0,  0,      0,      0,  c30,    0,    0}
+	phis :=   []float64{ 0,    0,  0,     0,       0,    0,        0,  pi/3, pi/3, -2*pi/3}
+	thetas := []float64{ 0,    0,  0,     0,       0, pi/3,    -pi/3,     0,    0,       0}
+	psis :=   []float64{ 0, pi/2, pi, 4*pi/3, 3*pi/2, pi/2,   5*pi/3, pi/2,    0,      pi}
+	u1s :=    []float64{ 0,    1,  0,   -c30,     -1,  c60, -c30*c60,     1,    0,       0}
+	u2s :=    []float64{ 1,    0, -1,   -c60,      0,    0,  c60*c60,     0,    1,      -1}
+	u3s :=    []float64{ 0,    0,  0,      0,      0,  c30,     -c30,     0,    0,       0}
+	v1s :=    []float64{-1,    0,  1,    c60,      0,    0,     -c60,     0, -c60,    -c60}
+	v2s :=    []float64{ 0,    1,  0,   -c30,     -1,    1,     -c30,   c60,    0,       0}
+	v3s :=    []float64{ 0,    0,  0,      0,      0,    0,        0,   c30,  c30,    -c30}
 
-	u := quaternion.Quaternion{0, 1, 0, 0}
+	x := quaternion.Quaternion{0, 1, 0, 0}
+	y := quaternion.Quaternion{0, 0, 1, 0}
 	var (
-		e0, e1, e2, e3 float64
-		w, e, x		quaternion.Quaternion
+		e0, e1, e2, e3 	float64
+		u, v, e, uu, vv	quaternion.Quaternion
 	)
 
 	for i := 0; i < len(phis); i++ {
-		w = quaternion.Quaternion{0, w1s[i], w2s[i], w3s[i]}
+		u = quaternion.Quaternion{0, u1s[i], u2s[i], u3s[i]}
+		v = quaternion.Quaternion{0, v1s[i], v2s[i], v3s[i]}
 		e0, e1, e2, e3 = ToQuaternion(phis[i], thetas[i], psis[i])
 		e = quaternion.Quaternion{e0, e1, e2, e3}
-		x = quaternion.Prod(quaternion.Conj(e), u, e)
+		uu = quaternion.Prod(quaternion.Conj(e), x, e)
+		vv = quaternion.Prod(quaternion.Conj(e), y, e)
 
-		if math.Abs(w.W-x.W) > 1e-6 || math.Abs(w.X-x.X) > 1e-6 ||
-				math.Abs(w.Y-x.Y) > 1e-6 || math.Abs(w.Z-x.Z) > 1e-6 {
+		if math.Abs(u.W-uu.W) > 1e-6 || math.Abs(u.X-uu.X) > 1e-6 ||
+		math.Abs(u.Y-uu.Y) > 1e-6 || math.Abs(u.Z-uu.Z) > 1e-6 {
 			fmt.Println(i)
 			fmt.Println(e)
-			fmt.Printf("%+5.3f -> %+5.3f, %+5.3f -> %+5.3f, %+5.3f -> %+5.3f, %+5.3f -> %+5.3f\n",
-				w.W, x.W, w.X, x.X, w.Y, x.Y, w.Z, x.Z)
+			fmt.Printf("u: %+5.3f -> %+5.3f, %+5.3f -> %+5.3f, %+5.3f -> %+5.3f, %+5.3f -> %+5.3f\n",
+				u.W, uu.W, u.X, uu.X, u.Y, uu.Y, u.Z, uu.Z)
+			t.Fail()
+		}
+
+		if math.Abs(v.W-vv.W) > 1e-6 || math.Abs(v.X-vv.X) > 1e-6 ||
+				math.Abs(v.Y-vv.Y) > 1e-6 || math.Abs(v.Z-vv.Z) > 1e-6 {
+			fmt.Println(i)
+			fmt.Println(e)
+			fmt.Printf("v: %+5.3f -> %+5.3f, %+5.3f -> %+5.3f, %+5.3f -> %+5.3f, %+5.3f -> %+5.3f\n",
+				v.W, vv.W, v.X, vv.X, v.Y, vv.Y, v.Z, vv.Z)
 			t.Fail()
 		}
 
