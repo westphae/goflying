@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"math"
 	"github.com/westphae/quaternion"
+	"math"
 	"testing"
 )
 
@@ -34,7 +34,7 @@ func TestRoundTrips(t *testing.T) {
 
 func TestSpecificToQuaternion(t *testing.T) {
 	var (
-		c30 = math.Sqrt(3)/2
+		c30 = math.Sqrt(3) / 2
 		c60 = 0.5
 	)
 	phis :=   []float64{ 0,    0,  0,     0,       0,    0,        0,  pi/3, pi/3, -2*pi/3}
@@ -47,23 +47,23 @@ func TestSpecificToQuaternion(t *testing.T) {
 	v2s :=    []float64{ 0,    1,  0,   -c30,     -1,    1,     -c30,   c60,    0,       0}
 	v3s :=    []float64{ 0,    0,  0,      0,      0,    0,        0,   c30,  c30,    -c30}
 
-	x := quaternion.Quaternion{0, 1, 0, 0}
-	y := quaternion.Quaternion{0, 0, 1, 0}
+	x := quaternion.Quaternion{X: 1}
+	y := quaternion.Quaternion{Y: 1}
 	var (
-		e0, e1, e2, e3 	float64
-		u, v, e, uu, vv	quaternion.Quaternion
+		e0, e1, e2, e3  float64
+		u, v, e, uu, vv quaternion.Quaternion
 	)
 
 	for i := 0; i < len(phis); i++ {
-		u = quaternion.Quaternion{0, u1s[i], u2s[i], u3s[i]}
-		v = quaternion.Quaternion{0, v1s[i], v2s[i], v3s[i]}
+		u = quaternion.Quaternion{X: u1s[i], Y: u2s[i], Z: u3s[i]}
+		v = quaternion.Quaternion{X: v1s[i], Y: v2s[i], Z: v3s[i]}
 		e0, e1, e2, e3 = ToQuaternion(phis[i], thetas[i], psis[i])
-		e = quaternion.Quaternion{e0, e1, e2, e3}
+		e = quaternion.Quaternion{W: e0, X: e1, Y: e2, Z: e3}
 		uu = quaternion.Prod(quaternion.Conj(e), x, e)
 		vv = quaternion.Prod(quaternion.Conj(e), y, e)
 
 		if math.Abs(u.W-uu.W) > 1e-6 || math.Abs(u.X-uu.X) > 1e-6 ||
-		math.Abs(u.Y-uu.Y) > 1e-6 || math.Abs(u.Z-uu.Z) > 1e-6 {
+			math.Abs(u.Y-uu.Y) > 1e-6 || math.Abs(u.Z-uu.Z) > 1e-6 {
 			fmt.Println(i)
 			fmt.Println(e)
 			fmt.Printf("u: %+5.3f -> %+5.3f, %+5.3f -> %+5.3f, %+5.3f -> %+5.3f, %+5.3f -> %+5.3f\n",
@@ -72,7 +72,7 @@ func TestSpecificToQuaternion(t *testing.T) {
 		}
 
 		if math.Abs(v.W-vv.W) > 1e-6 || math.Abs(v.X-vv.X) > 1e-6 ||
-				math.Abs(v.Y-vv.Y) > 1e-6 || math.Abs(v.Z-vv.Z) > 1e-6 {
+			math.Abs(v.Y-vv.Y) > 1e-6 || math.Abs(v.Z-vv.Z) > 1e-6 {
 			fmt.Println(i)
 			fmt.Println(e)
 			fmt.Printf("v: %+5.3f -> %+5.3f, %+5.3f -> %+5.3f, %+5.3f -> %+5.3f, %+5.3f -> %+5.3f\n",

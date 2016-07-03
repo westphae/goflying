@@ -31,8 +31,8 @@ type Situation struct {
 // ToQuaternion calculates the 0,1,2,3 components of the rotation quaternion
 // corresponding to the Tait-Bryan angles phi, theta, psi
 func ToQuaternion(phi, theta, psi float64) (float64, float64, float64, float64) {
-	phi = -phi	// We want psi positive to mean a roll to the right
-	psi = psi - math.Pi/2	// We want psi=0 means north, psi=Pi/2 means east
+	phi = -phi            // We want psi positive to mean a roll to the right
+	psi = psi - math.Pi/2 // We want psi=0 means north, psi=Pi/2 means east
 	cphi := math.Cos(phi / 2)
 	sphi := math.Sin(phi / 2)
 	ctheta := math.Cos(theta / 2)
