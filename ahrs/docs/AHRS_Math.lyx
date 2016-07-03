@@ -468,8 +468,13 @@ Using the Taylor Series expansion of
 \begin_inset Formula $h_{a}$
 \end_inset
 
- for an infinitesimal time and then rotating into the airplane frame with
- the new rotation 
+ for an infinitesimal time (the factor 
+\begin_inset Formula $\tfrac{1}{2}$
+\end_inset
+
+ in the formula below is the usual factor in the relation of quaternion
+ to rotation angles) and then rotating into the airplane frame with the
+ new rotation 
 \begin_inset Formula $q_{ea}+\dot{q}_{ea}dt$
 \end_inset
 

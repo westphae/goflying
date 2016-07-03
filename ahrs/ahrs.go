@@ -96,15 +96,15 @@ func (s *State) Calibrate() {
 	s.F2 = 0
 	s.F3 = 0
 
-	// Set the quaternion fragments
+	// Set the quaternion fragments to rotate from sensor frame into aircraft frame
 	s.f11 = 2 * (+s.F0*s.F0 + s.F1*s.F1 - 0.5)
-	s.f12 = 2 * (-s.F0*s.F3 + s.F1*s.F2)
-	s.f13 = 2 * (+s.F0*s.F2 + s.F1*s.F3)
-	s.f21 = 2 * (+s.F0*s.F3 + s.F2*s.F1)
+	s.f12 = 2 * (+s.F0*s.F3 + s.F1*s.F2)
+	s.f13 = 2 * (-s.F0*s.F2 + s.F1*s.F3)
+	s.f21 = 2 * (-s.F0*s.F3 + s.F2*s.F1)
 	s.f22 = 2 * (+s.F0*s.F0 + s.F2*s.F2 - 0.5)
-	s.f23 = 2 * (-s.F0*s.F1 + s.F2*s.F3)
-	s.f31 = 2 * (-s.F0*s.F2 + s.F3*s.F1)
-	s.f32 = 2 * (+s.F0*s.F1 + s.F3*s.F2)
+	s.f23 = 2 * (+s.F0*s.F1 + s.F2*s.F3)
+	s.f31 = 2 * (+s.F0*s.F2 + s.F3*s.F1)
+	s.f32 = 2 * (-s.F0*s.F1 + s.F3*s.F2)
 	s.f33 = 2 * (+s.F0*s.F0 + s.F3*s.F3 - 0.5)
 }
 
@@ -146,7 +146,7 @@ func (s *State) Predict(c Control, n State) {
 	s.M = *matrix.Sum(matrix.Product(&f, matrix.Product(&s.M, f.Transpose())), nn)
 }
 
-// Update runs the update step of the Kalman filter, correcting the state given the measurements
+// Update applies the Kalman filter corrections given the measurements
 func (s *State) Update(m Measurement, n Measurement) {
 	//TODO: this
 	z := s.predictMeasurement()
@@ -188,6 +188,7 @@ func (s *State) Update(m Measurement, n Measurement) {
 
 func (s *State) predictMeasurement() Measurement {
 	var m Measurement
+
 	m.W1 = s.V1 +
 		2*s.U1*(s.E1*s.E1+s.E0*s.E0-0.5) +
 		2*s.U2*(s.E1*s.E2+s.E0*s.E3) +

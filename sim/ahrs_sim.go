@@ -56,7 +56,7 @@ func FromQuaternion(q0, q1, q2, q3 float64) (float64, float64, float64) {
 	phi := math.Atan2(-2*(q0*q1-q2*q3), q0*q0-q1*q1-q2*q2+q3*q3)
 	theta := math.Asin(2 * (q0*q2 + q3*q1) / math.Sqrt(q0*q0+q1*q1+q2*q2+q3*q3))
 	psi := pi/2 + math.Atan2(2*(q0*q3-q1*q2), q0*q0+q1*q1-q2*q2-q3*q3)
-	if psi < -1e-6 {
+	if psi < -1e-4 {
 		psi += 2 * pi
 	}
 	return phi, theta, psi
@@ -292,6 +292,7 @@ func main() {
 	fmt.Fprint(fMeas, "T,Wx,Wy,Wz,Mx,My,Mz,Ux,Uy,Uz\n")
 
 	s := ahrs.X0 // Initialize Kalman with a sensible starting state
+	s.Calibrate()
 	fmt.Println("Running Simulation")
 	for t := sitTurnDef.t[0]; t < sitTurnDef.t[len(sitTurnDef.t)-1]; t += dt {
 		s0, err := sitTurnDef.interpolate(t)
@@ -309,9 +310,8 @@ func main() {
 			fmt.Printf("Error calculating control value at time %f: %s", t, err.Error())
 			panic(err)
 		}
-		p, q, r := -2*c.H1, 2*c.H2, 2*c.H3	// Our definition of phi is reversed
 		fmt.Fprintf(fControl, "%f,%f,%f,%f,%f,%f,%f\n",
-			float64(c.T)/1000, p, q, r, c.A1, c.A2, c.A3)
+			float64(c.T)/1000, -c.H1, c.H2, c.H3, c.A1, c.A2, c.A3)
 		s.Predict(c, ahrs.VX)
 		phi, theta, psi = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
 		fmt.Fprintf(fPredict, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
