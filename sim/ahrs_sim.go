@@ -226,11 +226,12 @@ func (s *Situation) measurement(t float64) (ahrs.Measurement, error) {
 // Data to define a piecewise-linear turn, with entry and exit
 var airspeed = 120.0                                            // Nice airspeed for maneuvers, kts
 var bank = math.Atan((2 * pi * airspeed) / (ahrs.G * 120)) // Bank angle for std rate turn at given airspeed
+var mush = -airspeed*math.Sin(pi/90)/math.Cos(bank)	// Mush in a turn to maintain altitude
 var sitTurnDef = Situation{                                     // start, initiate roll-in, end roll-in, initiate roll-out, end roll-out, end
 	t:      []float64{0, 10, 15, 135, 140, 150},
 	u1:     []float64{airspeed, airspeed, airspeed, airspeed, airspeed, airspeed},
 	u2:     []float64{0, 0, 0, 0, 0, 0},
-	u3:     []float64{0, 0, 0, 0, 0, 0},
+	u3:     []float64{0, 0, mush, mush, 0, 0},
 	phi:    []float64{0, 0, bank, bank, 0, 0},
 	theta:  []float64{0, 0, pi/90, pi/90, 0, 0},
 	psi:    []float64{0, 0, 0, 2*pi, 2*pi, 2*pi},
