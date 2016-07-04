@@ -127,9 +127,9 @@ func (s *State) Predict(c Control, n State) {
 	s.U3 += dt * (2*G*(s.E3*s.E3+s.E0*s.E0-0.5) - G*a3 - h2*s.U1 + h1*s.U2)
 
 	s.E0 += 0.5 * dt * (-h1*s.E1 - h2*s.E2 - h3*s.E3)
-	s.E1 += 0.5 * dt * (+h1*(s.E0-s.E1) + h2*(s.E3-s.E2) - h3*(s.E2+s.E3))
-	s.E2 += 0.5 * dt * (-h1*(s.E3+s.E1) + h2*(s.E0-s.E2) + h3*(s.E1-s.E3))
-	s.E3 += 0.5 * dt * (+h1*(s.E2-s.E1) - h2*(s.E1+s.E2) + h3*(s.E0-s.E3))
+	s.E1 += 0.5 * dt * (+h1*s.E0 + h2*s.E3 - h3*s.E2)
+	s.E2 += 0.5 * dt * (-h1*s.E3 + h2*s.E0 + h3*s.E1)
+	s.E3 += 0.5 * dt * (+h1*s.E2 - h2*s.E1 + h3*s.E0)
 	s.normalize()
 
 	// s.Vx and s.Mx are all unchanged
