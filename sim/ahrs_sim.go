@@ -6,8 +6,10 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"math"
+	"math/rand"
 	"net/http"
 	"os"
 	"sort"
@@ -17,7 +19,6 @@ import (
 )
 
 const (
-	dt = 0.1
 	pi = math.Pi
 )
 
@@ -223,6 +224,44 @@ func (s *Situation) measurement(t float64) (ahrs.Measurement, error) {
 	return m, nil
 }
 
+// addControlNoise adds Gaussian sensor noise to the control struct
+// gyro noise stdev is in deg/s
+// accel noise stdev is in kt/s
+func addControlNoise(c *ahrs.Control, gn, an float64) {
+	if gn>0 {
+		c.H1 += gn * rand.NormFloat64()
+		c.H2 += gn * rand.NormFloat64()
+		c.H3 += gn * rand.NormFloat64()
+	}
+	if an>0 {
+		c.A1 += an * rand.NormFloat64()
+		c.A2 += an * rand.NormFloat64()
+		c.A3 += an * rand.NormFloat64()
+	}
+}
+
+// addMeasurementNoise adds Gaussian sensor noise to the measurement struct
+// gps noise stdev is in kt
+// airspeed noise is in kt
+// magnetometer noise is in uH
+func addMeasurementNoise(m *ahrs.Measurement, sn, un, mn float64) {
+	if sn>0 {
+		m.W1 += sn * rand.NormFloat64()
+		m.W2 += sn * rand.NormFloat64()
+		m.W3 += sn * rand.NormFloat64()
+	}
+	if un>0 {
+		m.U1 += un * rand.NormFloat64()
+		m.U2 += un * rand.NormFloat64()
+		m.U3 += un * rand.NormFloat64()
+	}
+	if mn>0 {
+		m.M1 += mn * rand.NormFloat64()
+		m.M2 += mn * rand.NormFloat64()
+		m.M3 += mn * rand.NormFloat64()
+	}
+}
+
 // Data to define a piecewise-linear turn, with entry and exit
 var airspeed = 120.0                                            // Nice airspeed for maneuvers, kts
 var bank = math.Atan((2 * pi * airspeed) / (ahrs.G * 120)) // Bank angle for std rate turn at given airspeed
@@ -247,6 +286,31 @@ var sitTurnDef = Situation{                                     // start, initia
 }
 
 func main() {
+	// Handle some shell arguments
+	var (
+		dt, gyroNoise, accelNoise, gpsNoise  float64
+	)
+
+	const (
+		defaultDt = 0.1
+		dtUsage = "Kalman filter update period, seconds"
+		defaultGyroNoise = 0.0
+		gyroNoiseUsage = "Amount of noise to add to gyro measurements, deg/s"
+		defaultAccelNoise = 0.0
+		accelNoiseUsage = "Amount of noise to add to accel measurements, G"
+		defaultGPSNoise = 0.0
+		gpsNoiseUsage = "Amount of noise to add to GPS speed measurements, kt"
+	)
+
+	flag.Float64Var(&dt, "dt", defaultDt, dtUsage)
+	flag.Float64Var(&gyroNoise, "gyro-noise", defaultGyroNoise, gyroNoiseUsage)
+	flag.Float64Var(&gyroNoise, "g", defaultGyroNoise, gyroNoiseUsage)
+	flag.Float64Var(&accelNoise, "accel-noise", defaultAccelNoise, accelNoiseUsage)
+	flag.Float64Var(&accelNoise, "a", defaultAccelNoise, accelNoiseUsage)
+	flag.Float64Var(&gpsNoise, "gps-noise", defaultGPSNoise, gpsNoiseUsage)
+	flag.Float64Var(&gpsNoise, "s", defaultGPSNoise, gpsNoiseUsage)
+	flag.Parse()
+
 	// Files to save data to for analysis
 	fActual, err := os.Create("k_state.csv")
 	if err != nil {
@@ -289,6 +353,7 @@ func main() {
 	s.Calibrate()
 	fmt.Println("Running Simulation")
 	for t := sitTurnDef.t[0]; t < sitTurnDef.t[len(sitTurnDef.t)-1]; t += dt {
+		// Peek behind the curtain: the "actual" state, which the algorithm doesn't know
 		s0, err := sitTurnDef.interpolate(t)
 		if err != nil {
 			fmt.Printf("Error interpolating at time %f: %s", t, err.Error())
@@ -299,26 +364,34 @@ func main() {
 			float64(s0.T)/1000, s0.U1, s0.U2, s0.U3, phi, theta, psi,
 			s0.V1, s0.V2, s0.V3, s0.M1, s0.M2, s0.M3)
 
+		// Take control "measurements"
 		c, err := sitTurnDef.control(t)
 		if err != nil {
 			fmt.Printf("Error calculating control value at time %f: %s", t, err.Error())
 			panic(err)
 		}
+		addControlNoise(&c, gyroNoise*pi/180, accelNoise)
 		fmt.Fprintf(fControl, "%f,%f,%f,%f,%f,%f,%f\n",
 			float64(c.T)/1000, -c.H1, c.H2, c.H3, c.A1, c.A2, c.A3)
+
+		// Predict stage of Kalman filter
 		s.Predict(c, ahrs.VX)
 		phi, theta, psi = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
 		fmt.Fprintf(fPredict, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
 			float64(s.T)/1000, s.U1, s.U2, s.U3, phi, theta, psi,
 			s.V1, s.V2, s.V3, s.M1, s.M2, s.M3)
 
+		// Take sensor measurements
 		m, err := sitTurnDef.measurement(t)
 		if err != nil {
 			fmt.Printf("Error calculating measurement value at time %f: %s", t, err.Error())
 			panic(err)
 		}
+		addMeasurementNoise(&m, gpsNoise, 0, 0)
 		fmt.Fprintf(fMeas, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
 			float64(m.T)/1000, m.W1, m.W2, m.W3, m.M1, m.M2, m.M3, m.U1, m.U2, m.U3)
+
+		// Update stage of Kalman filter
 		s.Update(m, ahrs.VM)
 		phi, theta, psi = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
 		fmt.Fprintf(fKalman, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
@@ -331,25 +404,9 @@ func main() {
 			math.Sqrt(s.M.Get(7, 7)), math.Sqrt(s.M.Get(8, 8)), math.Sqrt(s.M.Get(9, 9)),
 			math.Sqrt(s.M.Get(10, 10)), math.Sqrt(s.M.Get(11, 11)), math.Sqrt(s.M.Get(12, 12)),
 		)
-
-		/*
-			fmt.Printf("%6.2f,   %6.1f, %6.1f, %6.1f,  %7.1f, %7.1f, %7.1f,  %7.1f, %7.1f, %7.1f,  %6.1f, %6.1f, %6.1f\n",
-				float64(s.T)/1000, s.Ux-s0.Ux, s.Uy-s0.Uy, s.Uz-s0.Uz,
-				math.Mod((s.Phi-s0.Phi)*DEG, 360), math.Mod((s.Theta-s0.Theta)*DEG, 360), math.Mod((s.Psi-s0.Psi)*DEG, 360),
-				math.Mod((s.Phi0-s0.Phi0)*DEG, 360), math.Mod((s.Theta0-s0.Theta0)*DEG, 360), math.Mod((s.Psi0-s0.Psi0)*DEG, 360),
-				s.Vx-s0.Vx, s.Vy-s0.Vy, s.Vz-s0.Vz)
-		*/
 	}
-	/*
-		fmt.Print("\nFinal Uncertainty:\n")
-		fmt.Printf("%6.2f,   %6.1f, %6.1f, %6.1f,  %7.1f, %7.1f, %7.1f,  %7.1f, %7.1f, %7.1f,  %6.1f, %6.1f, %6.1f\n",
-			float64(s.T)/1000, math.Sqrt(s.M.Get(0,0)), math.Sqrt(s.M.Get(1,1)),math.Sqrt(s.M.Get(2,2)),
-			math.Sqrt(s.M.Get(3,3))*DEG,math.Sqrt(s.M.Get(4,4))*DEG,math.Sqrt(s.M.Get(5,5))*DEG,
-			math.Sqrt(s.M.Get(6,6))*DEG,math.Sqrt(s.M.Get(7,7))*DEG,math.Sqrt(s.M.Get(8,8))*DEG,
-			math.Sqrt(s.M.Get(9,9)), math.Sqrt(s.M.Get(10,10)),math.Sqrt(s.M.Get(11,11)),
-		)
-	*/
 
+	// Run analysis web server
 	fmt.Println("Serving charts")
 	http.Handle("/", http.FileServer(http.Dir("./")))
 	http.ListenAndServe(":8080", nil)
