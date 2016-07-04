@@ -114,18 +114,11 @@ func (s *Situation) derivative(t float64) (ahrs.State, error) {
 	}
 
 	var t0, t1, ddt float64
-	if t < s.t[0]+0.0005 {
-		t0 = s.t[0]
-		ddt = 0.0005
-		t1 = t0 + ddt
-	} else if t > s.t[len(s.t)-1]-0.0005 {
+	ddt = 0.001
+	t0, t1 = t, t+ddt
+	if t1 > s.t[len(s.t)-1] {
 		t1 = s.t[len(s.t)-1]
-		ddt = 0.0005
 		t0 = t1 - ddt
-	} else {
-		ddt = 0.001
-		t0 = t - ddt /2
-		t1 = t + ddt /2
 	}
 
 	s0, _ := s.interpolate(t0)
