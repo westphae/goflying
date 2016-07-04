@@ -122,9 +122,9 @@ func (s *State) Predict(c Control, n State) {
 	a2 := c.A1*s.f21 + c.A2*s.f22 + c.A3*s.f23
 	a3 := c.A1*s.f31 + c.A2*s.f32 + c.A3*s.f33
 
-	s.U1 += dt * (2*G*(s.E3*s.E1+s.E0*s.E2) - G*a1 - h3*s.U2 + h2*s.U3)
-	s.U2 += dt * (2*G*(s.E3*s.E2-s.E0*s.E1) - G*a2 - h1*s.U3 + h3*s.U1)
-	s.U3 += dt * (2*G*(s.E3*s.E3+s.E0*s.E0-0.5) - G*a3 - h2*s.U1 + h1*s.U2)
+	s.U1 += dt * (-2*G*(s.E3*s.E1+s.E0*s.E2) - G*a1 - h3*s.U2 + h2*s.U3)
+	s.U2 += dt * (-2*G*(s.E3*s.E2-s.E0*s.E1) - G*a2 - h1*s.U3 + h3*s.U1)
+	s.U3 += dt * (-2*G*(s.E3*s.E3+s.E0*s.E0-0.5) - G*a3 - h2*s.U1 + h1*s.U2)
 
 	s.E0 += 0.5 * dt * (-h1*s.E1 - h2*s.E2 - h3*s.E3)
 	s.E1 += 0.5 * dt * (+h1*s.E0 + h2*s.E3 - h3*s.E2)
