@@ -319,7 +319,7 @@ func main() {
 		}
 		fmt.Fprintf(fMeas, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
 			float64(m.T)/1000, m.W1, m.W2, m.W3, m.M1, m.M2, m.M3, m.U1, m.U2, m.U3)
-		//s.Update(m, ahrs.VM)
+		s.Update(m, ahrs.VM)
 		phi, theta, psi = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
 		fmt.Fprintf(fKalman, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
 			float64(s.T)/1000, s.U1, s.U2, s.U3, phi, theta, psi,
