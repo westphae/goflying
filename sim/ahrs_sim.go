@@ -18,9 +18,7 @@ import (
 	"github.com/westphae/goflying/ahrs"
 )
 
-const (
-	pi = math.Pi
-)
+const pi = math.Pi
 
 // Situation defines a scenario by piecewise-linear interpolation
 type Situation struct {
@@ -288,12 +286,14 @@ var sitTurnDef = Situation{                                     // start, initia
 func main() {
 	// Handle some shell arguments
 	var (
-		dt, gyroNoise, accelNoise, gpsNoise  float64
+		pdt, udt, gyroNoise, accelNoise, gpsNoise  float64
 	)
 
 	const (
-		defaultDt = 0.1
-		dtUsage = "Kalman filter update period, seconds"
+		defaultPdt = 0.1
+		pdtUsage = "Kalman filter predict period, seconds"
+		defaultUdt = 0.1
+		udtUsage = "Kalman filter update period, seconds"
 		defaultGyroNoise = 0.0
 		gyroNoiseUsage = "Amount of noise to add to gyro measurements, deg/s"
 		defaultAccelNoise = 0.0
@@ -302,7 +302,8 @@ func main() {
 		gpsNoiseUsage = "Amount of noise to add to GPS speed measurements, kt"
 	)
 
-	flag.Float64Var(&dt, "dt", defaultDt, dtUsage)
+	flag.Float64Var(&pdt, "pdt", defaultPdt, pdtUsage)
+	flag.Float64Var(&udt, "udt", defaultUdt, udtUsage)
 	flag.Float64Var(&gyroNoise, "gyro-noise", defaultGyroNoise, gyroNoiseUsage)
 	flag.Float64Var(&gyroNoise, "g", defaultGyroNoise, gyroNoiseUsage)
 	flag.Float64Var(&accelNoise, "accel-noise", defaultAccelNoise, accelNoiseUsage)
@@ -352,7 +353,14 @@ func main() {
 	s := ahrs.X0 // Initialize Kalman with a sensible starting state
 	s.Calibrate()
 	fmt.Println("Running Simulation")
-	for t := sitTurnDef.t[0]; t < sitTurnDef.t[len(sitTurnDef.t)-1]; t += dt {
+	var t, tNextUpdate float64
+	t = sitTurnDef.t[0];
+	tNextUpdate = t + udt
+	for t < sitTurnDef.t[len(sitTurnDef.t)-1] {
+		if t>tNextUpdate-1e-9 {
+			t = tNextUpdate
+		}
+
 		// Peek behind the curtain: the "actual" state, which the algorithm doesn't know
 		s0, err := sitTurnDef.interpolate(t)
 		if err != nil {
@@ -392,10 +400,13 @@ func main() {
 			float64(m.T)/1000, m.W1, m.W2, m.W3, m.M1, m.M2, m.M3, m.U1, m.U2, m.U3)
 
 		// Update stage of Kalman filter
-		s.Update(m, ahrs.VM)
+		if t>tNextUpdate-1e-9 {
+			tNextUpdate += udt
+			s.Update(m, ahrs.VM)
+		}
 		phi, theta, psi = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
 		fmt.Fprintf(fKalman, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
-			float64(s.T)/1000, s.U1, s.U2, s.U3, phi, theta, psi,
+			float64(s.T) / 1000, s.U1, s.U2, s.U3, phi, theta, psi,
 			s.V1, s.V2, s.V3, s.M1, s.M2, s.M3)
 		fmt.Fprintf(fVar, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
 			float64(s.T)/1000, math.Sqrt(s.M.Get(0, 0)), math.Sqrt(s.M.Get(1, 1)), math.Sqrt(s.M.Get(2, 2)),
@@ -404,6 +415,9 @@ func main() {
 			math.Sqrt(s.M.Get(7, 7)), math.Sqrt(s.M.Get(8, 8)), math.Sqrt(s.M.Get(9, 9)),
 			math.Sqrt(s.M.Get(10, 10)), math.Sqrt(s.M.Get(11, 11)), math.Sqrt(s.M.Get(12, 12)),
 		)
+
+		fmt.Printf("%6.3f -> %6.3f\n", t, tNextUpdate)
+		t += pdt
 	}
 
 	// Run analysis web server

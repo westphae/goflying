@@ -335,7 +335,7 @@ or
 \begin_layout Standard
 \begin_inset Formula 
 \[
-\ddot{x}_{e}=g_{e}-q_{ea}q_{as}\ddot{y}_{s}q_{sa}q_{ae}
+\ddot{x}_{e}=g_{e}-q_{ea}q_{as}\ddot{y}_{s}q_{sa}q_{ae}=-q_{ea}q_{as}(\ddot{y}_{s}-g_{s})q_{sa}q_{ae}
 \]
 
 \end_inset
@@ -367,7 +367,7 @@ so
 \begin{eqnarray*}
 \ddot{x}_{e} & = & \dot{w}_{e}\\
  & = & \dot{q}_{ea}u_{a}q_{ae}+q_{ea}\dot{u}_{a}q_{ae}+q_{ea}u_{a}\dot{q}_{ae}+\dot{v}_{e}\\
- & = & g_{e}-q_{ea}q_{as}\ddot{y}_{s}q_{sa}q_{ae}
+ & = & -q_{ea}q_{as}(\ddot{y}_{s}-g_{s})q_{sa}q_{ae}
 \end{eqnarray*}
 
 \end_inset
@@ -378,7 +378,7 @@ so
 \begin_layout Standard
 \begin_inset Formula 
 \[
-q_{ea}\dot{u}_{a}q_{ae}=g_{e}-q_{ea}q_{as}\ddot{y}_{s}q_{sa}q_{ae}-\dot{q}_{ea}u_{a}q_{ae}-q_{ea}u_{a}\dot{q}_{ae}
+q_{ea}\dot{u}_{a}q_{ae}=-q_{ea}q_{as}(\ddot{y}_{s}-g_{s})q_{sa}q_{ae}-\dot{q}_{ea}u_{a}q_{ae}-q_{ea}u_{a}\dot{q}_{ae}
 \]
 
 \end_inset
@@ -389,7 +389,7 @@ q_{ea}\dot{u}_{a}q_{ae}=g_{e}-q_{ea}q_{as}\ddot{y}_{s}q_{sa}q_{ae}-\dot{q}_{ea}u
 \begin_layout Standard
 \begin_inset Formula 
 \[
-\dot{u}_{a}=q_{ae}g_{e}q_{ea}-q_{as}\ddot{y}_{s}q_{sa}-q_{ae}\dot{q}_{ea}u_{a}-u_{a}\dot{q}_{ae}q_{ea}
+\dot{u}_{a}=-q_{as}(\ddot{y}_{s}-g_{s})q_{sa}-q_{ae}\dot{q}_{ea}u_{a}-u_{a}\dot{q}_{ae}q_{ea}
 \]
 
 \end_inset
@@ -416,7 +416,7 @@ Now
 \begin_layout Standard
 \begin_inset Formula 
 \[
-\dot{u}_{a}=q_{ae}g_{e}q_{ea}-q_{as}\ddot{y}_{s}q_{sa}-q_{ae}\dot{q}_{ea}u_{a}+u_{a}q_{ae}\dot{q}_{ea}
+\dot{u}_{a}=-q_{as}(\ddot{y}_{s}-g_{s})q_{sa}-q_{ae}\dot{q}_{ea}u_{a}+u_{a}q_{ae}\dot{q}_{ea}
 \]
 
 \end_inset
@@ -503,7 +503,7 @@ So our kinematic equations are
 \begin_layout Standard
 \begin_inset Formula 
 \[
-\dot{u}_{a}=q_{ae}g_{e}q_{ea}-q_{as}a_{s}q_{sa}+\tfrac{1}{2}q_{as}h_{s}q_{sa}u_{a}-\tfrac{1}{2}u_{a}q_{as}h_{s}q_{sa}
+\dot{u}_{a}=-q_{as}(a_{s}-g_{s})q_{sa}+\tfrac{1}{2}q_{as}h_{s}q_{sa}u_{a}-\tfrac{1}{2}u_{a}q_{as}h_{s}q_{sa}
 \]
 
 \end_inset
