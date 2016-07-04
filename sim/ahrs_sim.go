@@ -49,7 +49,7 @@ func ToQuaternion(phi, theta, psi float64) (float64, float64, float64, float64) 
 	return q0, q1, q2, q3
 }
 
-// FromQuaternion calculates the Tait-Bryan angles phi, theta, phi corresponding to
+// FromQuaternion calculates the Tait-Bryan angles phi, theta, psi corresponding to
 // the quaternion
 func FromQuaternion(q0, q1, q2, q3 float64) (float64, float64, float64) {
 	phi := math.Atan2(-2*(q0*q1-q2*q3), q0*q0-q1*q1-q2*q2+q3*q3)
@@ -59,6 +59,34 @@ func FromQuaternion(q0, q1, q2, q3 float64) (float64, float64, float64) {
 		psi += 2 * pi
 	}
 	return phi, theta, psi
+}
+
+// VarFromQuaternion returns the standard deviation of the Tate-Bryan angles phi, theta, psi
+// corresponding to the quaternion q0, q1, q2, q3 with stdev dq0, dq1, dq2, dq3
+func VarFromQuaternion(q0, q1, q2, q3, dq0, dq1, dq2, dq3 float64) (float64, float64, float64) {
+	var qq, rr, denom float64
+	qq = q0*q0 - q1*q1 - q2*q2 + q3*q3
+	rr = q0*q1 - q2*q3
+	denom = 4*rr*rr + qq*qq
+	dphidq0 := (-2*q1*qq + 4*q0*rr)/denom
+	dphidq1 := (-2*q0*qq - 4*q1*rr)/denom
+	dphidq2 := (+2*q3*qq - 4*q2*rr )/denom
+	dphidq3 := (+2*q2*qq + 4*q3*rr)/denom
+	rr = 2/math.Sqrt(1-4*(q0*q2 + q1*q3)*(q0*q2 + q1*q3))
+	dthetadq0 := q2*rr
+	dthetadq1 := q3*rr
+	dthetadq2 := q0*rr
+	dthetadq3 := q1*rr
+	qq = q0*q0 + q1*q1 - q2*q2 - q3*q3
+	rr = q0*q3 - q1*q2
+	denom = 4*(q0*q3 - q1*q2)*(q0*q3 - q1*q2) + qq*qq
+	dpsidq0 := (+2*q3*qq - 4*q0*rr)/denom
+	dpsidq1 := (-2*q2*qq - 4*q1*rr)/denom
+	dpsidq2 := (-2*q1*qq + 4*q2*rr)/denom
+	dpsidq3 := (+2*q0*qq + 4*q3*rr)/denom
+	return (dphidq0*dq0 + dphidq1*dq1 +dphidq2*dq2 +dphidq3*dq3),
+		(dthetadq0*dq0 + dthetadq1*dq1 +dthetadq2*dq2 +dthetadq3*dq3),
+		(dpsidq0*dq0 + dpsidq1*dq1 +dpsidq2*dq2 +dpsidq3*dq3)
 }
 
 // Interpolate an ahrs.State from a Situation definition at a given time
@@ -405,13 +433,16 @@ func main() {
 			s.Update(m, ahrs.VM)
 		}
 		phi, theta, psi = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
+		dphi, dtheta, dpsi := VarFromQuaternion(s.E0, s.E1, s.E2, s.E3,
+			math.Sqrt(s.M.Get(3, 3)), math.Sqrt(s.M.Get(4, 4)),
+			math.Sqrt(s.M.Get(5, 5)), math.Sqrt(s.M.Get(6, 6)))
 		fmt.Fprintf(fKalman, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
 			float64(s.T) / 1000, s.U1, s.U2, s.U3, phi, theta, psi,
 			s.V1, s.V2, s.V3, s.M1, s.M2, s.M3)
 		fmt.Fprintf(fVar, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
-			float64(s.T)/1000, math.Sqrt(s.M.Get(0, 0)), math.Sqrt(s.M.Get(1, 1)), math.Sqrt(s.M.Get(2, 2)),
-			//TODO: Calculate variance of Tait-Bryan from Quaternions
-			math.Sqrt(s.M.Get(3, 3)), math.Sqrt(s.M.Get(4, 4)), math.Sqrt(s.M.Get(5, 5)),
+			float64(s.T) / 1000,
+			math.Sqrt(s.M.Get(0, 0)), math.Sqrt(s.M.Get(1, 1)), math.Sqrt(s.M.Get(2, 2)),
+			dphi, dtheta, dpsi,
 			math.Sqrt(s.M.Get(7, 7)), math.Sqrt(s.M.Get(8, 8)), math.Sqrt(s.M.Get(9, 9)),
 			math.Sqrt(s.M.Get(10, 10)), math.Sqrt(s.M.Get(11, 11)), math.Sqrt(s.M.Get(12, 12)),
 		)
