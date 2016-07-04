@@ -113,42 +113,42 @@ func (s *Situation) derivative(t float64) (ahrs.State, error) {
 		return ahrs.State{}, errors.New("requested time is outside of scenario")
 	}
 
-	var t0, t1, dt float64
-	if t < s.t[0]+0.05 {
+	var t0, t1, ddt float64
+	if t < s.t[0]+0.0005 {
 		t0 = s.t[0]
-		dt = 0.05
-		t1 = t0 + dt
-	} else if t > s.t[len(s.t)-1]-0.05 {
+		ddt = 0.0005
+		t1 = t0 + ddt
+	} else if t > s.t[len(s.t)-1]-0.0005 {
 		t1 = s.t[len(s.t)-1]
-		dt = 0.05
-		t0 = t1 - dt
+		ddt = 0.0005
+		t0 = t1 - ddt
 	} else {
-		dt = 0.1
-		t0 = t - dt/2
-		t1 = t + dt/2
+		ddt = 0.001
+		t0 = t - ddt /2
+		t1 = t + ddt /2
 	}
 
 	s0, _ := s.interpolate(t0)
 	s1, _ := s.interpolate(t1)
 
 	return ahrs.State{
-		U1: (s1.U1 - s0.U1) / dt,
-		U2: (s1.U2 - s0.U2) / dt,
-		U3: (s1.U3 - s0.U3) / dt,
-		E0: (s1.E0 - s0.E0) / dt,
-		E1: (s1.E1 - s0.E1) / dt,
-		E2: (s1.E2 - s0.E2) / dt,
-		E3: (s1.E3 - s0.E3) / dt,
-		F0: (s1.F0 - s0.F0) / dt,
-		F1: (s1.F1 - s0.F1) / dt,
-		F2: (s1.F2 - s0.F2) / dt,
-		F3: (s1.F3 - s0.F3) / dt,
-		V1: (s1.V1 - s0.V1) / dt,
-		V2: (s1.V2 - s0.V2) / dt,
-		V3: (s1.V3 - s0.V3) / dt,
-		M1: (s1.M1 - s0.M1) / dt,
-		M2: (s1.M2 - s0.M2) / dt,
-		M3: (s1.M3 - s0.M3) / dt,
+		U1: (s1.U1 - s0.U1) / ddt,
+		U2: (s1.U2 - s0.U2) / ddt,
+		U3: (s1.U3 - s0.U3) / ddt,
+		E0: (s1.E0 - s0.E0) / ddt,
+		E1: (s1.E1 - s0.E1) / ddt,
+		E2: (s1.E2 - s0.E2) / ddt,
+		E3: (s1.E3 - s0.E3) / ddt,
+		F0: (s1.F0 - s0.F0) / ddt,
+		F1: (s1.F1 - s0.F1) / ddt,
+		F2: (s1.F2 - s0.F2) / ddt,
+		F3: (s1.F3 - s0.F3) / ddt,
+		V1: (s1.V1 - s0.V1) / ddt,
+		V2: (s1.V2 - s0.V2) / ddt,
+		V3: (s1.V3 - s0.V3) / ddt,
+		M1: (s1.M1 - s0.M1) / ddt,
+		M2: (s1.M2 - s0.M2) / ddt,
+		M3: (s1.M3 - s0.M3) / ddt,
 		T:  uint32(t*1000 + 0.5), // easy rounding for uint
 		M:  matrix.DenseMatrix{},
 	}, nil
