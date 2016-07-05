@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/skelterjohn/go.matrix"
 	"github.com/westphae/goflying/ahrs"
@@ -311,6 +312,37 @@ var sitTurnDef = Situation{                                     // start, initia
 	m3:     []float64{0, 0, 0, 0, 0, 0},
 }
 
+type AHRSLogger struct {
+	f	os.File
+	h	[]string
+	fmt 	string
+}
+
+func NewAHRSLogger(fn string, h ...string) (AHRSLogger) {
+	var l = new(AHRSLogger)
+	var err error
+
+	l.h = h
+	l.f, err = os.Create(fn)
+	if err != nil {
+		panic(err)
+	}
+	defer l.f.Close()
+
+	fmt.Fprint(l.f, strings.Join(l.h, ","))
+	l.fmt = strings.Repeat("%f,", len(l.h))
+	l.fmt[len(l.fmt)] = "\n"
+	return l
+}
+
+func (l *AHRSLogger) Log(v ...float64) {
+	fmt.Fprintf(l.f, l.fmt, v...)
+}
+
+func (l *AHRSLogger) Close() {
+	l.f.Close()
+}
+
 func main() {
 	// Handle some shell arguments
 	var (
@@ -341,42 +373,18 @@ func main() {
 	flag.Parse()
 
 	// Files to save data to for analysis
-	fActual, err := os.Create("k_state.csv")
-	if err != nil {
-		panic(err)
-	}
-	defer fActual.Close()
-	fmt.Fprint(fActual, "T,Ux,Uy,Uz,Phi,Theta,Psi,Vx,Vy,Vz,Mx,My,Mz\n")
-	fKalman, err := os.Create("k_kalman.csv")
-	if err != nil {
-		panic(err)
-	}
-	defer fKalman.Close()
-	fmt.Fprint(fKalman, "T,Ux,Uy,Uz,Phi,Theta,Psi,Vx,Vy,Vz,Mx,My,Mz\n")
-	fPredict, err := os.Create("k_predict.csv")
-	if err != nil {
-		panic(err)
-	}
-	defer fPredict.Close()
-	fmt.Fprint(fPredict, "T,Ux,Uy,Uz,Phi,Theta,Psi,Vx,Vy,Vz,Mx,My,Mz\n")
-	fVar, err := os.Create("k_var.csv")
-	if err != nil {
-		panic(err)
-	}
-	defer fVar.Close()
-	fmt.Fprint(fVar, "T,Ux,Uy,Uz,Phi,Theta,Psi,Vx,Vy,Vz,Mx,My,Mz\n")
-	fControl, err := os.Create("k_control.csv")
-	if err != nil {
-		panic(err)
-	}
-	defer fControl.Close()
-	fmt.Fprint(fControl, "T,P,Q,R,Ax,Ay,Az\n")
-	fMeas, err := os.Create("k_meas.csv")
-	if err != nil {
-		panic(err)
-	}
-	defer fMeas.Close()
-	fmt.Fprint(fMeas, "T,Wx,Wy,Wz,Mx,My,Mz,Ux,Uy,Uz\n")
+	lActual := NewAHRSLogger("k_state.csv",
+		"T", "Ux", "Uy", "Uz", "Phi", "Theta", "Psi", "Vx", "Vy", "Vz", "Mx", "My", "Mz")
+	lKalman := NewAHRSLogger("k_kalman.csv",
+		"T", "Ux", "Uy", "Uz", "Phi", "Theta", "Psi", "Vx", "Vy", "Vz", "Mx", "My", "Mz")
+	lPredict := NewAHRSLogger("k_predict.csv",
+		"T", "Ux", "Uy", "Uz", "Phi", "Theta", "Psi", "Vx", "Vy", "Vz", "Mx", "My", "Mz")
+	lVar := NewAHRSLogger("k_var.csv",
+		"T", "Ux", "Uy", "Uz", "Phi", "Theta", "Psi", "Vx", "Vy", "Vz", "Mx", "My", "Mz")
+	lControl := NewAHRSLogger("k_control.csv",
+		"T", "P", "Q", "R", "Ax", "Ay", "Az")
+	lMeas := NewAHRSLogger("k_meas.csv",
+		"T", "Wx", "Wy", "Wz", "Mx", "My", "Mz", "Ux", "Uy", "Uz")
 
 	s := ahrs.X0 // Initialize Kalman with a sensible starting state
 	s.Calibrate()
@@ -396,8 +404,7 @@ func main() {
 			panic(err)
 		}
 		phi, theta, psi := FromQuaternion(s0.E0, s0.E1, s0.E2, s0.E3)
-		fmt.Fprintf(fActual, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
-			float64(s0.T)/1000, s0.U1, s0.U2, s0.U3, phi, theta, psi,
+		lActual.Log(float64(s0.T)/1000, s0.U1, s0.U2, s0.U3, phi, theta, psi,
 			s0.V1, s0.V2, s0.V3, s0.M1, s0.M2, s0.M3)
 
 		// Take control "measurements"
@@ -407,14 +414,12 @@ func main() {
 			panic(err)
 		}
 		addControlNoise(&c, gyroNoise*pi/180, accelNoise)
-		fmt.Fprintf(fControl, "%f,%f,%f,%f,%f,%f,%f\n",
-			float64(c.T)/1000, -c.H1, c.H2, c.H3, c.A1, c.A2, c.A3)
+		lControl.Log(float64(c.T)/1000, -c.H1, c.H2, c.H3, c.A1, c.A2, c.A3)
 
 		// Predict stage of Kalman filter
 		s.Predict(c, ahrs.VX)
 		phi, theta, psi = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
-		fmt.Fprintf(fPredict, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
-			float64(s.T)/1000, s.U1, s.U2, s.U3, phi, theta, psi,
+		lPredict.Log(float64(s.T)/1000, s.U1, s.U2, s.U3, phi, theta, psi,
 			s.V1, s.V2, s.V3, s.M1, s.M2, s.M3)
 
 		// Take sensor measurements
@@ -424,8 +429,7 @@ func main() {
 			panic(err)
 		}
 		addMeasurementNoise(&m, gpsNoise, 0, 0)
-		fmt.Fprintf(fMeas, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
-			float64(m.T)/1000, m.W1, m.W2, m.W3, m.M1, m.M2, m.M3, m.U1, m.U2, m.U3)
+		lMeas.Log(float64(m.T)/1000, m.W1, m.W2, m.W3, m.M1, m.M2, m.M3, m.U1, m.U2, m.U3)
 
 		// Update stage of Kalman filter
 		if t>tNextUpdate-1e-9 {
@@ -436,11 +440,9 @@ func main() {
 		dphi, dtheta, dpsi := VarFromQuaternion(s.E0, s.E1, s.E2, s.E3,
 			math.Sqrt(s.M.Get(3, 3)), math.Sqrt(s.M.Get(4, 4)),
 			math.Sqrt(s.M.Get(5, 5)), math.Sqrt(s.M.Get(6, 6)))
-		fmt.Fprintf(fKalman, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
-			float64(s.T) / 1000, s.U1, s.U2, s.U3, phi, theta, psi,
+		lKalman.Log(float64(s.T) / 1000, s.U1, s.U2, s.U3, phi, theta, psi,
 			s.V1, s.V2, s.V3, s.M1, s.M2, s.M3)
-		fmt.Fprintf(fVar, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
-			float64(s.T) / 1000,
+		lVar.Log(float64(s.T) / 1000,
 			math.Sqrt(s.M.Get(0, 0)), math.Sqrt(s.M.Get(1, 1)), math.Sqrt(s.M.Get(2, 2)),
 			dphi, dtheta, dpsi,
 			math.Sqrt(s.M.Get(7, 7)), math.Sqrt(s.M.Get(8, 8)), math.Sqrt(s.M.Get(9, 9)),
@@ -450,6 +452,14 @@ func main() {
 		fmt.Printf("%6.3f -> %6.3f\n", t, tNextUpdate)
 		t += pdt
 	}
+
+	// Clean up
+	lActual.Close()
+	lKalman.Close()
+	lPredict.Close()
+	lControl.Close()
+	lVar.Close()
+	lMeas.Close()
 
 	// Run analysis web server
 	fmt.Println("Serving charts")
