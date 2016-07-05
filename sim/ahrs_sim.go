@@ -291,9 +291,10 @@ func addMeasurementNoise(m *ahrs.Measurement, sn, un, mn float64) {
 
 // Data to define a piecewise-linear turn, with entry and exit
 var airspeed = 120.0                                            // Nice airspeed for maneuvers, kts
-var bank = math.Atan((2 * pi * airspeed) / (ahrs.G * 120)) // Bank angle for std rate turn at given airspeed
-var mush = -airspeed*math.Sin(pi/90)/math.Cos(bank)	// Mush in a turn to maintain altitude
-var sitTurnDef = Situation{                                     // start, initiate roll-in, end roll-in, initiate roll-out, end roll-out, end
+var bank = math.Atan((2 * pi * airspeed) / (ahrs.G * 120))	// Bank angle for std rate turn at given airspeed
+var mush = -airspeed*math.Sin(pi/90)/math.Cos(bank)		// Mush in a turn to maintain altitude
+// start, initiate roll-in, end roll-in, initiate roll-out, end roll-out, end
+var sitTurnDef = Situation{
 	t:      []float64{0, 10, 15, 255, 260, 270},
 	u1:     []float64{airspeed, airspeed, airspeed, airspeed, airspeed, airspeed},
 	u2:     []float64{0, 0, 0, 0, 0, 0},
@@ -313,29 +314,28 @@ var sitTurnDef = Situation{                                     // start, initia
 }
 
 type AHRSLogger struct {
-	f	os.File
+	f	*os.File
 	h	[]string
 	fmt 	string
 }
 
 func NewAHRSLogger(fn string, h ...string) (AHRSLogger) {
 	var l = new(AHRSLogger)
-	var err error
 
 	l.h = h
-	l.f, err = os.Create(fn)
+	f, err := os.Create(fn)
+	l.f = f
 	if err != nil {
 		panic(err)
 	}
-	defer l.f.Close()
 
-	fmt.Fprint(l.f, strings.Join(l.h, ","))
-	l.fmt = strings.Repeat("%f,", len(l.h))
-	l.fmt[len(l.fmt)] = "\n"
-	return l
+	fmt.Fprint(l.f, strings.Join(l.h, ","), "\n")
+	s := strings.Repeat("%f,", len(l.h))
+	l.fmt = strings.Join([]string{s[:len(s)-1], "\n"}, "")
+	return *l
 }
 
-func (l *AHRSLogger) Log(v ...float64) {
+func (l *AHRSLogger) Log(v ...interface{}) {
 	fmt.Fprintf(l.f, l.fmt, v...)
 }
 
