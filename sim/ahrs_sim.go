@@ -243,9 +243,10 @@ func (s *Situation) measurement(t float64) (ahrs.Measurement, error) {
 		M3: x.M1*2*(-x.E0*x.E2 + x.E3*x.E1) +
 			x.M2*2*(+x.E0*x.E1 + x.E3*x.E2) +
 			x.M3*2*(+x.E0*x.E0 + x.E3*x.E3 - 0.5),
-		U1: x.U1,
-		U2: x.U2,
-		U3: x.U3,
+		// No airspeed measurements available yet
+		U1: 0*x.U1,
+		U2: 0*x.U2,
+		U3: 0*x.U3,
 		T:  uint32(t*1000 + 0.5),
 	}
 	return m, nil

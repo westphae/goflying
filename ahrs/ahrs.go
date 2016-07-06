@@ -59,18 +59,18 @@ var X0 = State{
 
 // VX represents process uncertainties, per second
 var VX = State{
-	U1: 1, U2: 0.2, U3: 0.3,
-	E0: 1e-2, E1: 1e-2, E2: 1e-2, E3: 1e-2,
-	V1: 0.005, V2: 0.005, V3: 0.05,
+	U1: 1.0, U2: 0.1, U3: 0.1,
+	E0: 5e-2, E1: 5e-2, E2: 1e-1, E3: 1e-1,
+	V1: 0.05, V2: 0.05, V3: 0.5,
 	M1: 0.005, M2: 0.005, M3: 0.005,
 	T: 1000,
 }
 
 // VM represents measurement uncertainties
 var VM = Measurement{
-	W1: 0.5, W2: 0.5, W3: 0.5, // GPS uncertainty is small
-	U1: 0.5, U2: 0.1, U3: 0.1, // Also airspeed
-	M1: 0.1, M2: 0.1, M3: 0.1, // Also magnetometer
+	W1: 0.25, W2: 0.25, W3: 0.1, // GPS uncertainty is small
+	U1: 999, U2: 999, U3: 999, // Airspeed isn't measured yet
+	M1: 999, M2: 999, M3: 999, // Magnetometer isn't measured yet
 	T: 0,
 }
 
@@ -148,7 +148,6 @@ func (s *State) Predict(c Control, n State) {
 
 // Update applies the Kalman filter corrections given the measurements
 func (s *State) Update(m Measurement, n Measurement) {
-	//TODO: this
 	z := s.predictMeasurement()
 	y := matrix.MakeDenseMatrix([]float64{
 		m.W1 - z.W1, m.W2 - z.W2, m.W3 - z.W3,
