@@ -314,6 +314,27 @@ var sitTurnDef = Situation{
 	m3:     []float64{0, 0, 0, 0, 0, 0},
 }
 
+var bank1 = math.Atan((2*pi*95) / (ahrs.G * 120))
+var bank2 = math.Atan((2*pi*120) / (ahrs.G * 120))
+var sitTakeoffDef = Situation{
+	t:	[]float64{ 0, 10, 30,   35,   55,  115,    120,    150,    155,    175,    180,    210, 215, 230},
+	u1:	[]float64{ 0,  0, 60,   75,   95,   95,     95,     95,     95,    120,    120,    120, 120, 140},
+	u2:	[]float64{ 0,  0,  0,    0,    0,    0,      0,      0,      0,      0,      0,      0,   0,   0},
+	u3:	[]float64{ 0,  0,  0,   -3,   -3,   -3,     -2,     -2,     -2,      0,      0,      0,   0,   0},
+	phi:	[]float64{ 0,  0,  0,    0,    0,    0, -bank1, -bank1,      0,      0, -bank2, -bank2,   0,   0},
+	theta:	[]float64{ 0,  0,  0, 0.05, 0.05, 0.05,   0.03,   0.03,   0.03,   0.01,   0.01,   0.01,   0,   0},
+	psi:	[]float64{ 0,  0,  0,    0,    0,    0,      0,  -pi/2,  -pi/2,  -pi/2,  -pi/2,    -pi, -pi, -pi},
+	phi0:	[]float64{ 0,  0,  0,    0,    0,    0,      0,      0,      0,      0,      0,      0,   0,   0},
+	theta0:	[]float64{ 0,  0,  0,    0,    0,    0,      0,      0,      0,      0,      0,      0,   0,   0},
+	psi0:	[]float64{ 0,  0,  0,    0,    0,    0,      0,      0,      0,      0,      0,      0,   0,   0},
+	v1:	[]float64{ 0,  0,  0,    0,    0,    0,      0,      0,      0,      0,      0,      0,   0,   0},
+	v2:	[]float64{-8, -8, -8,   -8,   -8,   -8,    -10,    -10,    -10,    -12,    -12,    -12, -12, -12},
+	v3:	[]float64{ 0,  0,  0,    0,    0,    0,      0,      0,      0,      0,      0,      0,   0,   0},
+	m1:	[]float64{ 0,  0,  0,    0,    0,    0,      0,      0,      0,      0,      0,      0,   0,   0},
+	m2:	[]float64{ 0,  0,  0,    0,    0,    0,      0,      0,      0,      0,      0,      0,   0,   0},
+	m3:	[]float64{ 0,  0,  0,    0,    0,    0,      0,      0,      0,      0,      0,      0,   0,   0},
+}
+
 type AHRSLogger struct {
 	f	*os.File
 	h	[]string
@@ -348,6 +369,8 @@ func main() {
 	// Handle some shell arguments
 	var (
 		pdt, udt, gyroNoise, accelNoise, gpsNoise  float64
+		scenario 	string
+		sit 		Situation
 	)
 
 	const (
@@ -361,6 +384,8 @@ func main() {
 		accelNoiseUsage = "Amount of noise to add to accel measurements, G"
 		defaultGPSNoise = 0.0
 		gpsNoiseUsage = "Amount of noise to add to GPS speed measurements, kt"
+		defaultScenario = "takeoff"
+		scenarioUsage = "Scenario to use: \"takeoff\" or \"turn\""
 	)
 
 	flag.Float64Var(&pdt, "pdt", defaultPdt, pdtUsage)
@@ -370,7 +395,9 @@ func main() {
 	flag.Float64Var(&accelNoise, "accel-noise", defaultAccelNoise, accelNoiseUsage)
 	flag.Float64Var(&accelNoise, "a", defaultAccelNoise, accelNoiseUsage)
 	flag.Float64Var(&gpsNoise, "gps-noise", defaultGPSNoise, gpsNoiseUsage)
-	flag.Float64Var(&gpsNoise, "s", defaultGPSNoise, gpsNoiseUsage)
+	flag.Float64Var(&gpsNoise, "n", defaultGPSNoise, gpsNoiseUsage)
+	flag.StringVar(&scenario, "scenario", defaultScenario, scenarioUsage)
+	flag.StringVar(&scenario, "s", defaultScenario, scenarioUsage)
 	flag.Parse()
 
 	// Files to save data to for analysis
@@ -387,19 +414,27 @@ func main() {
 	lMeas := NewAHRSLogger("k_meas.csv",
 		"T", "Wx", "Wy", "Wz", "Mx", "My", "Mz", "Ux", "Uy", "Uz")
 
+	switch scenario {
+	case "takeoff":
+		sit = sitTakeoffDef
+	case "turn":
+		sit = sitTurnDef
+	default:
+		sit = sitTurnDef
+	}
 	s := ahrs.X0 // Initialize Kalman with a sensible starting state
 	s.Calibrate()
 	fmt.Println("Running Simulation")
 	var t, tNextUpdate float64
-	t = sitTurnDef.t[0];
+	t = sit.t[0];
 	tNextUpdate = t + udt
-	for t < sitTurnDef.t[len(sitTurnDef.t)-1] {
+	for t < sit.t[len(sit.t)-1] {
 		if t>tNextUpdate-1e-9 {
 			t = tNextUpdate
 		}
 
 		// Peek behind the curtain: the "actual" state, which the algorithm doesn't know
-		s0, err := sitTurnDef.interpolate(t)
+		s0, err := sit.interpolate(t)
 		if err != nil {
 			fmt.Printf("Error interpolating at time %f: %s", t, err.Error())
 			panic(err)
@@ -409,7 +444,7 @@ func main() {
 			s0.V1, s0.V2, s0.V3, s0.M1, s0.M2, s0.M3)
 
 		// Take control "measurements"
-		c, err := sitTurnDef.control(t)
+		c, err := sit.control(t)
 		if err != nil {
 			fmt.Printf("Error calculating control value at time %f: %s", t, err.Error())
 			panic(err)
@@ -424,7 +459,7 @@ func main() {
 			s.V1, s.V2, s.V3, s.M1, s.M2, s.M3)
 
 		// Take sensor measurements
-		m, err := sitTurnDef.measurement(t)
+		m, err := sit.measurement(t)
 		if err != nil {
 			fmt.Printf("Error calculating measurement value at time %f: %s", t, err.Error())
 			panic(err)
