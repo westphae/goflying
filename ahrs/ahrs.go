@@ -12,12 +12,13 @@ import (
 // State holds the complete information describing the state of the aircraft
 // Order within State also defines order in the matrices below
 type State struct {
-	U1, U2, U3     float64            // Vector for airspeed, aircraft (accelerated) frame
-	E0, E1, E2, E3 float64            // Quaternion rotating aircraft to earth frame
-	V1, V2, V3     float64            // Vector describing windspeed, latlong axes, earth (inertial) frame
-	M1, M2, M3     float64            // Vector describing reference magnetometer direction, earth (inertial) frame
-	T              uint32             // Timestamp when last updated
-	M              matrix.DenseMatrix // Covariance matrix of state uncertainty, same order as above vars
+	Valid		bool		   // Is the state valid (initialized, sensible)
+	U1, U2, U3    	float64            // Vector for airspeed, aircraft (accelerated) frame
+	E0, E1, E2, E3	float64            // Quaternion rotating aircraft to earth frame
+	V1, V2, V3    	float64            // Vector describing windspeed, latlong axes, earth (inertial) frame
+	M1, M2, M3    	float64            // Vector describing reference magnetometer direction, earth (inertial) frame
+	T             	uint32             // Timestamp when last updated
+	M             	matrix.DenseMatrix // Covariance matrix of state uncertainty, same order as above vars
 
 	F0, F1, F2, F3 float64 // Calibration quaternion describing roll, pitch and heading biases due to placement of stratux, aircraft frame
 	f11, f12, f13,
@@ -80,8 +81,10 @@ func (s *State) Initialize(m Measurement, c Control, n State) {
 		if m.W2 > 0 {
 			s.E3 *= -1
 		}
+		s.Valid = true
 	} else {
 		s.E0 = 1
+		s.Valid = false
 	}
 	s.M1 =  2*m.M1*(s.E1*s.E1+s.E0*s.E0-0.5) +
 		2*m.M2*(s.E1*s.E2+s.E0*s.E3) +
@@ -96,14 +99,14 @@ func (s *State) Initialize(m Measurement, c Control, n State) {
 		10 * 10, 0.5 * 0.5, 0.5 * 0.5, // Reasonable for a GA aircraft
 		0.1, 0.1, 0.1, 0.1, // Initial orientation is highly uncertain
 		10 * 10, 10 * 10, 1 * 1, // Windspeed is an unknown
-		0.01, 0.01, 0.01, // Magnetometer
+		1, 1, 1, // Magnetometer is an unknown
 	})
-	s.Calibrate()
+	s.Calibrate(c)
 }
 
 // Calibrate performs a calibration, determining the quaternion to rotate it to
 // be effectively level
-func (s *State) Calibrate() {
+func (s *State) Calibrate(c Control) (bool) {
 	//TODO: Do the calibration to determine the Fi
 	// Persist last known to storage
 	// Initial is last known
@@ -124,6 +127,8 @@ func (s *State) Calibrate() {
 	s.f31 = 2 * (+s.F0*s.F2 + s.F3*s.F1)
 	s.f32 = 2 * (-s.F0*s.F1 + s.F3*s.F2)
 	s.f33 = 2 * (+s.F0*s.F0 + s.F3*s.F3 - 0.5)
+
+	return true
 }
 
 // Predict performs the prediction phase of the Kalman filter given the control inputs
