@@ -45,18 +45,6 @@ const (
 	G = 32.1740 / 1.687810 // G is the acceleration due to gravity, kt/s
 )
 
-// X0 is a starting state: vector quantities are all 0's
-var X0 = State{
-	U1: 50, // Reasonable starting airspeed for GA aircraft
-	E0: 1,  // Zero rotation has real part 1
-	M: *matrix.Diagonal([]float64{
-		100 * 100, 10 * 10, 10 * 10, // Reasonable for a GA aircraft
-		1, 1, 1, 1, // Initial orientation is highly uncertain
-		20 * 20, 20 * 20, 0.5 * 0.5, // Windspeed is an unknown
-		1, 1, 1, // Magnetometer is an unknown
-	}),
-}
-
 // VX represents process uncertainties, per second
 var VX = State{
 	U1: 1.0, U2: 0.1, U3: 0.1,
@@ -81,6 +69,36 @@ func (s *State) normalize() {
 	s.E1 /= ee
 	s.E2 /= ee
 	s.E3 /= ee
+}
+
+// Initialize the state at the start of the Kalman filter, based on current
+// measurements and controls
+func (s *State) Initialize(m Measurement, c Control, n State) {
+	s.U1 = math.Sqrt(m.W1*m.W1 + m.W2*m.W2)
+	if s.U1 > 0 {
+		s.E0, s.E3 = math.Sqrt((s.U1 + m.W1) / (2 * s.U1)), math.Sqrt((s.U1 - m.W1) / (2 * s.U1))
+		if m.W2 > 0 {
+			s.E3 *= -1
+		}
+	} else {
+		s.E0 = 1
+	}
+	s.M1 =  2*m.M1*(s.E1*s.E1+s.E0*s.E0-0.5) +
+		2*m.M2*(s.E1*s.E2+s.E0*s.E3) +
+		2*m.M3*(s.E1*s.E3-s.E0*s.E2)
+	s.M2 =  2*m.M1*(s.E2*s.E1-s.E0*s.E3) +
+		2*m.M2*(s.E2*s.E2+s.E0*s.E0-0.5) +
+		2*m.M3*(s.E2*s.E3+s.E0*s.E1)
+	s.M3 =  2*m.M1*(s.E3*s.E1+s.E0*s.E2) +
+		2*m.M2*(s.E3*s.E2-s.E0*s.E1) +
+		2*m.M3*(s.E3*s.E3+s.E0*s.E0-0.5)
+	s.M = *matrix.Diagonal([]float64{
+		10 * 10, 0.5 * 0.5, 0.5 * 0.5, // Reasonable for a GA aircraft
+		0.1, 0.1, 0.1, 0.1, // Initial orientation is highly uncertain
+		10 * 10, 10 * 10, 1 * 1, // Windspeed is an unknown
+		0.01, 0.01, 0.01, // Magnetometer
+	})
+	s.Calibrate()
 }
 
 // Calibrate performs a calibration, determining the quaternion to rotate it to

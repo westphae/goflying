@@ -422,8 +422,12 @@ func main() {
 	default:
 		sit = sitTurnDef
 	}
-	s := ahrs.X0 // Initialize Kalman with a sensible starting state
-	s.Calibrate()
+
+	// Initialize Kalman with a sensible starting state
+	var s = ahrs.State{}
+	m, _ := sit.measurement(sit.t[0])
+	s.Initialize(m, ahrs.Control{}, ahrs.State{})
+
 	fmt.Println("Running Simulation")
 	var t, tNextUpdate float64
 	t = sit.t[0];
