@@ -229,13 +229,13 @@ func (s *State) PredictMeasurement() Measurement {
 	m.U2 = s.U2
 	m.U3 = s.U3
 
-	m.M1 = 2*s.M1*(s.E1*s.E1+s.E0*s.E0-0.5) +
+	m.M1 =  2*s.M1*(s.E1*s.E1+s.E0*s.E0-0.5) +
 		2*s.M2*(s.E1*s.E2-s.E0*s.E3) +
 		2*s.M3*(s.E1*s.E3+s.E0*s.E2)
-	m.M2 = 2*s.M1*(s.E2*s.E1+s.E0*s.E3) +
+	m.M2 =  2*s.M1*(s.E2*s.E1+s.E0*s.E3) +
 		2*s.M2*(s.E2*s.E2+s.E0*s.E0-0.5) +
 		2*s.M3*(s.E2*s.E3-s.E0*s.E1)
-	m.M3 = 2*s.M1*(s.E3*s.E1-s.E0*s.E2) +
+	m.M3 =  2*s.M1*(s.E3*s.E1-s.E0*s.E2) +
 		2*s.M2*(s.E3*s.E2+s.E0*s.E1) +
 		2*s.M3*(s.E3*s.E3+s.E0*s.E0-0.5)
 
@@ -255,7 +255,7 @@ func (s *State) calcJacobianState(c Control) matrix.DenseMatrix {
 	h3 := c.H1*s.f31 + c.H2*s.f32 + c.H3*s.f33
 
 	data[0][0] = 1                                         // U1,U1
-	data[0][1] = -3*dt  // U1,U2
+	data[0][1] = -h3*dt  // U1,U2
 	data[0][2] = +h2*dt // U1,U3
 	data[0][3] = -2*G*s.E2*dt  // U1/E0
 	data[0][4] = -2*G*s.E3*dt   // U1/E1
@@ -271,26 +271,26 @@ func (s *State) calcJacobianState(c Control) matrix.DenseMatrix {
 	data[2][0] = -h2*dt  // U3/U1
 	data[2][1] = +h1*dt // U3/U2
 	data[2][2] = 1                                         // U3/U3
-	data[2][3] = -4*G*s.E0*dt   // U3/E0
-	data[2][4] = -4*G*s.E1*dt              // U3/E1
-	data[2][5] = -4*G*s.E2*dt              // U3/E2
-	data[2][6] = -4*G*s.E3*dt   // U3/E3
+	data[2][3] = -2*G*s.E0*dt   // U3/E0
+	data[2][4] = +2*G*s.E1*dt              // U3/E1
+	data[2][5] = +2*G*s.E2*dt              // U3/E2
+	data[2][6] = -2*G*s.E3*dt   // U3/E3
 	data[3][3] = 1                                         // E0/E0
-	data[3][4] = -0.5*dt*h1	// U0/E1
-	data[3][5] = -0.5*dt*h2	// U0/E2
-	data[3][6] = -0.5*dt*h3	// U0/E3
-	data[4][3] = +0.5*dt*h1	// U0/E1
-	data[4][4] = 1                                         // E0/E0
-	data[4][5] = -0.5*dt*h3	// U0/E3
-	data[4][6] = +0.5*dt*h2	// U0/E2
-	data[5][3] = +0.5*dt*h2	// U0/E2
-	data[5][4] = +0.5*dt*h3	// U0/E3
-	data[5][5] = 1                                         // E0/E0
-	data[5][6] = -0.5*dt*h1	// U0/E1
-	data[6][3] = +0.5*dt*h3	// U0/E3
-	data[6][4] = -0.5*dt*h2	// U0/E2
-	data[6][5] = +0.5*dt*h1	// U0/E1
-	data[6][6] = 1                                         // E0/E0
+	data[3][4] = -0.5*dt*h1	// E0/E1
+	data[3][5] = -0.5*dt*h2	// E0/E2
+	data[3][6] = -0.5*dt*h3	// E0/E3
+	data[4][3] = +0.5*dt*h1	// E1/E0
+	data[4][4] = 1                                         // E1/E1
+	data[4][5] = -0.5*dt*h3	// E1/E2
+	data[4][6] = +0.5*dt*h2	// E1/E3
+	data[5][3] = +0.5*dt*h2	// E2/E0
+	data[5][4] = +0.5*dt*h3	// E2/E1
+	data[5][5] = 1                                         // E2/E2
+	data[5][6] = -0.5*dt*h1	// E2/E3
+	data[6][3] = +0.5*dt*h3	// E3/E0
+	data[6][4] = -0.5*dt*h2	// E3/E1
+	data[6][5] = +0.5*dt*h1	// E3/E2
+	data[6][6] = 1                                         // E3/E3
 	data[7][7] = 1                                         // V1/V1
 	data[8][8] = 1                                         // V2/V2
 	data[9][9] = 1                                         // V3/V3
@@ -311,52 +311,53 @@ func (s *State) calcJacobianMeasurement() matrix.DenseMatrix {
 	data[0][0] = 2*(s.E1*s.E1+s.E0*s.E0-0.5)                    // W1/U1
 	data[0][1] = 2*(s.E1*s.E2+s.E0*s.E3)                        // W1/U2
 	data[0][2] = 2*(s.E1*s.E3-s.E0*s.E2)                        // W1/U3
-	data[0][3] = 2*(+2*s.E0*s.U1 + s.E3*s.U2 - s.E2*s.U3)       // W1/E0
-	data[0][4] = 2*(+2*s.E1*s.U1 + s.E2*s.U2 + s.E3*s.U3)       // W1/E1
-	data[0][5] = 2*(              s.E1*s.U2 - s.E0*s.U3)        // W1/E2
-	data[0][6] = 2*(              s.E0*s.U2 + s.E1*s.U3)        // W1/E3
+	data[0][3] = 2*(+s.E0*s.U1 + s.E3*s.U2 - s.E2*s.U3)         // W1/E0
+	data[0][4] = 2*(+s.E1*s.U1 + s.E2*s.U2 + s.E3*s.U3)         // W1/E1
+	data[0][5] = 2*(-s.E2*s.U1 + s.E1*s.U2 - s.E0*s.U3)         // W1/E2
+	data[0][6] = 2*(-s.E3*s.U1 + s.E0*s.U2 + s.E1*s.U3)         // W1/E3
 	data[0][7] = 1                                              // W1/V1
 	data[1][0] = 2*(s.E2*s.E1 - s.E0*s.E3)                      // W2/U1
 	data[1][1] = 2*(s.E2*s.E2 + s.E0*s.E0 - 0.5)		    // W2/U2
 	data[1][2] = 2*(s.E2*s.E3 + s.E0*s.E1)                      // W2/U3
-	data[1][3] = 2*(-s.E3*s.U1 + 2*s.E0*s.U2 + s.E1*s.U3)       // W2/E0
-	data[1][4] = 2*(+s.E2*s.U1               + s.E0*s.U3)       // W2/E1
-	data[1][5] = 2*(+s.E1*s.U1 + 2*s.E2*s.U2 + s.E3*s.U3)       // W2/E2
-	data[1][6] = 2*(-s.E0*s.U1               + s.E2*s.U3)       // W2/E3
+	data[1][3] = 2*(-s.E3*s.U1 + s.E0*s.U2 + s.E1*s.U3)         // W2/E0
+	data[1][4] = 2*(+s.E2*s.U1 - s.E1*s.U2 + s.E0*s.U3)         // W2/E1
+	data[1][5] = 2*(+s.E1*s.U1 + s.E2*s.U2 + s.E3*s.U3)         // W2/E2
+	data[1][6] = 2*(-s.E0*s.U1 - s.E3*s.U2 + s.E2*s.U3)         // W2/E3
 	data[1][8] = 1                                              // W2/V2
 	data[2][0] = 2*(s.E3*s.E1 + s.E0*s.E2)                      // W3/U1
 	data[2][1] = 2*(s.E3*s.E2 - s.E0*s.E1)                      // W3/U2
 	data[2][2] = 2*(s.E3*s.E3 + s.E0*s.E0 - 0.5)                // W3/U3
-	data[2][3] = 2*(+s.E2*s.U1 - s.E1*s.U2 + 2*s.E0*s.U3)       // W3/E0
-	data[2][4] = 2*(+s.E3*s.U1 - s.E0*s.U2)                     // W3/E1
-	data[2][5] = 2*(+s.E0*s.U1 + s.E3*s.U2)                     // W3/E2
-	data[2][6] = 2*(+s.E1*s.U1 + s.E2*s.U2 + 2*s.E3*s.U3)       // W3/E3
+	data[2][3] = 2*(+s.E2*s.U1 - s.E1*s.U2 + s.E0*s.U3)         // W3/E0
+	data[2][4] = 2*(+s.E3*s.U1 - s.E0*s.U2 - s.E1*s.U3)         // W3/E1
+	data[2][5] = 2*(+s.E0*s.U1 + s.E3*s.U2 - s.E2*s.U3)         // W3/E2
+	data[2][6] = 2*(+s.E1*s.U1 + s.E2*s.U2 + s.E3*s.U3)         // W3/E3
 	data[2][9] = 1                                              // W3/V3
+
 	data[3][0] = 1                                              // U1/U1
 	data[4][1] = 1                                              // U2/U2
 	data[5][2] = 1                                              // U3/U3
 
-	data[6][3] = 2*(+2*s.E0*s.M1 - s.E3*s.M2 + s.E2*s.M3)       // M1/E0
-	data[6][4] = 2*(+2*s.E1*s.M1 + s.E2*s.M2 + s.E3*s.M3)       // M1/E1
-	data[6][5] = 2*(               s.E1*s.M2 + s.E0*s.M3)       // M1/E2
-	data[6][6] = 2*(             - s.E0*s.M2 + s.E1*s.M3)       // M1/E3
+	data[6][3] = 2*(+s.E0*s.M1 - s.E3*s.M2 + s.E2*s.M3)         // M1/E0
+	data[6][4] = 2*(+s.E1*s.M1 + s.E2*s.M2 + s.E3*s.M3)         // M1/E1
+	data[6][5] = 2*(-s.E2*s.M1 + s.E1*s.M2 + s.E0*s.M3)         // M1/E2
+	data[6][6] = 2*(-s.E3*s.M1 - s.E0*s.M2 + s.E1*s.M3)         // M1/E3
 	data[6][10] = 2*(s.E1*s.E1+s.E0*s.E0-0.5)                   // M1/M1
 	data[6][11] = 2*(s.E1*s.E2-s.E0*s.E3)                       // M1/M2
 	data[6][12] = 2*(s.E1*s.E3+s.E0*s.E2)                       // M1/M3
-	data[7][3] =  2*(+s.E3*s.M1 + 2*s.E0*s.M2 - s.E1*s.M3)      // M2/E0
-	data[7][4] =  2*(+s.E2*s.M1               - s.E0*s.M3)      // M2/E1
-	data[7][5] =  2*(+s.E1*s.M1 + 2*s.E2*s.M2 + s.E3*s.M3)      // M2/E2
-	data[7][6] =  2*(+s.E0*s.M1               + s.E2*s.M3)      // M2/E3
+	data[7][3] =  2*(+s.E3*s.M1 + s.E0*s.M2 - s.E1*s.M3)        // M2/E0
+	data[7][4] =  2*(+s.E2*s.M1 - s.E1*s.M2 - s.E0*s.M3)        // M2/E1
+	data[7][5] =  2*(+s.E1*s.M1 + s.E2*s.M2 + s.E3*s.M3)        // M2/E2
+	data[7][6] =  2*(+s.E0*s.M1 - s.E3*s.M2 + s.E2*s.M3)        // M2/E3
 	data[7][10] = 2*(s.E2*s.E1 + s.E0*s.E3)                     // M2/M1
 	data[7][11] = 2*(s.E2*s.E2 + s.E0*s.E0 - 0.5)               // M2/M2
 	data[7][12] = 2*(s.E2*s.E3 - s.E0*s.E1)                     // M2/M3
-	data[8][3] =  2*(-s.E2*s.M1 + s.E1*s.M2 + 2*s.E0*s.M3)      // M3/E0
-	data[8][4] =  2*(+s.E3*s.M1 + s.E0*s.M2)                    // M3/E1
-	data[8][5] =  2*(-s.E0*s.M1 + s.E3*s.M2)                    // M3/E2
-	data[8][6] =  2*(+s.E1*s.M1 + s.E2*s.M2 + 2*s.E3*s.M3)      // M3/E3
+	data[8][3] =  2*(-s.E2*s.M1 + s.E1*s.M2 + s.E0*s.M3)        // M3/E0
+	data[8][4] =  2*(+s.E3*s.M1 + s.E0*s.M2 - s.E1*s.M3)        // M3/E1
+	data[8][5] =  2*(-s.E0*s.M1 + s.E3*s.M2 - s.E2*s.M3)        // M3/E2
+	data[8][6] =  2*(+s.E1*s.M1 + s.E2*s.M2 + s.E3*s.M3)        // M3/E3
 	data[8][10] = 2*(s.E3*s.E1 - s.E0*s.E2)                     // M3/M1
 	data[8][11] = 2*(s.E3*s.E2 + s.E0*s.E1)                     // M3/M2
-	data[8][12] = 3*(s.E3*s.E3 + s.E0*s.E0 - 0.5)               // M3/M3
+	data[8][12] = 2*(s.E3*s.E3 + s.E0*s.E0 - 0.5)               // M3/M3
 
 	hh := *matrix.MakeDenseMatrixStacked(data)
 	return hh
