@@ -22,8 +22,13 @@
 
         .line {
             fill: none;
-            stroke: steelblue;
             stroke-width: 1.5px;
+        }
+
+        .pline {
+            fill: none;
+            stroke-width: 1.5px;
+            stroke-dasharray: "5,20";
         }
 
         .area {
@@ -37,8 +42,8 @@
 <script>
 
     var DEG = 57.295780,
-            actual, predict, kalman, variance, control, measure,
-            remaining = 6;
+            actual, predict, kalman, variance, control, measure, pmeasure,
+            remaining = 7;
 
     var margin = {top: 5, right: 35, bottom: 20, left: 40},
             width = 450 - margin.left - margin.right,
@@ -133,16 +138,6 @@
                 .attr("d", area)
                 .style("fill", color(v));
 
-//        lines.append("path")
-//                .attr("class", "line")
-//                .attr("d", line("upper"))
-//                .style("stroke", color(v));
-//
-//        lines.append("path")
-//                .attr("class", "line")
-//                .attr("d", line("lower"))
-//                .style("stroke", color(v));
-
         lines.append("path")
                 .attr("class", "line")
                 .attr("d", line("actual"))
@@ -182,15 +177,21 @@
         } else {
             dat = control;
         }
+
         var data = dat.map(function(d, i) {
             if (["P", "Q", "R"].indexOf(v) > -1) {
                 k = DEG;
             } else {
                 k = 1;
             }
-            return {T: +d.T,
-                y: k*d[v]
+            var r = {T: +d.T,
+                y: k*d[v],
+                py: k*d[v]
             };
+            if (dat === measure) {
+                r['py'] = +pmeasure[i][v];
+            }
+            return r;
         });
 
         var x = d3.scale.linear()
@@ -201,9 +202,14 @@
 
         var y = d3.scale.linear()
                 .range([height, 0])
-                .domain(d3.extent(data, function(d) {
-                    return +d.y;
-                }));
+                .domain([
+                    d3.min(data, function(d) {
+                        return d3.min([+d.y, +d.py]);
+                }),
+                    d3.max(data, function(d) {
+                        return d3.max([+d.y, +d.py]);
+                    })]
+                );
 
         var xAxis = d3.svg.axis()
                 .scale(x)
@@ -217,6 +223,11 @@
                     .interpolate("basis")
                     .x(function (d) { return x(d.T); })
                     .y(function (d) { return y(d.y); });
+
+        var pline = d3.svg.line()
+                .interpolate("basis")
+                .x(function (d) { return x(d.T); })
+                .y(function (d) { return y(d.py); });
 
         var chart = d3.select("body").append("svg")
                 .attr("width", width + margin.left + margin.right)
@@ -247,6 +258,12 @@
                 .attr("class", "line")
                 .attr("d", line)
                 .style("stroke", color(v));
+
+        lines.append("path")
+                .attr("class", "pline")
+                .attr("d", pline)
+                .style("stroke", color(v))
+                .style("stroke-dasharray", "5,10");
 
         chart.append("text")
                 .attr("x", width/2)
@@ -296,6 +313,13 @@
         if (error) throw error;
 
         measure = data;
+        if (!--remaining) makeAll();
+    });
+
+    d3.csv("k_predmeas.csv", function (error, data) {
+        if (error) throw error;
+
+        pmeasure = data;
         if (!--remaining) makeAll();
     });
 

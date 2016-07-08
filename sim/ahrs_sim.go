@@ -413,6 +413,8 @@ func main() {
 		"T", "P", "Q", "R", "Ax", "Ay", "Az")
 	lMeas := NewAHRSLogger("k_meas.csv",
 		"T", "Wx", "Wy", "Wz", "Mx", "My", "Mz", "Ux", "Uy", "Uz")
+	lPMeas := NewAHRSLogger("k_predmeas.csv",
+		"T", "Wx", "Wy", "Wz", "Mx", "My", "Mz", "Ux", "Uy", "Uz")
 
 	switch scenario {
 	case "takeoff":
@@ -470,6 +472,9 @@ func main() {
 		}
 		addMeasurementNoise(&m, gpsNoise, 0, 0)
 		lMeas.Log(float64(m.T)/1000, m.W1, m.W2, m.W3, m.M1, m.M2, m.M3, m.U1, m.U2, m.U3)
+
+		pm := s.PredictMeasurement()
+		lPMeas.Log(float64(m.T)/1000, pm.W1, pm.W2, pm.W3, pm.M1, pm.M2, pm.M3, pm.U1, pm.U2, pm.U3)
 
 		// Update stage of Kalman filter
 		if t>tNextUpdate-1e-9 {

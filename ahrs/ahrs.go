@@ -171,7 +171,7 @@ func (s *State) Predict(c Control, n State) {
 
 // Update applies the Kalman filter corrections given the measurements
 func (s *State) Update(m Measurement, n Measurement) {
-	z := s.predictMeasurement()
+	z := s.PredictMeasurement()
 	y := matrix.MakeDenseMatrix([]float64{
 		m.W1 - z.W1, m.W2 - z.W2, m.W3 - z.W3,
 		m.U1 - z.U1, m.U2 - z.U2, m.U3 - z.U3,
@@ -206,9 +206,10 @@ func (s *State) Update(m Measurement, n Measurement) {
 	s.M3 += su.Get(12, 0)
 	s.T = m.T
 	s.M = *matrix.Product(matrix.Difference(matrix.Eye(13), matrix.Product(kk, &h)), &s.M)
+	//fmt.Println(kk)
 }
 
-func (s *State) predictMeasurement() Measurement {
+func (s *State) PredictMeasurement() Measurement {
 	var m Measurement
 
 	m.W1 = s.V1 +
