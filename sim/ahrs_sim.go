@@ -215,41 +215,47 @@ func (s *Situation) control(t float64) (ahrs.Control, error) {
 }
 
 // Determine ahrs.Measurement variables from a Situation definition at a given time
-func (s *Situation) measurement(t float64) (ahrs.Measurement, error) {
+func (s *Situation) measurement(t float64, wValid, uValid, mValid bool) (ahrs.Measurement, error) {
 	if t < s.t[0] || t > s.t[len(s.t)-1] {
 		return ahrs.Measurement{}, errors.New("requested time is outside of scenario")
 	}
 	x, _ := s.interpolate(t)
 
-	m := ahrs.Measurement{
-		W1: x.V1 +
-			x.U1*2*(+x.E0*x.E0 + x.E1*x.E1 - 0.5) +
-			x.U2*2*(+x.E0*x.E3 + x.E1*x.E2) +
-			x.U3*2*(-x.E0*x.E2 + x.E1*x.E3),
-		W2: x.V2 +
-			x.U1*2*(-x.E0*x.E3 + x.E2*x.E1) +
-			x.U2*2*(+x.E0*x.E0 + x.E2*x.E2 - 0.5) +
-			x.U3*2*(+x.E0*x.E1 + x.E2*x.E3),
-		W3: x.V3 +
-			x.U1*2*(+x.E0*x.E2 + x.E3*x.E1) +
-			x.U2*2*(-x.E0*x.E1 + x.E3*x.E2) +
-			x.U3*2*(+x.E0*x.E0 + x.E3*x.E3 - 0.5),
-		M1: x.M1*2*(+x.E0*x.E0 + x.E1*x.E1 - 0.5) +
-			x.M2*2*(-x.E0*x.E3 + x.E1*x.E2) +
-			x.M3*2*(+x.E0*x.E2 + x.E1*x.E3),
-		M2: x.M1*2*(+x.E0*x.E3 + x.E2*x.E1) +
-			x.M2*2*(+x.E0*x.E0 + x.E2*x.E2 - 0.5) +
-			x.M3*2*(-x.E0*x.E1 + x.E2*x.E3),
-		M3: x.M1*2*(-x.E0*x.E2 + x.E3*x.E1) +
-			x.M2*2*(+x.E0*x.E1 + x.E3*x.E2) +
-			x.M3*2*(+x.E0*x.E0 + x.E3*x.E3 - 0.5),
-		// No airspeed measurements available yet
-		U1: 0*x.U1,
-		U2: 0,
-		U3: 0,
-		T:  uint32(t*1000 + 0.5),
+	var m = new(ahrs.Measurement)
+	if wValid {
+		m.WValid = true
+		m.W1 = x.V1 +
+			x.U1 * 2 * (+x.E0 * x.E0 + x.E1 * x.E1 - 0.5) +
+			x.U2 * 2 * (+x.E0 * x.E3 + x.E1 * x.E2) +
+			x.U3 * 2 * (-x.E0 * x.E2 + x.E1 * x.E3)
+		m.W2 = x.V2 +
+			x.U1 * 2 * (-x.E0 * x.E3 + x.E2 * x.E1) +
+			x.U2 * 2 * (+x.E0 * x.E0 + x.E2 * x.E2 - 0.5) +
+			x.U3 * 2 * (+x.E0 * x.E1 + x.E2 * x.E3)
+		m.W3 = x.V3 +
+			x.U1 * 2 * (+x.E0 * x.E2 + x.E3 * x.E1) +
+			x.U2 * 2 * (-x.E0 * x.E1 + x.E3 * x.E2) +
+			x.U3 * 2 * (+x.E0 * x.E0 + x.E3 * x.E3 - 0.5)
 	}
-	return m, nil
+	if uValid {
+		m.UValid = true
+		m.U1 = x.U1
+		// ASI doesn't read U2 or U3, they are here only to bias toward coordinated flight
+	}
+	if mValid {
+		m.MValid = true
+		m.M1 = x.M1 * 2 * (+x.E0 * x.E0 + x.E1 * x.E1 - 0.5) +
+			x.M2 * 2 * (-x.E0 * x.E3 + x.E1 * x.E2) +
+			x.M3 * 2 * (+x.E0 * x.E2 + x.E1 * x.E3)
+		m.M2 = x.M1 * 2 * (+x.E0 * x.E3 + x.E2 * x.E1) +
+			x.M2 * 2 * (+x.E0 * x.E0 + x.E2 * x.E2 - 0.5) +
+			x.M3 * 2 * (-x.E0 * x.E1 + x.E2 * x.E3)
+		m.M3 = x.M1 * 2 * (-x.E0 * x.E2 + x.E3 * x.E1) +
+			x.M2 * 2 * (+x.E0 * x.E1 + x.E3 * x.E2) +
+			x.M3 * 2 * (+x.E0 * x.E0 + x.E3 * x.E3 - 0.5)
+	}
+	m.T =  uint32(t*1000 + 0.5)
+	return *m, nil
 }
 
 // addControlNoise adds Gaussian sensor noise to the control struct
@@ -311,7 +317,7 @@ var sitTurnDef = Situation{
 	v3:     []float64{0, 0, 0, 0, 0, 0},
 	m1:     []float64{0, 0, 0, 0, 0, 0},
 	m2:     []float64{0, 0, 0, 0, 0, 0},
-	m3:     []float64{0, 0, 0, 0, 0, 0},
+	m3:     []float64{1, 1, 1, 1, 1, 1},
 }
 
 var bank1 = math.Atan((2*pi*95) / (ahrs.G * 120))
@@ -369,6 +375,7 @@ func main() {
 	// Handle some shell arguments
 	var (
 		pdt, udt, gyroNoise, accelNoise, gpsNoise  float64
+		gpsInop, magInop, asiInop bool
 		scenario 	string
 		sit 		Situation
 	)
@@ -384,6 +391,12 @@ func main() {
 		accelNoiseUsage = "Amount of noise to add to accel measurements, G"
 		defaultGPSNoise = 0.0
 		gpsNoiseUsage = "Amount of noise to add to GPS speed measurements, kt"
+		defaultGPSInop = false
+		gpsInopUsage = "Make the GPS inoperative"
+		defaultASIInop = true
+		asiInopUsage = "Make the Airspeed sensor inoperative"
+		defaultMagInop = false
+		magInopUsage = "Make the Magnetometer inoperative"
 		defaultScenario = "takeoff"
 		scenarioUsage = "Scenario to use: \"takeoff\" or \"turn\""
 	)
@@ -396,10 +409,16 @@ func main() {
 	flag.Float64Var(&accelNoise, "a", defaultAccelNoise, accelNoiseUsage)
 	flag.Float64Var(&gpsNoise, "gps-noise", defaultGPSNoise, gpsNoiseUsage)
 	flag.Float64Var(&gpsNoise, "n", defaultGPSNoise, gpsNoiseUsage)
+	flag.BoolVar(&gpsInop, "w", defaultGPSInop, gpsInopUsage)
+	flag.BoolVar(&asiInop, "u", defaultASIInop, asiInopUsage)
+	flag.BoolVar(&magInop, "m", defaultMagInop, magInopUsage)
 	flag.StringVar(&scenario, "scenario", defaultScenario, scenarioUsage)
 	flag.StringVar(&scenario, "s", defaultScenario, scenarioUsage)
 	flag.Parse()
 
+	fmt.Printf("GPS Inop: %v\n", gpsInop)
+	fmt.Printf("ASI Inop: %v\n", asiInop)
+	fmt.Printf("Mag Inop: %v\n", magInop)
 	// Files to save data to for analysis
 	lActual := NewAHRSLogger("k_state.csv",
 		"T", "Ux", "Uy", "Uz", "Phi", "Theta", "Psi", "Vx", "Vy", "Vz", "Mx", "My", "Mz")
@@ -427,7 +446,7 @@ func main() {
 
 	// Initialize Kalman with a sensible starting state
 	var s = ahrs.State{}
-	m, _ := sit.measurement(sit.t[0])
+	m, _ := sit.measurement(sit.t[0], !gpsInop, !asiInop, !magInop)
 	s.Initialize(m, ahrs.Control{}, ahrs.State{})
 
 	fmt.Println("Running Simulation")
@@ -465,7 +484,7 @@ func main() {
 			s.V1, s.V2, s.V3, s.M1, s.M2, s.M3)
 
 		// Take sensor measurements
-		m, err := sit.measurement(t)
+		m, err := sit.measurement(t, !gpsInop, !asiInop, !magInop)
 		if err != nil {
 			fmt.Printf("Error calculating measurement value at time %f: %s", t, err.Error())
 			panic(err)
@@ -479,7 +498,7 @@ func main() {
 		// Update stage of Kalman filter
 		if t>tNextUpdate-1e-9 {
 			tNextUpdate += udt
-			s.Update(m, ahrs.VM)
+			s.Update(m)
 		}
 		phi, theta, psi = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
 		dphi, dtheta, dpsi := VarFromQuaternion(s.E0, s.E1, s.E2, s.E3,

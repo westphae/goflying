@@ -36,6 +36,7 @@ type Control struct {
 // Measurement holds the measurements used for updating the Kalman filter: groundspeed, true airspeed, magnetometer
 // Note: airspeed and magnetometer may not be available until appropriate sensors are working
 type Measurement struct { // Order here also defines order in the matrices below
+	WValid, UValid, MValid bool // Do we have valid GPS, airspeed and magnetometer readings?
 	W1, W2, W3 float64 // Quaternion holding GPS speed in N/S, E/W and U/D directions, knots, latlong axes, earth (inertial) frame
 	U1, U2, U3 float64 // Quaternion holding measured airspeed, knots, aircraft (accelerated) frame
 	M1, M2, M3 float64 // Quaternion holding magnetometer readings, aircraft (accelerated) frame
@@ -55,12 +56,11 @@ var VX = State{
 	T: 1000,
 }
 
-// VM represents measurement uncertainties
-var VM = Measurement{
-	W1: 0.25, W2: 0.25, W3: 0.1, // GPS uncertainty is small
-	U1: 999, U2: 999, U3: 999, // Airspeed isn't measured yet
-	M1: 999, M2: 999, M3: 999, // Magnetometer isn't measured yet
-	T: 0,
+// VM represents measurement uncertainties, assuming sensor is present
+var vm = Measurement{
+	W1: 0.2, W2: 0.2, W3: 0.2, // GPS uncertainty is small
+	U1: 2, U2: 25, U3: 25, // Airspeed isn't measured yet; U2 & U3 serve to bias toward coordinated flight
+	M1: 0.01, M2: 0.01, M3: 0.01, //TODO Put reasonable magnetometer values here once working
 }
 
 // normalize normalizes the E quaternion in State s
@@ -75,37 +75,51 @@ func (s *State) normalize() {
 // Initialize the state at the start of the Kalman filter, based on current
 // measurements and controls
 func (s *State) Initialize(m Measurement, c Control, n State) {
-	s.U1 = math.Sqrt(m.W1*m.W1 + m.W2*m.W2)
-	if s.U1 > 0 {
+	//TODO: If m.UValid then calculate correct airspeed and windspeed;
+	// for now just treat the case !m.UValid
+	if m.WValid {
+		s.U1 = math.Sqrt(m.W1 * m.W1 + m.W2 * m.W2) // Best guess at initial airspeed is initial groundspeed
+	} else {
+		s.U1 = 0
+	}
+	s.U2, s.U3 = 0, 0
+	s.E1, s.E2 = 0, 0
+	if m.WValid && (s.U1 > 0) {	// Best guess at initial heading is initial track
+		// Simplified half-angle formulae
 		s.E0, s.E3 = math.Sqrt((s.U1 + m.W1) / (2 * s.U1)), math.Sqrt((s.U1 - m.W1) / (2 * s.U1))
 		if m.W2 > 0 {
 			s.E3 *= -1
 		}
 		s.Valid = true
-	} else {
-		s.E0 = 1
+	} else {	// If no groundspeed then no idea which direction we're pointing; assume north
+		s.E0, s.E3 = 1, 0
 		s.Valid = false
 	}
-	s.M1 =  2*m.M1*(s.E1*s.E1+s.E0*s.E0-0.5) +
-		2*m.M2*(s.E1*s.E2+s.E0*s.E3) +
-		2*m.M3*(s.E1*s.E3-s.E0*s.E2)
-	s.M2 =  2*m.M1*(s.E2*s.E1-s.E0*s.E3) +
-		2*m.M2*(s.E2*s.E2+s.E0*s.E0-0.5) +
-		2*m.M3*(s.E2*s.E3+s.E0*s.E1)
-	s.M3 =  2*m.M1*(s.E3*s.E1+s.E0*s.E2) +
-		2*m.M2*(s.E3*s.E2-s.E0*s.E1) +
-		2*m.M3*(s.E3*s.E3+s.E0*s.E0-0.5)
+	s.V1, s.V2, s.V3 = 0, 0, 0	// Best guess at initial windspeed is zero (actually headwind...)
+	if m.MValid {
+		s.M1 = 2 * m.M1 * (s.E1 * s.E1 + s.E0 * s.E0 - 0.5) +
+		2 * m.M2 * (s.E1 * s.E2 + s.E0 * s.E3) +
+		2 * m.M3 * (s.E1 * s.E3 - s.E0 * s.E2)
+		s.M2 = 2 * m.M1 * (s.E2 * s.E1 - s.E0 * s.E3) +
+		2 * m.M2 * (s.E2 * s.E2 + s.E0 * s.E0 - 0.5) +
+		2 * m.M3 * (s.E2 * s.E3 + s.E0 * s.E1)
+		s.M3 = 2 * m.M1 * (s.E3 * s.E1 + s.E0 * s.E2) +
+		2 * m.M2 * (s.E3 * s.E2 - s.E0 * s.E1) +
+		2 * m.M3 * (s.E3 * s.E3 + s.E0 * s.E0 - 0.5)
+	}
 	s.M = *matrix.Diagonal([]float64{
-		10 * 10, 0.5 * 0.5, 0.5 * 0.5, // Reasonable for a GA aircraft
-		0.1, 0.1, 0.1, 0.1, // Initial orientation is highly uncertain
-		10 * 10, 10 * 10, 1 * 1, // Windspeed is an unknown
-		1, 1, 1, // Magnetometer is an unknown
+		20*20, 1*1, 1*1,
+		0.1*0.1, 0.1*0.1, 0.1*0.1, 0.1*0.1,
+		20*20, 20*20, 2*2,
+		0.01*0.01, 0.01*0.01, 0.01*0.01,
 	})
-	s.Calibrate(c)
+	if s.Valid {
+		s.Calibrate(c)
+	}
 }
 
 // Calibrate performs a calibration, determining the quaternion to rotate it to
-// be effectively level
+// be effectively level and pointing forward.  Must be run when in an unaccelerated state.
 func (s *State) Calibrate(c Control) (bool) {
 	//TODO: Do the calibration to determine the Fi
 	// Persist last known to storage
@@ -170,26 +184,56 @@ func (s *State) Predict(c Control, n State) {
 }
 
 // Update applies the Kalman filter corrections given the measurements
-func (s *State) Update(m Measurement, n Measurement) {
+func (s *State) Update(m Measurement) {
 	z := s.PredictMeasurement()
-	y := matrix.MakeDenseMatrix([]float64{
+	y := []float64{
 		m.W1 - z.W1, m.W2 - z.W2, m.W3 - z.W3,
 		m.U1 - z.U1, m.U2 - z.U2, m.U3 - z.U3,
 		m.M1 - z.M1, m.M2 - z.M2, m.M3 - z.M3,
-	}, 9, 1)
+	}
 	h := s.calcJacobianMeasurement()
-	nn := matrix.Diagonal([]float64{
-		n.W1 * n.W1, n.W2 * n.W2, n.W3 * n.W3,
-		n.U1 * n.U1, n.U2 * n.U2, n.U3 * n.U3,
-		n.M1 * n.M1, n.M2 * n.M2, n.M3 * n.M3,
-	})
-	ss := *matrix.Sum(matrix.Product(&h, matrix.Product(&s.M, h.Transpose())), nn)
+	var mnoise = make([]float64, 9)
+	if m.WValid {
+		mnoise[0] = vm.W1*vm.W1
+		mnoise[1] = vm.W2*vm.W2
+		mnoise[2] = vm.W3*vm.W3
+	} else {
+		y[0] = 0
+		y[1] = 0
+		y[2] = 0
+		mnoise[0] = 1e9
+		mnoise[1] = 1e9
+		mnoise[2] = 1e9
+	}
+	if m.UValid {
+		mnoise[3] = vm.U1*vm.U1
+	} else {
+		y[3] = 0
+		mnoise[3] = 1e9
+	}
+	// U2, U3 are just here to bias toward coordinated flight
+	mnoise[4] = vm.U2*vm.U2
+	mnoise[5] = vm.U3*vm.U3
+	if m.MValid {
+		mnoise[6] = vm.M1*vm.M1
+		mnoise[7] = vm.M2*vm.M2
+		mnoise[8] = vm.M3*vm.M3
+	} else {
+		y[6] = 0
+		y[7] = 0
+		y[8] = 0
+		mnoise[6] = 1e9
+		mnoise[7] = 1e9
+		mnoise[8] = 1e9
+	}
+	ss := *matrix.Sum(matrix.Product(&h, matrix.Product(&s.M, h.Transpose())), matrix.Diagonal(mnoise))
+
 	m2, err := ss.Inverse()
 	if err != nil {
 		fmt.Println("Can't invert Kalman gain matrix")
 	}
 	kk := matrix.Product(&s.M, matrix.Product(h.Transpose(), m2))
-	su := matrix.Product(kk, y)
+	su := matrix.Product(kk, matrix.MakeDenseMatrix(y, 9, 1))
 	s.U1 += su.Get(0, 0)
 	s.U2 += su.Get(1, 0)
 	s.U3 += su.Get(2, 0)
