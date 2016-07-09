@@ -56,7 +56,7 @@ var VX = State{
 	T: 1000,
 }
 
-// VM represents measurement uncertainties, assuming sensor is present
+// vm represents measurement uncertainties, assuming sensor is present
 var vm = Measurement{
 	W1: 0.2, W2: 0.2, W3: 0.2, // GPS uncertainty is small
 	U1: 2, U2: 25, U3: 25, // Airspeed isn't measured yet; U2 & U3 serve to bias toward coordinated flight
@@ -91,21 +91,24 @@ func (s *State) Initialize(m Measurement, c Control, n State) {
 			s.E3 *= -1
 		}
 		s.Valid = true
-	} else {	// If no groundspeed then no idea which direction we're pointing; assume north
-		s.E0, s.E3 = 1, 0
+	} else if !m.WValid {	// If no groundspeed then no idea which direction we're pointing; assume north
+		s.E0, s.E3 = math.Sqrt2/2, -math.Sqrt2/2
+		s.Valid = true
+	} else {
+		s.E0, s.E3 = math.Sqrt2/2, -math.Sqrt2/2
 		s.Valid = false
 	}
 	s.V1, s.V2, s.V3 = 0, 0, 0	// Best guess at initial windspeed is zero (actually headwind...)
 	if m.MValid {
 		s.M1 = 2 * m.M1 * (s.E1 * s.E1 + s.E0 * s.E0 - 0.5) +
-		2 * m.M2 * (s.E1 * s.E2 + s.E0 * s.E3) +
-		2 * m.M3 * (s.E1 * s.E3 - s.E0 * s.E2)
+			2 * m.M2 * (s.E1 * s.E2 + s.E0 * s.E3) +
+			2 * m.M3 * (s.E1 * s.E3 - s.E0 * s.E2)
 		s.M2 = 2 * m.M1 * (s.E2 * s.E1 - s.E0 * s.E3) +
-		2 * m.M2 * (s.E2 * s.E2 + s.E0 * s.E0 - 0.5) +
-		2 * m.M3 * (s.E2 * s.E3 + s.E0 * s.E1)
+			2 * m.M2 * (s.E2 * s.E2 + s.E0 * s.E0 - 0.5) +
+			2 * m.M3 * (s.E2 * s.E3 + s.E0 * s.E1)
 		s.M3 = 2 * m.M1 * (s.E3 * s.E1 + s.E0 * s.E2) +
-		2 * m.M2 * (s.E3 * s.E2 - s.E0 * s.E1) +
-		2 * m.M3 * (s.E3 * s.E3 + s.E0 * s.E0 - 0.5)
+			2 * m.M2 * (s.E3 * s.E2 - s.E0 * s.E1) +
+			2 * m.M3 * (s.E3 * s.E3 + s.E0 * s.E0 - 0.5)
 	}
 	s.M = *matrix.Diagonal([]float64{
 		20*20, 1*1, 1*1,
