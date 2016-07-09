@@ -84,7 +84,7 @@ func (s *State) Initialize(m Measurement, c Control, n State) {
 	}
 	s.U2, s.U3 = 0, 0
 	s.E1, s.E2 = 0, 0
-	if m.WValid && (s.U1 > 0) {	// Best guess at initial heading is initial track
+	if m.WValid && s.U1 > 0 {	// Best guess at initial heading is initial track
 		// Simplified half-angle formulae
 		s.E0, s.E3 = math.Sqrt((s.U1 + m.W1) / (2 * s.U1)), math.Sqrt((s.U1 - m.W1) / (2 * s.U1))
 		if m.W2 > 0 {

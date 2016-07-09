@@ -278,18 +278,16 @@ func addControlNoise(c *ahrs.Control, gn, an float64) {
 // gps noise stdev is in kt
 // airspeed noise is in kt
 // magnetometer noise is in uH
-func addMeasurementNoise(m *ahrs.Measurement, sn, un, mn float64) {
-	if sn>0 {
-		m.W1 += sn * rand.NormFloat64()
-		m.W2 += sn * rand.NormFloat64()
-		m.W3 += sn * rand.NormFloat64()
+func addMeasurementNoise(m *ahrs.Measurement, wn, un, mn float64) {
+	if m.WValid && wn >0 {
+		m.W1 += wn * rand.NormFloat64()
+		m.W2 += wn * rand.NormFloat64()
+		m.W3 += wn * rand.NormFloat64()
 	}
-	if un>0 {
+	if m.UValid && un>0 {
 		m.U1 += un * rand.NormFloat64()
-		m.U2 += un * rand.NormFloat64()
-		m.U3 += un * rand.NormFloat64()
 	}
-	if mn>0 {
+	if m.MValid && mn>0 {
 		m.M1 += mn * rand.NormFloat64()
 		m.M2 += mn * rand.NormFloat64()
 		m.M3 += mn * rand.NormFloat64()
@@ -374,7 +372,7 @@ func (l *AHRSLogger) Close() {
 func main() {
 	// Handle some shell arguments
 	var (
-		pdt, udt, gyroNoise, accelNoise, gpsNoise  float64
+		pdt, udt, gyroNoise, accelNoise, gpsNoise, asiNoise, magNoise  float64
 		gpsInop, magInop, asiInop bool
 		scenario 	string
 		sit 		Situation
@@ -391,6 +389,10 @@ func main() {
 		accelNoiseUsage = "Amount of noise to add to accel measurements, G"
 		defaultGPSNoise = 0.0
 		gpsNoiseUsage = "Amount of noise to add to GPS speed measurements, kt"
+		defaultASINoise = 0.0
+		asiNoiseUsage = "Amount of noise to add to airspeed measurements, kts"
+		defaultMagNoise = 0.0
+		magNoiseUsage = "Amount of noise to add to magnetometer measurements, uT"
 		defaultGPSInop = false
 		gpsInopUsage = "Make the GPS inoperative"
 		defaultASIInop = true
@@ -409,6 +411,10 @@ func main() {
 	flag.Float64Var(&accelNoise, "a", defaultAccelNoise, accelNoiseUsage)
 	flag.Float64Var(&gpsNoise, "gps-noise", defaultGPSNoise, gpsNoiseUsage)
 	flag.Float64Var(&gpsNoise, "n", defaultGPSNoise, gpsNoiseUsage)
+	flag.Float64Var(&asiNoise, "asi-noise", defaultASINoise, asiNoiseUsage)
+	flag.Float64Var(&asiNoise, "v", defaultASINoise, asiNoiseUsage)
+	flag.Float64Var(&magNoise, "mag-noise", defaultMagNoise, magNoiseUsage)
+	flag.Float64Var(&magNoise, "b", defaultMagNoise, magNoiseUsage)
 	flag.BoolVar(&gpsInop, "w", defaultGPSInop, gpsInopUsage)
 	flag.BoolVar(&asiInop, "u", defaultASIInop, asiInopUsage)
 	flag.BoolVar(&magInop, "m", defaultMagInop, magInopUsage)
@@ -489,7 +495,7 @@ func main() {
 			fmt.Printf("Error calculating measurement value at time %f: %s", t, err.Error())
 			panic(err)
 		}
-		addMeasurementNoise(&m, gpsNoise, 0, 0)
+		addMeasurementNoise(&m, gpsNoise, asiNoise, magNoise)
 		lMeas.Log(float64(m.T)/1000, m.W1, m.W2, m.W3, m.M1, m.M2, m.M3, m.U1, m.U2, m.U3)
 
 		pm := s.PredictMeasurement()
