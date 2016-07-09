@@ -17,6 +17,7 @@ import (
 
 	"github.com/skelterjohn/go.matrix"
 	"github.com/westphae/goflying/ahrs"
+	"strconv"
 )
 
 const pi = math.Pi
@@ -176,7 +177,13 @@ func (s *Situation) derivative(t float64) (ahrs.State, error) {
 }
 
 // Determine ahrs.Control variables from a Situation definition at a given time
-func (s *Situation) control(t float64) (ahrs.Control, error) {
+// gyro noise (Gaussian stdev) and bias are in deg/s
+// accel noise and bias are in G
+func (s *Situation) control(
+		t float64,
+		gn, an float64,
+		gb, ab []float64,
+	) (ahrs.Control, error) {
 	x, erri := s.interpolate(t)
 	dx, errd := s.derivative(t)
 	if erri != nil || errd != nil {
@@ -203,19 +210,26 @@ func (s *Situation) control(t float64) (ahrs.Control, error) {
 	y3 := -2*(+x.E0*x.E0 + x.E3*x.E3 - 0.5) + (-dx.U3 + h1*x.U2 - h2*x.U1)/ahrs.G
 
 	c := ahrs.Control{
-		H1: h1*f11 + h2*f12 + h3*f13,
-		H2: h1*f21 + h2*f22 + h3*f23,
-		H3: h1*f31 + h2*f32 + h3*f33,
-		A1: y1*f11 + y2*f12 + y3*f13,
-		A2: y1*f21 + y2*f22 + y3*f23,
-		A3: y1*f31 + y2*f32 + y3*f33,
+		H1: h1*f11 + h2*f12 + h3*f13 + gb[0] + gn * rand.NormFloat64(),
+		H2: h1*f21 + h2*f22 + h3*f23 + gb[1] + gn * rand.NormFloat64(),
+		H3: h1*f31 + h2*f32 + h3*f33 + gb[2] + gn * rand.NormFloat64(),
+		A1: y1*f11 + y2*f12 + y3*f13 + ab[0] + an * rand.NormFloat64(),
+		A2: y1*f21 + y2*f22 + y3*f23 + ab[1] + an * rand.NormFloat64(),
+		A3: y1*f31 + y2*f32 + y3*f33 + ab[2] + an * rand.NormFloat64(),
 		T:  uint32(t*1000 + 0.5),
 	}
 	return c, nil
 }
 
 // Determine ahrs.Measurement variables from a Situation definition at a given time
-func (s *Situation) measurement(t float64, wValid, uValid, mValid bool) (ahrs.Measurement, error) {
+// gps noise (gaussian stdev) and bias are in kt
+// airspeed noise and bias are in kt
+// magnetometer noise and bias are in uT
+func (s *Situation) measurement(
+		t float64,
+		wValid, uValid, mValid bool,
+		wn, un, mn, ab float64, mb []float64,
+	) (ahrs.Measurement, error) {
 	if t < s.t[0] || t > s.t[len(s.t)-1] {
 		return ahrs.Measurement{}, errors.New("requested time is outside of scenario")
 	}
@@ -224,74 +238,41 @@ func (s *Situation) measurement(t float64, wValid, uValid, mValid bool) (ahrs.Me
 	var m = new(ahrs.Measurement)
 	if wValid {
 		m.WValid = true
-		m.W1 = x.V1 +
-			x.U1 * 2 * (+x.E0 * x.E0 + x.E1 * x.E1 - 0.5) +
+		m.W1 = x.U1 * 2 * (+x.E0 * x.E0 + x.E1 * x.E1 - 0.5) +
 			x.U2 * 2 * (+x.E0 * x.E3 + x.E1 * x.E2) +
-			x.U3 * 2 * (-x.E0 * x.E2 + x.E1 * x.E3)
-		m.W2 = x.V2 +
-			x.U1 * 2 * (-x.E0 * x.E3 + x.E2 * x.E1) +
+			x.U3 * 2 * (-x.E0 * x.E2 + x.E1 * x.E3) +
+			x.V1 + wn * rand.NormFloat64()
+		m.W2 = x.U1 * 2 * (-x.E0 * x.E3 + x.E2 * x.E1) +
 			x.U2 * 2 * (+x.E0 * x.E0 + x.E2 * x.E2 - 0.5) +
-			x.U3 * 2 * (+x.E0 * x.E1 + x.E2 * x.E3)
-		m.W3 = x.V3 +
-			x.U1 * 2 * (+x.E0 * x.E2 + x.E3 * x.E1) +
+			x.U3 * 2 * (+x.E0 * x.E1 + x.E2 * x.E3) +
+			x.V2 + wn * rand.NormFloat64()
+		m.W3 = x.U1 * 2 * (+x.E0 * x.E2 + x.E3 * x.E1) +
 			x.U2 * 2 * (-x.E0 * x.E1 + x.E3 * x.E2) +
-			x.U3 * 2 * (+x.E0 * x.E0 + x.E3 * x.E3 - 0.5)
+			x.U3 * 2 * (+x.E0 * x.E0 + x.E3 * x.E3 - 0.5) +
+			x.V3 + wn * rand.NormFloat64()
 	}
 	if uValid {
 		m.UValid = true
-		m.U1 = x.U1
+		m.U1 = x.U1 + ab + un * rand.NormFloat64()
 		// ASI doesn't read U2 or U3, they are here only to bias toward coordinated flight
 	}
 	if mValid {
 		m.MValid = true
 		m.M1 = x.M1 * 2 * (+x.E0 * x.E0 + x.E1 * x.E1 - 0.5) +
 			x.M2 * 2 * (-x.E0 * x.E3 + x.E1 * x.E2) +
-			x.M3 * 2 * (+x.E0 * x.E2 + x.E1 * x.E3)
+			x.M3 * 2 * (+x.E0 * x.E2 + x.E1 * x.E3) +
+			mb[0] + mn * rand.NormFloat64()
 		m.M2 = x.M1 * 2 * (+x.E0 * x.E3 + x.E2 * x.E1) +
 			x.M2 * 2 * (+x.E0 * x.E0 + x.E2 * x.E2 - 0.5) +
-			x.M3 * 2 * (-x.E0 * x.E1 + x.E2 * x.E3)
+			x.M3 * 2 * (-x.E0 * x.E1 + x.E2 * x.E3) +
+			mb[1] + mn * rand.NormFloat64()
 		m.M3 = x.M1 * 2 * (-x.E0 * x.E2 + x.E3 * x.E1) +
 			x.M2 * 2 * (+x.E0 * x.E1 + x.E3 * x.E2) +
-			x.M3 * 2 * (+x.E0 * x.E0 + x.E3 * x.E3 - 0.5)
+			x.M3 * 2 * (+x.E0 * x.E0 + x.E3 * x.E3 - 0.5) +
+			mb[2] + mn * rand.NormFloat64()
 	}
 	m.T =  uint32(t*1000 + 0.5)
 	return *m, nil
-}
-
-// addControlNoise adds Gaussian sensor noise to the control struct
-// gyro noise stdev is in deg/s
-// accel noise stdev is in kt/s
-func addControlNoise(c *ahrs.Control, gn, an float64) {
-	if gn>0 {
-		c.H1 += gn * rand.NormFloat64()
-		c.H2 += gn * rand.NormFloat64()
-		c.H3 += gn * rand.NormFloat64()
-	}
-	if an>0 {
-		c.A1 += an * rand.NormFloat64()
-		c.A2 += an * rand.NormFloat64()
-		c.A3 += an * rand.NormFloat64()
-	}
-}
-
-// addMeasurementNoise adds Gaussian sensor noise to the measurement struct
-// gps noise stdev is in kt
-// airspeed noise is in kt
-// magnetometer noise is in uH
-func addMeasurementNoise(m *ahrs.Measurement, wn, un, mn float64) {
-	if m.WValid && wn >0 {
-		m.W1 += wn * rand.NormFloat64()
-		m.W2 += wn * rand.NormFloat64()
-		m.W3 += wn * rand.NormFloat64()
-	}
-	if m.UValid && un>0 {
-		m.U1 += un * rand.NormFloat64()
-	}
-	if m.MValid && mn>0 {
-		m.M1 += mn * rand.NormFloat64()
-		m.M2 += mn * rand.NormFloat64()
-		m.M3 += mn * rand.NormFloat64()
-	}
 }
 
 // Data to define a piecewise-linear turn, with entry and exit
@@ -369,14 +350,32 @@ func (l *AHRSLogger) Close() {
 	l.f.Close()
 }
 
+func parseFloatArrayString(str string, a *[]float64) error {
+	var err error
+	for i, s := range strings.Split(str, ",") {
+		(*a)[i], err = strconv.ParseFloat(s, 64)
+		if err != nil {
+			break
+		}
+	}
+	return err
+}
+
 func main() {
 	// Handle some shell arguments
 	var (
-		pdt, udt, gyroNoise, accelNoise, gpsNoise, asiNoise, magNoise  float64
-		gpsInop, magInop, asiInop bool
-		scenario 	string
-		sit 		Situation
+		pdt, udt 						float64
+		gyroBiasStr, accelBiasStr, magBiasStr			string
+		gyroNoise, accelNoise, gpsNoise, asiNoise, magNoise	float64
+		asiBias							float64
+		gyroBias, accelBias, magBias				[]float64
+		gpsInop, magInop, asiInop				bool
+		scenario						string
+		sit							Situation
 	)
+	gyroBias = make([]float64, 3)
+	accelBias = make([]float64, 3)
+	magBias = make([]float64, 3)
 
 	const (
 		defaultPdt = 0.1
@@ -385,14 +384,22 @@ func main() {
 		udtUsage = "Kalman filter update period, seconds"
 		defaultGyroNoise = 0.0
 		gyroNoiseUsage = "Amount of noise to add to gyro measurements, deg/s"
+		defaultGyroBias = "0,0,0"
+		gyroBiasUsage = "Amount of bias to add to gyro measurements, \"x,y,z\" deg/s"
 		defaultAccelNoise = 0.0
 		accelNoiseUsage = "Amount of noise to add to accel measurements, G"
+		defaultAccelBias = "0,0,0"
+		accelBiasUsage = "Amount of bias to add to accel measurements, \"x,y,z\" G"
 		defaultGPSNoise = 0.0
 		gpsNoiseUsage = "Amount of noise to add to GPS speed measurements, kt"
 		defaultASINoise = 0.0
-		asiNoiseUsage = "Amount of noise to add to airspeed measurements, kts"
+		asiNoiseUsage = "Amount of noise to add to airspeed measurements, kt"
+		defaultASIBias = 0.0
+		asiBiasUsage = "Amount of bias to add to airspeed measurements, kt"
 		defaultMagNoise = 0.0
 		magNoiseUsage = "Amount of noise to add to magnetometer measurements, uT"
+		defaultMagBias = "0,0,0"
+		magBiasUsage = "Amount of bias to add to magnetometer measurements, \"x,y,z\" uT"
 		defaultGPSInop = false
 		gpsInopUsage = "Make the GPS inoperative"
 		defaultASIInop = true
@@ -407,14 +414,22 @@ func main() {
 	flag.Float64Var(&udt, "udt", defaultUdt, udtUsage)
 	flag.Float64Var(&gyroNoise, "gyro-noise", defaultGyroNoise, gyroNoiseUsage)
 	flag.Float64Var(&gyroNoise, "g", defaultGyroNoise, gyroNoiseUsage)
+	flag.StringVar(&gyroBiasStr, "gyro-bias", defaultGyroBias, gyroBiasUsage)
+	flag.StringVar(&gyroBiasStr, "h", defaultGyroBias, gyroBiasUsage)
 	flag.Float64Var(&accelNoise, "accel-noise", defaultAccelNoise, accelNoiseUsage)
 	flag.Float64Var(&accelNoise, "a", defaultAccelNoise, accelNoiseUsage)
+	flag.StringVar(&accelBiasStr, "accel-bias", defaultAccelBias, accelBiasUsage)
+	flag.StringVar(&accelBiasStr, "i", defaultAccelBias, accelBiasUsage)
 	flag.Float64Var(&gpsNoise, "gps-noise", defaultGPSNoise, gpsNoiseUsage)
 	flag.Float64Var(&gpsNoise, "n", defaultGPSNoise, gpsNoiseUsage)
 	flag.Float64Var(&asiNoise, "asi-noise", defaultASINoise, asiNoiseUsage)
 	flag.Float64Var(&asiNoise, "v", defaultASINoise, asiNoiseUsage)
+	flag.Float64Var(&asiBias, "asi-bias", defaultASIBias, asiBiasUsage)
+	flag.Float64Var(&asiBias, "j", defaultASIBias, asiBiasUsage)
 	flag.Float64Var(&magNoise, "mag-noise", defaultMagNoise, magNoiseUsage)
 	flag.Float64Var(&magNoise, "b", defaultMagNoise, magNoiseUsage)
+	flag.StringVar(&magBiasStr, "mag-bias", defaultMagBias, magBiasUsage)
+	flag.StringVar(&magBiasStr, "k", defaultMagBias, magBiasUsage)
 	flag.BoolVar(&gpsInop, "w", defaultGPSInop, gpsInopUsage)
 	flag.BoolVar(&asiInop, "u", defaultASIInop, asiInopUsage)
 	flag.BoolVar(&magInop, "m", defaultMagInop, magInopUsage)
@@ -422,9 +437,42 @@ func main() {
 	flag.StringVar(&scenario, "s", defaultScenario, scenarioUsage)
 	flag.Parse()
 
-	fmt.Printf("GPS Inop: %v\n", gpsInop)
-	fmt.Printf("ASI Inop: %v\n", asiInop)
-	fmt.Printf("Mag Inop: %v\n", magInop)
+	if err := parseFloatArrayString(gyroBiasStr, &gyroBias); err != nil {
+		fmt.Printf("Error %v parsing %s\n", err, gyroBiasStr)
+	}
+	if err := parseFloatArrayString(accelBiasStr, &accelBias); err != nil {
+		fmt.Printf("Error %v parsing %s\n", err, accelBiasStr)
+	}
+	if err := parseFloatArrayString(magBiasStr, &magBias); err != nil {
+		fmt.Printf("Error %v parsing %s\n", err, magBiasStr)
+	}
+
+	fmt.Println("Simulation parameters:")
+	fmt.Println("Timing:")
+	fmt.Printf("\tPredict Freqency: %d Hz\n", int(1/pdt))
+	fmt.Printf("\tUpdate  Freqency: %d Hz\n", int(1/udt))
+	fmt.Println("Accelerometer:")
+	fmt.Printf("\tNoise: %f G\n", accelNoise)
+	fmt.Printf("\tBias: %f,%f,%f\n", accelBias[0], accelBias[1], accelBias[2])
+	fmt.Println("Gyro:")
+	fmt.Printf("\tNoise: %f G\n", gyroNoise)
+	fmt.Printf("\tBias: %f,%f,%f\n", gyroBias[0], gyroBias[1], gyroBias[2])
+	fmt.Println("GPS:")
+	fmt.Printf("\tInop: %t\n", gpsInop)
+	fmt.Printf("\tNoise: %f kt\n", gpsNoise)
+	fmt.Println("ASI:")
+	fmt.Printf("\tInop: %t\n", asiInop)
+	fmt.Printf("\tNoise: %f kt\n", asiNoise)
+	fmt.Println("Magnetometer:")
+	fmt.Printf("\tInop: %t\n", magInop)
+	fmt.Printf("\tNoise: %f G\n", magNoise)
+	fmt.Printf("\tBias: %f,%f,%f\n", magBias[0], magBias[1], magBias[2])
+
+	gyroNoise *= pi/180
+	gyroBias[0] *= pi/180
+	gyroBias[1] *= pi/180
+	gyroBias[2] *= pi/180
+
 	// Files to save data to for analysis
 	lActual := NewAHRSLogger("k_state.csv",
 		"T", "Ux", "Uy", "Uz", "Phi", "Theta", "Psi", "Vx", "Vy", "Vz", "Mx", "My", "Mz")
@@ -452,7 +500,7 @@ func main() {
 
 	// Initialize Kalman with a sensible starting state
 	var s = ahrs.State{}
-	m, _ := sit.measurement(sit.t[0], !gpsInop, !asiInop, !magInop)
+	m, _ := sit.measurement(sit.t[0], !gpsInop, !asiInop, !magInop, gpsNoise, asiNoise, magNoise, asiBias, magBias)
 	s.Initialize(m, ahrs.Control{}, ahrs.State{})
 
 	fmt.Println("Running Simulation")
@@ -475,27 +523,25 @@ func main() {
 			s0.V1, s0.V2, s0.V3, s0.M1, s0.M2, s0.M3)
 
 		// Take control "measurements"
-		c, err := sit.control(t)
+		c, err := sit.control(t, gyroNoise, accelNoise, gyroBias, accelBias)
 		if err != nil {
 			fmt.Printf("Error calculating control value at time %f: %s", t, err.Error())
 			panic(err)
 		}
-		addControlNoise(&c, gyroNoise*pi/180, accelNoise)
 		lControl.Log(float64(c.T)/1000, -c.H1, c.H2, c.H3, c.A1, c.A2, c.A3)
 
 		// Predict stage of Kalman filter
-		s.Predict(c, ahrs.VX)
+		s.Predict(c)
 		phi, theta, psi = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
 		lPredict.Log(float64(s.T)/1000, s.U1, s.U2, s.U3, phi, theta, psi,
 			s.V1, s.V2, s.V3, s.M1, s.M2, s.M3)
 
 		// Take sensor measurements
-		m, err := sit.measurement(t, !gpsInop, !asiInop, !magInop)
+		m, err := sit.measurement(t, !gpsInop, !asiInop, !magInop, gpsNoise, asiNoise, magNoise, asiBias, magBias)
 		if err != nil {
 			fmt.Printf("Error calculating measurement value at time %f: %s", t, err.Error())
 			panic(err)
 		}
-		addMeasurementNoise(&m, gpsNoise, asiNoise, magNoise)
 		lMeas.Log(float64(m.T)/1000, m.W1, m.W2, m.W3, m.M1, m.M2, m.M3, m.U1, m.U2, m.U3)
 
 		pm := s.PredictMeasurement()

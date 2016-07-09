@@ -60,7 +60,7 @@ var VX = State{
 var vm = Measurement{
 	W1: 0.2, W2: 0.2, W3: 0.2, // GPS uncertainty is small
 	U1: 2, U2: 25, U3: 25, // Airspeed isn't measured yet; U2 & U3 serve to bias toward coordinated flight
-	M1: 0.01, M2: 0.01, M3: 0.01, //TODO Put reasonable magnetometer values here once working
+	M1: 0.1, M2: 0.1, M3: 0.1, //TODO Put reasonable magnetometer values here once working
 }
 
 // normalize normalizes the E quaternion in State s
@@ -146,7 +146,7 @@ func (s *State) Calibrate(c Control) (bool) {
 }
 
 // Predict performs the prediction phase of the Kalman filter given the control inputs
-func (s *State) Predict(c Control, n State) {
+func (s *State) Predict(c Control) {
 	f := s.calcJacobianState(c)
 	dt := float64(c.T-s.T) / 1000
 
@@ -173,14 +173,14 @@ func (s *State) Predict(c Control, n State) {
 
 	s.T = c.T
 
-	tf := dt / (float64(n.T) / 1000)
-	nn := matrix.Diagonal([]float64{
-		n.U1 * n.U1 * tf, n.U2 * n.U2 * tf, n.U3 * n.U3 * tf,
-		n.E0 * n.E0 * tf, n.E1 * n.E1 * tf, n.E2 * n.E2 * tf, n.E3 * n.E3 * tf,
-		n.V1 * n.V1 * tf, n.V2 * n.V2 * tf, n.V3 * n.V3 * tf,
-		n.M1 * n.M1 * tf, n.M2 * n.M2 * tf, n.M3 * n.M3 * tf,
-	})
-	s.M = *matrix.Sum(matrix.Product(&f, matrix.Product(&s.M, f.Transpose())), nn)
+	tf := dt / (float64(vx.T) / 1000)
+	s.M = *matrix.Sum(matrix.Product(&f, matrix.Product(&s.M, f.Transpose())),
+		matrix.Diagonal([]float64{
+			vx.U1 * vx.U1 * tf, vx.U2 * vx.U2 * tf, vx.U3 * vx.U3 * tf,
+			vx.E0 * vx.E0 * tf, vx.E1 * vx.E1 * tf, vx.E2 * vx.E2 * tf, vx.E3 * vx.E3 * tf,
+			vx.V1 * vx.V1 * tf, vx.V2 * vx.V2 * tf, vx.V3 * vx.V3 * tf,
+			vx.M1 * vx.M1 * tf, vx.M2 * vx.M2 * tf, vx.M3 * vx.M3 * tf,
+		}))
 }
 
 // Update applies the Kalman filter corrections given the measurements
