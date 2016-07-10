@@ -12,18 +12,22 @@ import (
 // State holds the complete information describing the state of the aircraft
 // Order within State also defines order in the matrices below
 type State struct {
-	Initialized, Calibrated    bool    // Is the state valid (initialized, sensible)
-	U1, U2, U3     float64             // Vector for airspeed, aircraft (accelerated) frame
-	E0, E1, E2, E3 float64             // Quaternion rotating aircraft to earth frame
-	V1, V2, V3     float64             // Vector describing windspeed, latlong axes, earth (inertial) frame
-	M1, M2, M3     float64             // Vector describing reference magnetometer direction, earth (inertial) frame
-	T              uint32              // Timestamp when last updated
-	M             	matrix.DenseMatrix // Covariance matrix of state uncertainty, same order as above vars
+	Initialized, Calibrated    bool     // Is the state valid (initialized, sensible)
+	U1, U2, U3    	float64             // Vector for airspeed, aircraft (accelerated) frame
+	E0, E1, E2, E3	float64             // Quaternion rotating aircraft to earth frame
+	V1, V2, V3    	float64             // Vector describing windspeed, latlong axes, earth (inertial) frame
+	M1, M2, M3    	float64             // Vector describing reference magnetometer direction, earth (inertial) frame
+	T             	uint32              // Timestamp when last updated
+	M             	matrix.DenseMatrix  // Covariance matrix of state uncertainty, same order as above vars
 
-	F0, F1, F2, F3 float64             // Calibration quaternion describing roll, pitch and heading biases due to placement of stratux, aircraft frame
-	f11, f12, f13,			   // After calibration, these are quaterion fragments for rotating stratux to level
+	tLastCal	float64		    // Last time calibration was run
+	cS, cL		Control		    // Short-term and long-term control moving averages, for determining inertiality
+	mS, mL	 	Measurement	    // Short-term and long-term measurement moving anverages, for determining inertiality
+
+	F0, F1, F2, F3	float64             // Calibration quaternion describing roll, pitch and heading biases due to placement of stratux, aircraft frame
+	f11, f12, f13,			    // After calibration, these are quaterion fragments for rotating stratux to level
 	f21, f22, f23,
-	f31, f32, f33 float64
+	f31, f32, f33	float64
 }
 
 // Control holds the control inputs for the Kalman filter: gyro change and accelerations
@@ -45,6 +49,8 @@ type Measurement struct { // Order here also defines order in the matrices below
 
 const (
 	G = 32.1740 / 1.687810 // G is the acceleration due to gravity, kt/s
+	tL = 2.0		// Long-term timescale for determining inertiality
+	tS = 0.5		// Short-term timescale for determining inertiality
 )
 
 // vx represents process uncertainties, per second
@@ -73,14 +79,75 @@ func (s *State) normalize() {
 }
 
 // IsInertial determines heuristically whether the aircraft frame is reasonably inertial
-func IsInertial(c Control, m Measurement) (bool) {
+func (s *State) IsInertial(c Control, m Measurement) (bool) {
+	// Update moving averages
+	var kS, kL float64
+	var t0, t float64
+
+	t0, t = s.tLastCal, float64(c.T)/1000
+	s.tLastCal = t
+	kS = tS/(tS+t-t0)
+	s.cS.H1 = kS*s.cS.H1 + (1-kS)*c.H1
+	s.cS.H2 = kS*s.cS.H2 + (1-kS)*c.H2
+	s.cS.H3 = kS*s.cS.H3 + (1-kS)*c.H3
+	s.cS.A1 = kS*s.cS.A1 + (1-kS)*c.A1
+	s.cS.A2 = kS*s.cS.A2 + (1-kS)*c.A2
+	s.cS.A3 = kS*s.cS.A3 + (1-kS)*c.A3
+	s.cS.T  = uint32((kS*float64(s.cS.T)  + (1-kS)*t*1000)+0.5)
+
+	kL = tL/(tL+t-t0)
+	s.cL.H1 = kL*s.cL.H1 + (1-kL)*c.H1
+	s.cL.H2 = kL*s.cL.H2 + (1-kL)*c.H2
+	s.cL.H3 = kL*s.cL.H3 + (1-kL)*c.H3
+	s.cL.A1 = kL*s.cL.A1 + (1-kL)*c.A1
+	s.cL.A2 = kL*s.cL.A2 + (1-kL)*c.A2
+	s.cL.A3 = kL*s.cL.A3 + (1-kL)*c.A3
+	s.cL.T  = uint32((kL*float64(s.cL.T)  + (1-kL)*t*1000)+0.5)
+
+	t = float64(m.T)/1000
+	kS = tS/(tS+t-t0)
+	s.mS.W1 = kS*s.mS.W1 + (1-kS)*m.W1
+	s.mS.W2 = kS*s.mS.W2 + (1-kS)*m.W2
+	s.mS.W3 = kS*s.mS.W3 + (1-kS)*m.W3
+	s.mS.U1 = kS*s.mS.U1 + (1-kS)*m.U1
+	s.mS.M1 = kS*s.mS.M1 + (1-kS)*m.M1
+	s.mS.M2 = kS*s.mS.M2 + (1-kS)*m.M2
+	s.mS.M3 = kS*s.mS.M3 + (1-kS)*m.M3
+	s.mS.T  = uint32((kS*float64(s.mS.T)  + (1-kS)*t*1000)+0.5)
+
+	kL = tL/(tL+t-t0)
+	s.mL.W1 = kL*s.mL.W1 + (1-kL)*m.W1
+	s.mL.W2 = kL*s.mL.W2 + (1-kL)*m.W2
+	s.mL.W3 = kL*s.mL.W3 + (1-kL)*m.W3
+	s.mL.U1 = kL*s.mL.U1 + (1-kL)*m.U1
+	s.mL.M1 = kL*s.mL.M1 + (1-kL)*m.M1
+	s.mL.M2 = kL*s.mL.M2 + (1-kL)*m.M2
+	s.mL.M3 = kL*s.mL.M3 + (1-kL)*m.M3
+	s.mL.T  = uint32((kL*float64(s.mL.T)  + (1-kL)*t*1000)+0.5)
+
 	// Tests for inertial frame:
+	var inertial bool
 	// 1. Gyro rates are nearly zero
+	inertial = math.Abs(s.cS.H1-0) < 0.1 && math.Abs(s.cS.H2-0) < 0.1 && math.Abs(s.cS.H3-0) < 0.1 &&
 	// 2. Acceleration has magnitude nearly G in nearly steady direction
+		math.Abs(s.cL.A1-s.cS.A1) < 0.05 && math.Abs(s.cL.A2-s.cS.A2) < 0.05 && math.Abs(s.cL.A3-s.cS.A3) < 0.05 &&
 	// 3. If valid, GPS speed and track are nearly steady
+		(!m.WValid || (math.Abs(s.mL.W1-s.mS.W1) < 0.1 && math.Abs(s.mL.W2-s.mS.W2) < 0.05 && math.Abs(s.mL.W3-s.mS.W3) < 0.05)) &&
 	// 4. If valid, airspeed is nearly steady
+		(!m.UValid || (math.Abs(s.mL.U1-s.mS.U1) < 1)) &&
 	// 5. If valid, magnetometer is nearly steady
-	return true
+		(!m.MValid || (math.Abs(s.mL.M1-s.mS.M1) < 0.1 && math.Abs(s.mL.M2-s.mS.M2) < 0.05 && math.Abs(s.mL.M3-s.mS.M3) < 0.05))
+	if inertial {
+		fmt.Printf("%6f Inertial: %t\n", t, inertial)
+	} else {
+		fmt.Printf("\nTime: %f\n", t)
+		fmt.Printf("Gyro:  %f %f %f\n", s.cS.H1, s.cS.H2, s.cS.H3)
+		fmt.Printf("Accel: %f %f %f\n", s.cL.A1-s.cS.A1, s.cL.A2-s.cS.A2, s.cL.A3-s.cS.A3)
+		fmt.Printf("GPS:   %f %f %f\n", s.mL.W1-s.mS.W1, s.mL.W2-s.mS.W2, s.mL.W3-s.mS.W3)
+		fmt.Printf("ASI:   %f\n", s.mL.U1-s.mS.U1)
+		fmt.Printf("Mag:   %f %f %f\n", s.mL.M1-s.mS.M1, s.mL.M2-s.mS.M2, s.mL.M3-s.mS.M3)
+	}
+	return inertial && t-float64(s.mL.T/1000)>tL/2
 }
 
 // Initialize the state at the start of the Kalman filter, based on current

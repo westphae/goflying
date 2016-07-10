@@ -540,7 +540,7 @@ func main() {
 			s.Initialize(m, c)
 		}
 		// If aircraft frame is inertial, then check calibration
-		if ahrs.IsInertial(c, m) && s.Initialized {
+		if s.IsInertial(c, m) && s.Initialized {
 			s.Calibrate(c, m)
 		}
 
@@ -573,6 +573,8 @@ func main() {
 				math.Sqrt(s.M.Get(10, 10)), math.Sqrt(s.M.Get(11, 11)), math.Sqrt(s.M.Get(12, 12)),
 			)
 
+		} else {
+			tNextUpdate += pdt
 		}
 		t += pdt
 	}
