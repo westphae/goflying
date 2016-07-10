@@ -498,12 +498,9 @@ func main() {
 		sit = sitTurnDef
 	}
 
-	// Initialize Kalman with a sensible starting state
-	var s = ahrs.State{}
-	m, _ := sit.measurement(sit.t[0], !gpsInop, !asiInop, !magInop, gpsNoise, asiNoise, magNoise, asiBias, magBias)
-	s.Initialize(m, ahrs.Control{}, ahrs.State{})
-
+	// This is where it all happens
 	fmt.Println("Running Simulation")
+	var s = ahrs.State{}
 	var t, tNextUpdate float64
 	t = sit.t[0];
 	tNextUpdate = t + udt
@@ -530,12 +527,6 @@ func main() {
 		}
 		lControl.Log(float64(c.T)/1000, -c.H1, c.H2, c.H3, c.A1, c.A2, c.A3)
 
-		// Predict stage of Kalman filter
-		s.Predict(c)
-		phi, theta, psi = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
-		lPredict.Log(float64(s.T)/1000, s.U1, s.U2, s.U3, phi, theta, psi,
-			s.V1, s.V2, s.V3, s.M1, s.M2, s.M3)
-
 		// Take sensor measurements
 		m, err := sit.measurement(t, !gpsInop, !asiInop, !magInop, gpsNoise, asiNoise, magNoise, asiBias, magBias)
 		if err != nil {
@@ -544,28 +535,45 @@ func main() {
 		}
 		lMeas.Log(float64(m.T)/1000, m.W1, m.W2, m.W3, m.M1, m.M2, m.M3, m.U1, m.U2, m.U3)
 
-		pm := s.PredictMeasurement()
-		lPMeas.Log(float64(m.T)/1000, pm.W1, pm.W2, pm.W3, pm.M1, pm.M2, pm.M3, pm.U1, pm.U2, pm.U3)
-
-		// Update stage of Kalman filter
-		if t>tNextUpdate-1e-9 {
-			tNextUpdate += udt
-			s.Update(m)
+		// Try to initialize
+		if !s.Initialized {
+			s.Initialize(m, c)
 		}
-		phi, theta, psi = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
-		dphi, dtheta, dpsi := VarFromQuaternion(s.E0, s.E1, s.E2, s.E3,
-			math.Sqrt(s.M.Get(3, 3)), math.Sqrt(s.M.Get(4, 4)),
-			math.Sqrt(s.M.Get(5, 5)), math.Sqrt(s.M.Get(6, 6)))
-		lKalman.Log(float64(s.T) / 1000, s.U1, s.U2, s.U3, phi, theta, psi,
-			s.V1, s.V2, s.V3, s.M1, s.M2, s.M3)
-		lVar.Log(float64(s.T) / 1000,
-			math.Sqrt(s.M.Get(0, 0)), math.Sqrt(s.M.Get(1, 1)), math.Sqrt(s.M.Get(2, 2)),
-			dphi, dtheta, dpsi,
-			math.Sqrt(s.M.Get(7, 7)), math.Sqrt(s.M.Get(8, 8)), math.Sqrt(s.M.Get(9, 9)),
-			math.Sqrt(s.M.Get(10, 10)), math.Sqrt(s.M.Get(11, 11)), math.Sqrt(s.M.Get(12, 12)),
-		)
+		// If aircraft frame is inertial, then check calibration
+		if ahrs.IsInertial(c, m) && s.Initialized {
+			s.Calibrate(c, m)
+		}
 
-		fmt.Printf("%6.3f -> %6.3f\n", t, tNextUpdate)
+		// If we have calibration and the Kalman filter is initialized, then run the filter
+		if s.Initialized && s.Calibrated {
+			// Predict stage of Kalman filter
+			s.Predict(c)
+			phi, theta, psi = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
+			lPredict.Log(float64(s.T) / 1000, s.U1, s.U2, s.U3, phi, theta, psi,
+				s.V1, s.V2, s.V3, s.M1, s.M2, s.M3)
+
+			pm := s.PredictMeasurement()
+			lPMeas.Log(float64(m.T) / 1000, pm.W1, pm.W2, pm.W3, pm.M1, pm.M2, pm.M3, pm.U1, pm.U2, pm.U3)
+
+			// Update stage of Kalman filter
+			if t > tNextUpdate - 1e-9 {
+				tNextUpdate += udt
+				s.Update(m)
+			}
+			phi, theta, psi = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
+			dphi, dtheta, dpsi := VarFromQuaternion(s.E0, s.E1, s.E2, s.E3,
+				math.Sqrt(s.M.Get(3, 3)), math.Sqrt(s.M.Get(4, 4)),
+				math.Sqrt(s.M.Get(5, 5)), math.Sqrt(s.M.Get(6, 6)))
+			lKalman.Log(float64(s.T) / 1000, s.U1, s.U2, s.U3, phi, theta, psi,
+				s.V1, s.V2, s.V3, s.M1, s.M2, s.M3)
+			lVar.Log(float64(s.T) / 1000,
+				math.Sqrt(s.M.Get(0, 0)), math.Sqrt(s.M.Get(1, 1)), math.Sqrt(s.M.Get(2, 2)),
+				dphi, dtheta, dpsi,
+				math.Sqrt(s.M.Get(7, 7)), math.Sqrt(s.M.Get(8, 8)), math.Sqrt(s.M.Get(9, 9)),
+				math.Sqrt(s.M.Get(10, 10)), math.Sqrt(s.M.Get(11, 11)), math.Sqrt(s.M.Get(12, 12)),
+			)
+
+		}
 		t += pdt
 	}
 

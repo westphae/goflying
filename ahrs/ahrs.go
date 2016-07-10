@@ -12,18 +12,18 @@ import (
 // State holds the complete information describing the state of the aircraft
 // Order within State also defines order in the matrices below
 type State struct {
-	Valid		bool		   // Is the state valid (initialized, sensible)
-	U1, U2, U3    	float64            // Vector for airspeed, aircraft (accelerated) frame
-	E0, E1, E2, E3	float64            // Quaternion rotating aircraft to earth frame
-	V1, V2, V3    	float64            // Vector describing windspeed, latlong axes, earth (inertial) frame
-	M1, M2, M3    	float64            // Vector describing reference magnetometer direction, earth (inertial) frame
-	T             	uint32             // Timestamp when last updated
+	Initialized, Calibrated    bool    // Is the state valid (initialized, sensible)
+	U1, U2, U3     float64             // Vector for airspeed, aircraft (accelerated) frame
+	E0, E1, E2, E3 float64             // Quaternion rotating aircraft to earth frame
+	V1, V2, V3     float64             // Vector describing windspeed, latlong axes, earth (inertial) frame
+	M1, M2, M3     float64             // Vector describing reference magnetometer direction, earth (inertial) frame
+	T              uint32              // Timestamp when last updated
 	M             	matrix.DenseMatrix // Covariance matrix of state uncertainty, same order as above vars
 
-	F0, F1, F2, F3 float64 // Calibration quaternion describing roll, pitch and heading biases due to placement of stratux, aircraft frame
-	f11, f12, f13,
+	F0, F1, F2, F3 float64             // Calibration quaternion describing roll, pitch and heading biases due to placement of stratux, aircraft frame
+	f11, f12, f13,			   // After calibration, these are quaterion fragments for rotating stratux to level
 	f21, f22, f23,
-	f31, f32, f33 float64 // After calibration, these are quaterion fragments for rotating stratux to level
+	f31, f32, f33 float64
 }
 
 // Control holds the control inputs for the Kalman filter: gyro change and accelerations
@@ -47,11 +47,11 @@ const (
 	G = 32.1740 / 1.687810 // G is the acceleration due to gravity, kt/s
 )
 
-// VX represents process uncertainties, per second
-var VX = State{
-	U1: 1.0, U2: 0.1, U3: 0.1,
-	E0: 5e-2, E1: 5e-2, E2: 1e-1, E3: 1e-1,
-	V1: 0.05, V2: 0.05, V3: 0.5,
+// vx represents process uncertainties, per second
+var vx = State{
+	U1: 1, U2: 5, U3: 5,
+	E0: 2e-2, E1: 2e-2, E2: 2e-2, E3: 2e-2,
+	V1: 0.5, V2: 0.5, V3: 0.5,
 	M1: 0.005, M2: 0.005, M3: 0.005,
 	T: 1000,
 }
@@ -72,9 +72,20 @@ func (s *State) normalize() {
 	s.E3 /= ee
 }
 
+// IsInertial determines heuristically whether the aircraft frame is reasonably inertial
+func IsInertial(c Control, m Measurement) (bool) {
+	// Tests for inertial frame:
+	// 1. Gyro rates are nearly zero
+	// 2. Acceleration has magnitude nearly G in nearly steady direction
+	// 3. If valid, GPS speed and track are nearly steady
+	// 4. If valid, airspeed is nearly steady
+	// 5. If valid, magnetometer is nearly steady
+	return true
+}
+
 // Initialize the state at the start of the Kalman filter, based on current
 // measurements and controls
-func (s *State) Initialize(m Measurement, c Control, n State) {
+func (s *State) Initialize(m Measurement, c Control) {
 	//TODO: If m.UValid then calculate correct airspeed and windspeed;
 	// for now just treat the case !m.UValid
 	if m.WValid {
@@ -90,13 +101,13 @@ func (s *State) Initialize(m Measurement, c Control, n State) {
 		if m.W2 > 0 {
 			s.E3 *= -1
 		}
-		s.Valid = true
+		s.Initialized = true
 	} else if !m.WValid {	// If no groundspeed then no idea which direction we're pointing; assume north
 		s.E0, s.E3 = math.Sqrt2/2, -math.Sqrt2/2
-		s.Valid = true
+		s.Initialized = true
 	} else {
 		s.E0, s.E3 = math.Sqrt2/2, -math.Sqrt2/2
-		s.Valid = false
+		s.Initialized = false
 	}
 	s.V1, s.V2, s.V3 = 0, 0, 0	// Best guess at initial windspeed is zero (actually headwind...)
 	if m.MValid {
@@ -116,15 +127,11 @@ func (s *State) Initialize(m Measurement, c Control, n State) {
 		20*20, 20*20, 2*2,
 		0.01*0.01, 0.01*0.01, 0.01*0.01,
 	})
-	if s.Valid {
-		s.Calibrate(c)
-	}
 }
 
 // Calibrate performs a calibration, determining the quaternion to rotate it to
 // be effectively level and pointing forward.  Must be run when in an unaccelerated state.
-func (s *State) Calibrate(c Control) (bool) {
-	//TODO: Do the calibration to determine the Fi
+func (s *State) Calibrate(c Control, m Measurement) {
 	// Persist last known to storage
 	// Initial is last known
 	// If no GPS or GPS stationary, assume straight and level: Ai is down
@@ -145,7 +152,7 @@ func (s *State) Calibrate(c Control) (bool) {
 	s.f32 = 2 * (-s.F0*s.F1 + s.F3*s.F2)
 	s.f33 = 2 * (+s.F0*s.F0 + s.F3*s.F3 - 0.5)
 
-	return true
+	s.Calibrated = true
 }
 
 // Predict performs the prediction phase of the Kalman filter given the control inputs
