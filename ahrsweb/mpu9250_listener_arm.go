@@ -9,11 +9,9 @@ import (
 	"time"
 )
 
-const SLEEP = 98 // Sleep time in ms between updates
-
 type MPU9250Listener struct {
 	r	*room
-	mpu 	mpu9250.MPU9250
+	mpu 	*mpu9250.MPU9250
 	data	*AHRSData
 }
 
@@ -22,7 +20,7 @@ func (ml *MPU9250Listener) SetRoom(r *room) {
 }
 
 func (ml *MPU9250Listener) Init() {
-	ml.mpu = mpu9250.NewMPU9250(100, 250, 8)
+	ml.mpu = mpu9250.NewMPU9250(100, 250, 2)
 	ml.data = new(AHRSData)
 }
 

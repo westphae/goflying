@@ -11,39 +11,38 @@ import (
 
 const SLEEP = 98
 
-type MPUListener struct {
+type MPU9150Listener struct {
 	r    *room
 	data *AHRSData
 }
 
-func (ml *MPUListener) SetRoom(r *room) {
+func (ml *MPU9150Listener) SetRoom(r *room) {
 	ml.r = r
 }
 
-func (ml *MPUListener) Init() {
+func (ml *MPU9150Listener) Init() {
 	mpu.InitMPU(10, 0)
 	ml.data = new(AHRSData)
 }
 
-func (ml *MPUListener) Close() {
+func (ml *MPU9150Listener) Close() {
 	mpu.CloseMPU()
 }
 
-func (ml *MPUListener) GetData() *AHRSData {
+func (ml *MPU9150Listener) GetData() *AHRSData {
 	return ml.data
 }
 
-func (ml *MPUListener) update() {
+func (ml *MPU9150Listener) update() {
 	log.Println("Making up some AHRS data")
 	var err error
-	ml.mpu, err = mpu.ReadMPUAll()
+	//ml.data, err = mpu.ReadMPUAll()
 	if err != nil {
 		log.Println("Error reading mpu")
 	}
-	ml.data.Z_mag = int16(rand.Int())
 }
 
-func (ml *MPUListener) Run() {
+func (ml *MPU9150Listener) Run() {
 	for {
 		ml.update()
 

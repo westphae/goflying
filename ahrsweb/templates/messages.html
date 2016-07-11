@@ -128,7 +128,6 @@
         case "Pitch":
         case "Roll":
         case "Heading":
-                vv = v;
             fmt = "<+6.2f";
             break;
         case "Gx":
@@ -146,21 +145,18 @@
         case "X_mag":
         case "Y_mag":
         case "Z_mag":
-            vv = v/65536;
             fmt = "<+6.4f";
             break;
         case "Qw":
         case "Qx":
         case "Qy":
         case "Qz":
-            vv = v/4294967296;
             fmt = "<+6.4f";
             break;
         default:
-            vv = v;
             fmt = "6d";
         }
-        return d3.format(fmt)(vv);
+        return d3.format(fmt)(v);
     }
 
     function updateTable(data) {

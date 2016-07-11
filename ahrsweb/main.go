@@ -40,12 +40,12 @@ type DataListener interface {
 }
 
 type AHRSData struct {
-	Pitch, Roll, Heading                           float32
-	Gx, Gy, Gz, Ax, Ay, Az                         int16
-	Qx, Qy, Qz, Qw                                 int32
-	Mx, My, Mz                                     int16
-	Ts, Tsm                                        uint32
-	X_accel, Y_accel, Z_accel, X_mag, Y_mag, Z_mag int16
+	Pitch, Roll, Heading                           float64
+	Gx, Gy, Gz, Ax, Ay, Az                         float64
+	Qx, Qy, Qz, Qw                                 float64
+	Mx, My, Mz                                     float64
+	Ts, Tsm                                        int64
+	X_accel, Y_accel, Z_accel, X_mag, Y_mag, Z_mag float64
 }
 
 func main() {
