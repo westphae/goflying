@@ -50,7 +50,7 @@ type AHRSData struct {
 
 func main() {
 	var addr = flag.String("addr", ":8080", "The port for the AHRS data publication.")
-	var src = flag.String("src", "mpu", "Source of ahrs data: rand, sim or mpu.")
+	var src = flag.String("src", "mpu9250", "Source of ahrs data: rand, sim or mpu9250.")
 	flag.Parse() // parse the flags
 
 	// get the room going
@@ -64,14 +64,14 @@ func main() {
 		ml = new(RandListener)
 	case "sim":
 		// ml = new(SimListener)
-	case "mpu":
+	case "mpu9250":
 		if runtime.GOARCH != "arm" {
 			log.Println("--src can only be mpu on arm architecture")
 			return
 		}
-		ml = new(MPUListener)
+		ml = new(MPU9250Listener)
 	default:
-		log.Println("--src must be rand, sim or mpu (default)")
+		log.Println("--src must be rand, sim or mpu9250 (default)")
 		return
 	}
 
