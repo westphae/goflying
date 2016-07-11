@@ -195,17 +195,16 @@ const (
 
 type MPU9250 struct {
 	i2cbus                embd.I2CBus
-	freq                  float32 // Update frequency in Hz
-	scaleGyro, scaleAccel float32 // Max sensor reading for value 2**15-1
-	zeroGyro,  zeroAccel  float32 // Max sensor reading for value 2**15-1
-	n                     float32 // Number of samples taken since last read
-	g1, g2, g3            float32 // Gyro accumulated values, rad/s
-	a1, a2, a3            float32 // Accel accumulated values, G
-	m1, m2, m3            float32 // Magnetometer accumulated values, uT
-	mcal1, mcal2, mcal3   float32 // Magnetometer calibration values, uT
+	freq                  float64 // Update frequency in Hz
+	scaleGyro, scaleAccel float64 // Max sensor reading for value 2**15-1
+	n                     float64 // Number of samples taken since last read
+	g1, g2, g3            float64 // Gyro accumulated values, rad/s
+	a1, a2, a3            float64 // Accel accumulated values, G
+	m1, m2, m3            float64 // Magnetometer accumulated values, uT
+	mcal1, mcal2, mcal3   float64 // Magnetometer calibration values, uT
 }
 
-func NewMPU9250(freq float32, sensitivityGyro, sensitivityAccel int) *MPU9250 {
+func NewMPU9250(freq float64, sensitivityGyro, sensitivityAccel int) *MPU9250 {
 	var mpu = new(MPU9250)
 	var sensGyro, sensAccel byte
 	mpu.freq = freq
@@ -213,41 +212,35 @@ func NewMPU9250(freq float32, sensitivityGyro, sensitivityAccel int) *MPU9250 {
 	switch sensitivityGyro {
 	case 2000:
 		sensGyro = BITS_FS_2000DPS
-		mpu.zeroGyro = float32(1000)
-		mpu.scaleGyro = float32(2000) / float32(math.MaxInt16)
+		mpu.scaleGyro = 2000.0 / float64(math.MaxInt16)
 	case 1000:
 		sensGyro = BITS_FS_1000DPS
-		mpu.zeroGyro = float32(500)
-		mpu.scaleGyro = float32(1000) / float32(math.MaxInt16)
+		mpu.scaleGyro = 1000.0 / float64(math.MaxInt16)
 	case 500:
 		sensGyro = BITS_FS_500DPS
-		mpu.zeroGyro = float32(250)
-		mpu.scaleGyro = float32(500) / float32(math.MaxInt16)
+		mpu.scaleGyro = 500.0 / float64(math.MaxInt16)
 	case 250:
+		fallthrough
 	default:
 		sensGyro = BITS_FS_250DPS
-		mpu.zeroGyro = float32(125)
-		mpu.scaleGyro = float32(250) / float32(math.MaxInt16)
+		mpu.scaleGyro = 250.0 / float64(math.MaxInt16)
 	}
 
 	switch sensitivityAccel {
 	case 16:
 		sensAccel = BITS_FS_16G
-		mpu.zeroAccel = float32(8)
-		mpu.scaleAccel = float32(16) / float32(math.MaxInt16)
+		mpu.scaleAccel = 16.0 / float64(math.MaxInt16)
 	case 8:
 		sensAccel = BITS_FS_8G
-		mpu.zeroAccel = float32(4)
-		mpu.scaleAccel = float32(8) / float32(math.MaxInt16)
+		mpu.scaleAccel = 8.0 / float64(math.MaxInt16)
 	case 4:
 		sensAccel = BITS_FS_4G
-		mpu.zeroAccel = float32(2)
-		mpu.scaleAccel = float32(4) / float32(math.MaxInt16)
+		mpu.scaleAccel = 4.0 / float64(math.MaxInt16)
 	case 2:
+		fallthrough
 	default:
 		sensAccel = BITS_FS_2G
-		mpu.zeroAccel = float32(1)
-		mpu.scaleAccel = float32(2) / float32(math.MaxInt16)
+		mpu.scaleAccel = 2.0 / float64(math.MaxInt16)
 	}
 
 	mpu.i2cbus = embd.NewI2CBus(1)
@@ -292,40 +285,40 @@ func (m *MPU9250) readMPURaw() {
 	for {
 		<-clock.C
 		// Read gyro data:
-		m.g1 += float32(m.i2cRead(MPUREG_GYRO_XOUT_H))
-		m.g2 += float32(m.i2cRead(MPUREG_GYRO_YOUT_H))
-		m.g3 += float32(m.i2cRead(MPUREG_GYRO_ZOUT_H))
+		m.g1 += float64(m.i2cRead(MPUREG_GYRO_XOUT_H))
+		m.g2 += float64(m.i2cRead(MPUREG_GYRO_YOUT_H))
+		m.g3 += float64(m.i2cRead(MPUREG_GYRO_ZOUT_H))
 
 		// Read accelerometer data:
-		m.a1 += float32(m.i2cRead(MPUREG_ACCEL_XOUT_H))
-		m.a2 += float32(m.i2cRead(MPUREG_ACCEL_YOUT_H))
-		m.a3 += float32(m.i2cRead(MPUREG_ACCEL_ZOUT_H))
+		m.a1 += float64(m.i2cRead(MPUREG_ACCEL_XOUT_H))
+		m.a2 += float64(m.i2cRead(MPUREG_ACCEL_YOUT_H))
+		m.a3 += float64(m.i2cRead(MPUREG_ACCEL_ZOUT_H))
 
 		// Read magnetometer data:
 		m.i2cWrite(AK8963_I2C_ADDR|READ_FLAG, MPUREG_I2C_SLV0_ADDR)
 		m.i2cWrite(AK8963_HXL, MPUREG_I2C_SLV0_REG) //I2C slave 0 register address from where to begin data transfer
 		m.i2cWrite(0x87, MPUREG_I2C_SLV0_CTRL)      //Read 7 bytes from the magnetometer
 
-		m.m1 += float32(m.i2cRead(MPUREG_EXT_SENS_DATA_00))
-		m.m2 += float32(m.i2cRead(MPUREG_EXT_SENS_DATA_02))
-		m.m3 += float32(m.i2cRead(MPUREG_EXT_SENS_DATA_04))
+		m.m1 += float64(m.i2cRead(MPUREG_EXT_SENS_DATA_00))
+		m.m2 += float64(m.i2cRead(MPUREG_EXT_SENS_DATA_02))
+		m.m3 += float64(m.i2cRead(MPUREG_EXT_SENS_DATA_04))
 		_ = m.i2cRead(MPUREG_EXT_SENS_DATA_06)
 
 		m.n += 1.0
 	}
 }
 
-func (m *MPU9250) Read() (int64, float32, float32, float32, float32, float32, float32, float32, float32, float32) {
-	fmt.Printf("%.0f values read\n", m.n)
-	g1 := m.g1/m.n*m.scaleGyro-m.zeroGyro
-	g2 := m.g2/m.n*m.scaleGyro-m.zeroGyro
-	g3 := m.g3/m.n*m.scaleGyro-m.zeroGyro
-	a1 := m.a1/m.n*m.scaleAccel-m.zeroAccel
-	a2 := m.a2/m.n*m.scaleAccel-m.zeroAccel
-	a3 := m.a3/m.n*m.scaleAccel-m.zeroAccel
-	m1, m2, m3 := m.m1*m.mcal1/m.n, m.m2*m.mcal2/m.n, m.m3*m.mcal3/m.n
+func (m *MPU9250) Read() (int64, float64, float64, float64, float64, float64, float64, float64, float64, float64) {
+	g1, g2, g3 := m.g1/m.n*m.scaleGyro,  m.g2/m.n*m.scaleGyro,  m.g3/m.n*m.scaleGyro
+	a1, a2, a3 := m.a1/m.n*m.scaleAccel, m.a2/m.n*m.scaleAccel, m.a3/m.n*m.scaleAccel
+	m1, m2, m3 := m.m1*m.mcal1/m.n,      m.m2*m.mcal2/m.n,      m.m3*m.mcal3/m.n
 	t := time.Now().UnixNano()
-	m.g1, m.g2, m.g3, m.a1, m.a2, m.a3, m.m1, m.m2, m.m3, m.n = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+
+	m.g1, m.g2, m.g3 = 0.0, 0.0, 0.0
+	m.a1, m.a2, m.a3 = 0.0, 0.0, 0.0
+	m.m1, m.m2, m.m3 = 0.0, 0.0, 0.0
+	m.n = 0.0
+
 	return t, g1, g2, g3, a1, a2, a3, m1, m2, m3
 }
 
@@ -334,16 +327,16 @@ func (m *MPU9250) readMagCal() {
 	m.i2cWrite(AK8963_ASAX, MPUREG_I2C_SLV0_REG)                //I2C slave 0 register address from where to begin data transfer
 	m.i2cWrite(0x83, MPUREG_I2C_SLV0_CTRL)                      //Read 3 bytes from the magnetometer
 
-	m.mcal1 += ((float32(m.i2cRead(MPUREG_EXT_SENS_DATA_00))-128)/256 + 1) * Magnetometer_Sensitivity_Scale_Factor
-	m.mcal2 += ((float32(m.i2cRead(MPUREG_EXT_SENS_DATA_02))-128)/256 + 1) * Magnetometer_Sensitivity_Scale_Factor
-	m.mcal3 += ((float32(m.i2cRead(MPUREG_EXT_SENS_DATA_04))-128)/256 + 1) * Magnetometer_Sensitivity_Scale_Factor
+	m.mcal1 += ((float64(m.i2cRead(MPUREG_EXT_SENS_DATA_00))-128)/256 + 1) * Magnetometer_Sensitivity_Scale_Factor
+	m.mcal2 += ((float64(m.i2cRead(MPUREG_EXT_SENS_DATA_02))-128)/256 + 1) * Magnetometer_Sensitivity_Scale_Factor
+	m.mcal3 += ((float64(m.i2cRead(MPUREG_EXT_SENS_DATA_04))-128)/256 + 1) * Magnetometer_Sensitivity_Scale_Factor
 	fmt.Printf("Mag calibration: %+6.f %+6.f %+6.f\n", m.mcal1, m.mcal2, m.mcal3)
 }
 
 func (m *MPU9250) CloseMPU() {
 	return // Nothing to do for the 9250?
 }
-func (m *MPU9250) Freq() float32 {
+func (m *MPU9250) Freq() float64 {
 	return m.freq
 }
 
@@ -355,11 +348,11 @@ func (mpu *MPU9250) i2cWrite(value, register byte) {
 	time.Sleep(time.Millisecond)
 }
 
-func (mpu *MPU9250) i2cRead(register byte) uint16 {
+func (mpu *MPU9250) i2cRead(register byte) int16 {
 
 	value, err := mpu.i2cbus.ReadWordFromReg(MPU_ADDRESS, register)
 	if err != nil {
 		fmt.Printf("Error reading %x: %s\n", register, err.Error())
 	}
-	return value
+	return int16(value)
 }
