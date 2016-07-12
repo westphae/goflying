@@ -122,6 +122,8 @@
 <script src="d3.min.js" charset="utf-8"></script>
 <script>
 
+    const t0 = Date.now() * 1000000;
+
     function formatVar(k, v) {
         var fmt;
         switch (k) {
@@ -129,6 +131,7 @@
         case "Roll":
         case "Heading":
             fmt = "<+6.2f";
+            vv = v;
             break;
         case "Gx":
         case "Gy":
@@ -145,18 +148,18 @@
         case "X_mag":
         case "Y_mag":
         case "Z_mag":
-            fmt = "<+6.4f";
-            break;
         case "Qw":
         case "Qx":
         case "Qy":
         case "Qz":
             fmt = "<+6.4f";
+            vv = v;
             break;
         default:
-            fmt = "6d";
+            fmt = "8.2f";
+            vv = (v - t0)/1e9;
         }
-        return d3.format(fmt)(v);
+        return d3.format(fmt)(vv);
     }
 
     function updateTable(data) {

@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"math"
 	"time"
-	"../../mpu9250"
+	"github.com/westphae/goflying/mpu9250"
 )
 
 const DEG = 180/math.Pi
 
 func main() {
 	clock := time.NewTicker(100 * time.Millisecond)
-	var mpu = mpu9250.NewMPU9250(50, 500, 4)
+	var mpu = mpu9250.NewMPU9250(500, 4, 100)
 	var t0 = time.Now().UnixNano()
 
 	for {

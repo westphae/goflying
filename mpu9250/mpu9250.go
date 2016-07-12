@@ -133,6 +133,7 @@ const (
 	/* ---- AK8963 Reg In MPU9250 ----------------------------------------------- */
 	AK8963_I2C_ADDR  = 0x0C //0x18
 	AK8963_Device_ID = 0x48
+	AK8963_MAX_SAMPLE_RATE = 0x64 // 100 Hz
 	// Read-only Reg
 	AK8963_WIA  = 0x00
 	AK8963_INFO = 0x01
@@ -195,8 +196,8 @@ const (
 
 type MPU9250 struct {
 	i2cbus                embd.I2CBus
-	freq                  float64 // Update frequency in Hz
 	scaleGyro, scaleAccel float64 // Max sensor reading for value 2**15-1
+	sampleRate 		int
 	n                     float64 // Number of samples taken since last read
 	g1, g2, g3            float64 // Gyro accumulated values, rad/s
 	a1, a2, a3            float64 // Accel accumulated values, G
@@ -204,10 +205,10 @@ type MPU9250 struct {
 	mcal1, mcal2, mcal3   float64 // Magnetometer calibration values, uT
 }
 
-func NewMPU9250(freq float64, sensitivityGyro, sensitivityAccel int) *MPU9250 {
+func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int) *MPU9250 {
 	var mpu = new(MPU9250)
 	var sensGyro, sensAccel byte
-	mpu.freq = freq
+	mpu.sampleRate = sampleRate
 
 	switch sensitivityGyro {
 	case 2000:
@@ -247,19 +248,30 @@ func NewMPU9250(freq float64, sensitivityGyro, sensitivityAccel int) *MPU9250 {
 
 	// Initialization of MPU
 	mpu.i2cWrite(BIT_H_RESET, MPUREG_PWR_MGMT_1) // Reset Device
+	time.Sleep(100*time.Millisecond)		// As in inv_mpu
+	mpu.i2cWrite(0x00, MPUREG_PWR_MGMT_1)        // Wake device
+
 	mpu.i2cWrite(0x01, MPUREG_PWR_MGMT_1)        // Clock Source
 	mpu.i2cWrite(0x00, MPUREG_PWR_MGMT_2)        // Enable Acc & Gyro
 	//i2cWrite(my_low_pass_filter, MPUREG_CONFIG)         	// Use DLPF set Gyroscope bandwidth 184Hz, temperature bandwidth 188Hz
 	mpu.i2cWrite(sensGyro, MPUREG_GYRO_CONFIG)              // +-250dps
 	mpu.i2cWrite(sensAccel, MPUREG_ACCEL_CONFIG)            // +-8G
-	mpu.i2cWrite(BITS_DLPF_CFG_98HZ, MPUREG_ACCEL_CONFIG_2) // Set Acc Data Rates, Enable Acc LPF , Bandwidth 184Hz
+
+	// Next disabled by Eric
+	//mpu.i2cWrite(BITS_DLPF_CFG_98HZ, MPUREG_ACCEL_CONFIG_2) // Set Acc Data Rates, Enable Acc LPF , Bandwidth 184Hz
+	// Next several enabled by Eric
+	mpu.i2cWrite(BITS_DLPF_CFG_98HZ, MPUREG_CONFIG) // Set LPF to 98 Hz
+	mpu.i2cWrite(byte(1000/mpu.sampleRate-1), MPUREG_SMPLRT_DIV) // Set sample rate to chosen
+	mpu.i2cWrite(0x00, MPUREG_FIFO_EN)		// Turn off FIFO buffer
+
 	mpu.i2cWrite(0x30, MPUREG_INT_PIN_CFG)                  //
 	//mpu.i2cWrite(0x40, MPUREG_I2C_MST_CTRL)   		// I2C Speed 348 kHz
 	//mpu.i2cWrite(0x20, MPUREG_USER_CTRL)      		// Enable AUX
 	mpu.i2cWrite(0x20, MPUREG_USER_CTRL)    // I2C Master mode
 	mpu.i2cWrite(0x0D, MPUREG_I2C_MST_CTRL) //  I2C configuration multi-master  IIC 400KHz
 
-	mpu.i2cWrite(AK8963_I2C_ADDR, MPUREG_I2C_SLV0_ADDR) //Set the I2C slave addres of AK8963 and set for write.
+	// Set up magnetometer
+	mpu.i2cWrite(AK8963_I2C_ADDR, MPUREG_I2C_SLV0_ADDR) //Set the I2C slave address of AK8963 and set for write.
 	//mpu.i2cWrite(0x09, MPUREG_I2C_SLV4_CTRL)
 	//mpu.i2cWrite(0x81, MPUREG_I2C_MST_DELAY_CTRL)		//Enable I2C delay
 
@@ -271,6 +283,15 @@ func NewMPU9250(freq float64, sensitivityGyro, sensitivityAccel int) *MPU9250 {
 	mpu.i2cWrite(0x16, MPUREG_I2C_SLV0_DO)          // Register value to 100Hz continuous measurement in 16bit
 	mpu.i2cWrite(0x81, MPUREG_I2C_SLV0_CTRL)        //Enable I2C and set 1 byte
 
+	// Added by Eric
+	var ak8963Rate byte
+	if mpu.sampleRate < AK8963_MAX_SAMPLE_RATE {
+		ak8963Rate = 0
+	} else {
+		ak8963Rate = byte(mpu.sampleRate/AK8963_MAX_SAMPLE_RATE - 1)
+	}
+	mpu.i2cWrite(ak8963Rate, MPUREG_I2C_SLV4_CTRL)	// Set Magnetometer sample rate, same as gyro/accel up to max
+
 	mpu.readMagCal()
 	go mpu.readMPURaw()
 
@@ -280,7 +301,7 @@ func NewMPU9250(freq float64, sensitivityGyro, sensitivityAccel int) *MPU9250 {
 // readMPURaw reads all sensors and totals the values and number of samples
 // When Read is called, we will return the averages
 func (m *MPU9250) readMPURaw() {
-	clock := time.NewTicker(time.Duration(int(1000/m.freq+0.5)) * time.Millisecond)
+	clock := time.NewTicker(time.Duration(int(1000.0/float32(m.sampleRate)+0.5)) * time.Millisecond)
 
 	for {
 		<-clock.C
@@ -335,9 +356,6 @@ func (m *MPU9250) readMagCal() {
 
 func (m *MPU9250) CloseMPU() {
 	return // Nothing to do for the 9250?
-}
-func (m *MPU9250) Freq() float64 {
-	return m.freq
 }
 
 func (mpu *MPU9250) i2cWrite(value, register byte) {
