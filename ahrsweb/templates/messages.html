@@ -34,8 +34,18 @@
 
         .line {
             stroke-width: 2;
-            stroke: Red;
             fill: none;
+        }
+
+        .line.x {
+            stroke: Red;
+        }
+
+        .line.y {
+            stroke: Green;
+        }
+        .line.z {
+            stroke: Blue;
         }
 
         .axis path,
@@ -265,9 +275,9 @@
 
     })();
 
-    var updateAccel = makeRollingPlot("accel", 4, "Az"),
-            updateGyro = makeRollingPlot("gyro", 250, "Gy"),
-            updateMag = makeRollingPlot("mag", 1000, "Mx");
+    var updateAccel = makeRollingPlot("accel", 4, "A"),
+            updateGyro = makeRollingPlot("gyro", 250, "G"),
+            updateMag = makeRollingPlot("mag", 1000, "M");
 
     function makeRollingPlot(el, ylim, v) {
         const TMAX = 20;
@@ -290,9 +300,20 @@
                 .scale(y)
                 .orient("left");
 
-        var line = d3.svg.line()
-                .x(function(d, i) { return x(i/10); })
-                .y(function(d, i) { return y(d); });
+        var getLine = function(dim) {
+            return d3.svg.line()
+                    .x(function (d, i) {
+                        return x(i / 10);
+                    })
+                    .y(function (d, i) {
+                        debugger;
+                        if (d.Ax) {
+                            return y(d[v + dim]);
+                        } else {
+                            return y(0);
+                        }
+                    });
+        };
 
         var svg = d3.select("#"+el)
                 .append("svg")
@@ -317,16 +338,42 @@
                 .call(yAxis)
                 .append("text");
 
-        var path = svg.append("g")
+        var xpath = svg.append("g")
                 .attr("clip-path", "url(#"+el+"Clip)")
                 .append("path")
-                .attr("class", "line")
+                .attr("class", "line x")
                 .datum(D0)
-                .attr("d", line);
+                .attr("d", getLine("x"));
+
+        var ypath = svg.append("g")
+                .attr("clip-path", "url(#"+el+"Clip)")
+                .append("path")
+                .attr("class", "line y")
+                .datum(D0)
+                .attr("d", getLine("y"));
+
+        var zpath = svg.append("g")
+                .attr("clip-path", "url(#"+el+"Clip)")
+                .append("path")
+                .attr("class", "line z")
+                .datum(D0)
+                .attr("d", getLine("z"));
 
         return function(data) {
-            D0.push(data[v]);
-            path.attr("d", line)
+            D0.push(data);
+            xpath.attr("d", getLine("x"))
+                    .attr("transform", null)
+                    .transition()
+                    .duration(100)
+                    .ease("linear")
+                    .attr("transform", "translate(" + x(-0.1) + ",0)");
+            ypath.attr("d", getLine("y"))
+                    .attr("transform", null)
+                    .transition()
+                    .duration(100)
+                    .ease("linear")
+                    .attr("transform", "translate(" + x(-0.1) + ",0)");
+            zpath.attr("d", getLine("z"))
                     .attr("transform", null)
                     .transition()
                     .duration(100)
