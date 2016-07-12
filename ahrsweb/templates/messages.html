@@ -306,7 +306,6 @@
                         return x(i / 10);
                     })
                     .y(function (d, i) {
-                        debugger;
                         if (d.Ax) {
                             return y(d[v + dim]);
                         } else {
@@ -387,20 +386,26 @@
     if (!window["WebSocket"]) {
         alert("Error: Your browser does not support web sockets.")
     } else {
-        var socket = new WebSocket("ws://{{.Host}}/room");
-        socket.onclose = function() {
+        function reconnectLoop() {
+            var socket = new WebSocket("ws://{{.Host}}/room");
+            socket.onclose = function () {
 //            alert("Connection has been closed.");
-            console.log("Socket has been closed.");
-        };
-        socket.onmessage = function(e) {
-            var msg = JSON.parse(e.data);
-            updateTable(msg);
-            updateMessageList(msg);
-            updateAI(msg);
-            updateAccel(msg);
-            updateGyro(msg);
-            updateMag(msg);
+                console.log("Socket has been closed.  Trying to reconnect.");
+                setTimeout(function () {
+                    reconnectLoop()
+                }, 1000);
+            };
+            socket.onmessage = function (e) {
+                var msg = JSON.parse(e.data);
+                updateTable(msg);
+                updateMessageList(msg);
+                updateAI(msg);
+                updateAccel(msg);
+                updateGyro(msg);
+                updateMag(msg);
+            };
         }
+        reconnectLoop()
     }
 </script>
 </body>
