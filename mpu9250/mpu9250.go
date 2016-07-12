@@ -264,8 +264,9 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int) *MPU9250 {
 	// Next disabled by Eric
 	//mpu.i2cWrite(BITS_DLPF_CFG_98HZ, MPUREG_ACCEL_CONFIG_2) // Set Acc Data Rates, Enable Acc LPF , Bandwidth 184Hz
 	// Next several enabled by Eric
-	mpu.i2cWrite(BITS_DLPF_CFG_98HZ, MPUREG_CONFIG) // Set LPF to 98 Hz
-	mpu.i2cWrite(byte(1000/mpu.sampleRate-1), MPUREG_SMPLRT_DIV) // Set sample rate to chosen
+	sampRate := byte(1000/mpu.sampleRate-1)
+	mpu.SetSampleRate(sampRate) // Set sample rate to chosen
+	mpu.SetLPF(sampRate >> 1) // Set LPF to half of sample rate
 	mpu.i2cWrite(0x00, MPUREG_FIFO_EN)		// Turn off FIFO buffer
 
 	mpu.i2cWrite(0x30, MPUREG_INT_PIN_CFG)                  //
@@ -365,21 +366,28 @@ func (m *MPU9250) CloseMPU() {
 	return // Nothing to do for the 9250?
 }
 
-func (mpu *MPU9250) i2cWrite(value, register byte) {
-
-	if err := mpu.i2cbus.WriteByteToReg(MPU_ADDRESS, register, value); err != nil {
-		fmt.Printf("Error writing %x to %x: %s\n", value, register, err.Error())
-	}
-	time.Sleep(time.Millisecond)
+func (mpu *MPU9250) SetSampleRate(rate byte) {
+	mpu.i2cWrite(byte(rate), MPUREG_SMPLRT_DIV) // Set sample rate to chosen
 }
 
-func (mpu *MPU9250) i2cRead(register byte) int16 {
-
-	value, err := mpu.i2cbus.ReadWordFromReg(MPU_ADDRESS, register)
-	if err != nil {
-		fmt.Printf("Error reading %x: %s\n", register, err.Error())
+func (mpu*MPU9250) SetLPF(rate byte) {
+	var r byte
+	switch {
+	case rate >= 188:
+		r = BITS_DLPF_CFG_188HZ
+	case rate >= 98:
+		r = BITS_DLPF_CFG_98HZ
+	case rate >= 42:
+		r = BITS_DLPF_CFG_42HZ;
+	case rate >= 20:
+		r = BITS_DLPF_CFG_20HZ
+	case rate >= 10:
+		r = BITS_DLPF_CFG_10HZ
+	default:
+		r = BITS_DLPF_CFG_5HZ
 	}
-	return int16(value)
+
+	mpu.i2cWrite(r, MPUREG_CONFIG)
 }
 
 func (mpu *MPU9250) SetGyroBiasCal(enable bool) (error) {
@@ -397,6 +405,23 @@ func (mpu *MPU9250) SetGyroBiasCal(enable bool) (error) {
 	}
 
 		return nil
+}
+
+func (mpu *MPU9250) i2cWrite(value, register byte) {
+
+	if err := mpu.i2cbus.WriteByteToReg(MPU_ADDRESS, register, value); err != nil {
+		fmt.Printf("Error writing %x to %x: %s\n", value, register, err.Error())
+	}
+	time.Sleep(time.Millisecond)
+}
+
+func (mpu *MPU9250) i2cRead(register byte) int16 {
+
+	value, err := mpu.i2cbus.ReadWordFromReg(MPU_ADDRESS, register)
+	if err != nil {
+		fmt.Printf("Error reading %x: %s\n", register, err.Error())
+	}
+	return int16(value)
 }
 
 func (mpu *MPU9250) memWrite(addr uint16, data *[]byte) (error) {
