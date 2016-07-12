@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math"
 	"time"
+	"errors"
 )
 
 const (
@@ -185,7 +186,10 @@ const (
 	BIT_RAW_RDY_EN             = 0x01
 	BIT_I2C_IF_DIS             = 0x10
 
+	// Misc
 	READ_FLAG = 0x80
+	MPU_BANK_SIZE = 0xFF
+	CFG_MOTION_BIAS = 0x4B8 // Enable/disable gyro bias compensation
 
 	/* = ---- Sensitivity --------------------------------------------------------- */
 
@@ -293,6 +297,9 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int) *MPU9250 {
 	mpu.i2cWrite(ak8963Rate, MPUREG_I2C_SLV4_CTRL)	// Set Magnetometer sample rate, same as gyro/accel up to max
 
 	mpu.readMagCal()
+
+	mpu.SetGyroBiasCal(false) // Usually we don't want the automatic gyro bias compensation - it pollutes the gyro in a non-inertial frame
+
 	go mpu.readMPURaw()
 
 	return mpu
@@ -373,4 +380,48 @@ func (mpu *MPU9250) i2cRead(register byte) int16 {
 		fmt.Printf("Error reading %x: %s\n", register, err.Error())
 	}
 	return int16(value)
+}
+
+func (mpu *MPU9250) SetGyroBiasCal(enable bool) (error) {
+	enableRegs := []byte{0xb8, 0xaa, 0xb3, 0x8d, 0xb4, 0x98, 0x0d, 0x35, 0x5d}
+	disableRegs := []byte{0xb8, 0xaa, 0xaa, 0xaa, 0xb0, 0x88, 0xc3, 0xc5, 0xc7}
+
+	if enable {
+		if err := mpu.memWrite(CFG_MOTION_BIAS, &enableRegs); err != nil {
+			return errors.New("Unable to enable motion bias compensation")
+		}
+	} else {
+		if err := mpu.memWrite(CFG_MOTION_BIAS, &disableRegs); err != nil {
+			return errors.New("Unable to disable motion bias compensation")
+		}
+	}
+
+		return nil
+}
+
+func (mpu *MPU9250) memWrite(addr uint16, data *[]byte) (error) {
+	var err error
+	var tmp = make([]byte, 2)
+
+	tmp[0] = byte(addr >> 8)
+	tmp[1] = byte(addr & 0xFF)
+
+	// Check memory bank boundaries
+	if tmp[1] + byte(len(*data)) > MPU_BANK_SIZE {
+		return errors.New("Bad address: writing outside of memory bank boundaries")
+	}
+
+	err = mpu.i2cbus.WriteToReg(MPU_ADDRESS, MPUREG_BANK_SEL, tmp)
+	if err != nil {
+		fmt.Printf("Error selecting memory bank: %s\n", err.Error())
+		return err
+	}
+
+	err = mpu.i2cbus.WriteToReg(MPU_ADDRESS, MPUREG_MEM_R_W, *data)
+	if err != nil {
+		fmt.Printf("Error writing to the memory bank: %s\n", err.Error())
+		return err
+	}
+
+	return nil
 }
