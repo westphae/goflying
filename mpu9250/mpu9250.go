@@ -190,6 +190,9 @@ const (
 	READ_FLAG = 0x80
 	MPU_BANK_SIZE = 0xFF
 	CFG_MOTION_BIAS = 0x4B8 // Enable/disable gyro bias compensation
+	INV_XYZ_GYRO = 0x70
+	INV_XYZ_ACCEL = 0x08
+	INV_XYZ_COMPASS = 0x01
 
 	/* = ---- Sensitivity --------------------------------------------------------- */
 
@@ -214,35 +217,31 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int) *MPU9250 {
 	var sensGyro, sensAccel byte
 	mpu.sampleRate = sampleRate
 
-	switch sensitivityGyro {
-	case 2000:
+	switch {
+	case sensitivityGyro>=1500:
 		sensGyro = BITS_FS_2000DPS
 		mpu.scaleGyro = 2000.0 / float64(math.MaxInt16)
-	case 1000:
+	case sensitivityGyro>750:
 		sensGyro = BITS_FS_1000DPS
 		mpu.scaleGyro = 1000.0 / float64(math.MaxInt16)
-	case 500:
+	case sensitivityGyro>375:
 		sensGyro = BITS_FS_500DPS
 		mpu.scaleGyro = 500.0 / float64(math.MaxInt16)
-	case 250:
-		fallthrough
 	default:
 		sensGyro = BITS_FS_250DPS
 		mpu.scaleGyro = 250.0 / float64(math.MaxInt16)
 	}
 
-	switch sensitivityAccel {
-	case 16:
+	switch {
+	case sensitivityAccel>=12:
 		sensAccel = BITS_FS_16G
 		mpu.scaleAccel = 16.0 / float64(math.MaxInt16)
-	case 8:
+	case sensitivityAccel>=6:
 		sensAccel = BITS_FS_8G
 		mpu.scaleAccel = 8.0 / float64(math.MaxInt16)
-	case 4:
+	case sensitivityAccel>=3:
 		sensAccel = BITS_FS_4G
 		mpu.scaleAccel = 4.0 / float64(math.MaxInt16)
-	case 2:
-		fallthrough
 	default:
 		sensAccel = BITS_FS_2G
 		mpu.scaleAccel = 2.0 / float64(math.MaxInt16)
@@ -258,8 +257,8 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int) *MPU9250 {
 	mpu.i2cWrite(0x01, MPUREG_PWR_MGMT_1)        // Clock Source
 	mpu.i2cWrite(0x00, MPUREG_PWR_MGMT_2)        // Enable Acc & Gyro
 	//i2cWrite(my_low_pass_filter, MPUREG_CONFIG)         	// Use DLPF set Gyroscope bandwidth 184Hz, temperature bandwidth 188Hz
-	mpu.i2cWrite(sensGyro, MPUREG_GYRO_CONFIG)              // +-250dps
-	mpu.i2cWrite(sensAccel, MPUREG_ACCEL_CONFIG)            // +-8G
+	mpu.i2cWrite(sensGyro, MPUREG_GYRO_CONFIG)
+	mpu.i2cWrite(sensAccel, MPUREG_ACCEL_CONFIG)
 
 	// Next disabled by Eric
 	//mpu.i2cWrite(BITS_DLPF_CFG_98HZ, MPUREG_ACCEL_CONFIG_2) // Set Acc Data Rates, Enable Acc LPF , Bandwidth 184Hz
