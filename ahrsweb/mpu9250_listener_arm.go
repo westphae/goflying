@@ -23,7 +23,7 @@ func (ml *MPU9250Listener) SetRoom(r *room) {
 const updateFreq = 20
 
 func (ml *MPU9250Listener) Init() {
-	ml.mpu = mpu9250.NewMPU9250(250, 2, updateFreq)
+	ml.mpu = mpu9250.NewMPU9250(250, 4, updateFreq)
 	ml.data = new(AHRSData)
 	time.Sleep(100 * time.Millisecond)
 }

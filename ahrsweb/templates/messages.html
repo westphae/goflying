@@ -4,25 +4,49 @@
     <style>
         ul    { list-style: none; }
         table   { display: inline; }
+        body {
+            font: 10px sans-serif;
+        }
         .earth  {
             stroke-width: 0;
             fill: Brown;
         }
+
         .horizon {
             stroke-width: 3;
             color: White;
         }
+
         .sky  {
             stroke-width: 0;
             fill: SkyBlue;
         }
+
         .wings {
             stroke-width: 5;
             color: Yellow;
         }
+
         .markings {
             stroke-width: 3;
             color: white;
+        }
+
+        .line {
+            stroke-width: 2;
+            stroke: Red;
+            fill: none;
+        }
+
+        .axis path,
+        .axis line {
+            fill: none;
+            stroke: black;
+            shape-rendering: crispEdges;
+        }
+        .axis text {
+            font-family: sans-serif;
+            font-size: 10px;
         }
     </style>
 </head>
@@ -118,55 +142,64 @@
     </tr>
 </table>
 <div id="ai"></div>
+<div id="accel"></div>
+<div id="gyro"></div>
+<div id="mag"></div>
 <ul id="messages"></ul>
 <script src="d3.min.js" charset="utf-8"></script>
 <script>
 
     const t0 = Date.now() * 1000000;
+    const DEG = Math.PI/180;
 
-    function formatVar(k, v) {
-        var fmt;
-        switch (k) {
-        case "Pitch":
-        case "Roll":
-        case "Heading":
-            fmt = "<+6.2f";
-            vv = v;
-            break;
-        case "Gx":
-        case "Gy":
-        case "Gz":
-        case "Ax":
-        case "Ay":
-        case "Az":
-        case "Mx":
-        case "My":
-        case "Mz":
-        case "X_accel":
-        case "Y_accel":
-        case "Z_accel":
-        case "X_mag":
-        case "Y_mag":
-        case "Z_mag":
-        case "Qw":
-        case "Qx":
-        case "Qy":
-        case "Qz":
-            fmt = "<+6.4f";
-            vv = v;
-            break;
-        default:
-            fmt = "8.2f";
-            vv = (v - t0)/1e9;
-        }
-        return d3.format(fmt)(vv);
-    }
+    var width = 400, height=400;
+    var margin = {top: 20, right: 20, bottom: 20, left: 40};
 
-    function updateTable(data) {
-        for (var f in data) {
-            d3.select("#"+f).text(formatVar(f, data[f]));
+    var updateTable = (function() {
+        function formatVar(k, v) {
+            var fmt;
+            switch (k) {
+                case "Pitch":
+                case "Roll":
+                case "Heading":
+                    fmt = "<+6.2f";
+                    vv = v;
+                    break;
+                case "Gx":
+                case "Gy":
+                case "Gz":
+                case "Ax":
+                case "Ay":
+                case "Az":
+                case "Mx":
+                case "My":
+                case "Mz":
+                case "X_accel":
+                case "Y_accel":
+                case "Z_accel":
+                case "X_mag":
+                case "Y_mag":
+                case "Z_mag":
+                case "Qw":
+                case "Qx":
+                case "Qy":
+                case "Qz":
+                    fmt = "<+6.4f";
+                    vv = v;
+                    break;
+                default:
+                    fmt = "8.2f";
+                    vv = (v - t0)/1e9;
+            }
+            return d3.format(fmt)(vv);
         }
-    }
+
+        return function(data) {
+            for (var f in data) {
+                d3.select("#"+f).text(formatVar(f, data[f]));
+            }
+        }
+    })();
 
     function updateMessageList(data) {
 //        var messages = document.getElementById("messages");
@@ -175,64 +208,130 @@
 //            messages.appendChild(entry);
     }
 
-    function updateAI(data) {
-        D0[0].theta = data.Pitch;
-        D0[1].theta = data.Pitch;
-        D0[0].phi = data.Roll;
-        D0[1].phi = data.Roll;
-        sky.attr("d", sky_gen);
-        earth.attr("d", earth_gen);
-        horizon.attr("d", horizon_gen);
-    }
-
     // Draw AI
-    var width = 400, height=400;
+    var updateAI = (function() {
+        var D0 = [{theta: 0, phi: 0, side: -1}, {theta: 0, phi: 0, side: +1}];
 
-    const DEG = Math.PI/180;
+        function x(d) {
+            return width * (d.side + 1) / 2
+        }
 
-    var D0 = [{theta: 0, phi: 0, side: -1}, {theta: 0, phi: 0, side: +1}];
+        function y(d) {
+            return height * (90 - d.theta * DEG) / 180 - d.side * width / 2 * Math.tan(d.phi * DEG)
+        }
 
-    function x(d) {
-        return width*(d.side+1)/2
+        var svg = d3.select("#ai").append("svg")
+                .attr("width", width)
+                .attr("height", height)
+                .append("g");
+
+        var sky_gen = d3.svg.area()
+                .x(x)
+                .y0(y)
+                .y1(0);
+
+        var horizon_gen = d3.svg.line()
+                .x(x)
+                .y(y);
+
+        var earth_gen = d3.svg.area()
+                .x(x)
+                .y0(y)
+                .y1(height);
+
+        var sky = svg.append("path")
+                .attr("class", "sky")
+                .datum(D0)
+                .attr("d", sky_gen);
+
+        var earth = svg.append("path")
+                .attr("class", "earth")
+                .datum(D0)
+                .attr("d", earth_gen);
+
+        var horizon = svg.append("path")
+                .attr("class", "horizon")
+                .datum(D0)
+                .attr("d", horizon_gen);
+
+        return function(data) {
+            D0[0].theta = data.Pitch;
+            D0[1].theta = data.Pitch;
+            D0[0].phi = data.Roll;
+            D0[1].phi = data.Roll;
+            sky.attr("d", sky_gen);
+            earth.attr("d", earth_gen);
+            horizon.attr("d", horizon_gen);
+        }
+
+    })();
+
+    var updateAccel = makeRollingPlot("accel", 4, "Az"),
+            updateGyro = makeRollingPlot("gyro", 250, "Gy"),
+            updateMag = makeRollingPlot("mag", 1000, "Mx");
+
+    function makeRollingPlot(el, ylim, v) {
+        const TMAX = 20;
+
+        var D0 = d3.range(TMAX*10).map(function() { return 0; });
+
+        var x = d3.scale.linear()
+                .domain([0, TMAX])
+                .range([0, width-margin.left-margin.right]);
+
+        var y = d3.scale.linear()
+                .domain([-ylim, ylim])
+                .range([height-margin.top-margin.bottom, 0]);
+
+        var xAxis = d3.svg.axis()
+                .scale(x)
+                .orient("bottom");
+
+        var yAxis = d3.svg.axis()
+                .scale(y)
+                .orient("left");
+
+        var line = d3.svg.line()
+                .x(function(d, i) { return x(i/10); })
+                .y(function(d, i) { return y(d); });
+
+        var svg = d3.select("#"+el)
+                .append("svg")
+                .attr("width", width)
+                .attr("height", height)
+                .append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+        svg.append("defs").append("clipPath")
+                .attr("id", el+"Clip")
+                .append("rect")
+                .attr("width", width-margin.left-margin.right)
+                .attr("height", height-margin.top-margin.bottom);
+
+        svg.append("g")
+                .attr("class", "x axis")
+                .attr("transform", "translate(0," + y(0) + ")")
+                .call(xAxis);
+
+        svg.append("g")
+                .attr("class", "y axis")
+                .call(yAxis)
+                .append("text");
+
+        var path = svg.append("g")
+                .attr("clip-path", "url(#"+el+"Clip)")
+                .append("path")
+                .attr("class", "line")
+                .datum(D0)
+                .attr("d", line);
+
+        return function(data) {
+            D0.push(data[v]);
+            D0.shift();
+            path.attr("d", line);
+        }
+
     }
-
-    function y(d) {
-        return height*(90-d.theta*DEG)/180 - d.side*width/2*Math.tan(d.phi*DEG)
-    }
-
-    var svg = d3.select("#ai").append("svg")
-            .attr("width", width)
-            .attr("height", height)
-            .append("g");
-
-    var sky_gen = d3.svg.area()
-            .x(x)
-            .y0(y)
-            .y1(0);
-
-    var horizon_gen = d3.svg.line()
-            .x(x)
-            .y(y);
-
-    var earth_gen = d3.svg.area()
-            .x(x)
-            .y0(y)
-            .y1(height);
-
-    var sky = svg.append("path")
-            .attr("class", "sky")
-            .datum(D0)
-            .attr("d", sky_gen);
-
-    var earth = svg.append("path")
-            .attr("class", "earth")
-            .datum(D0)
-            .attr("d", earth_gen);
-
-    var horizon = svg.append("path")
-            .attr("class", "horizon")
-            .datum(D0)
-            .attr("d", horizon_gen);
 
     if (!window["WebSocket"]) {
         alert("Error: Your browser does not support web sockets.")
@@ -241,12 +340,15 @@
         socket.onclose = function() {
 //            alert("Connection has been closed.");
             console.log("Socket has been closed.");
-        }
+        };
         socket.onmessage = function(e) {
             var msg = JSON.parse(e.data);
             updateTable(msg);
             updateMessageList(msg);
             updateAI(msg);
+            updateAccel(msg);
+            updateGyro(msg);
+            updateMag(msg);
         }
     }
 </script>
