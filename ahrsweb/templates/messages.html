@@ -44,9 +44,8 @@
             stroke: black;
             shape-rendering: crispEdges;
         }
-        .axis text {
-            font-family: sans-serif;
-            font-size: 10px;
+        svg {
+            font: 10px sans-serif;
         }
     </style>
 </head>
@@ -327,8 +326,13 @@
 
         return function(data) {
             D0.push(data[v]);
+            path.attr("d", line)
+                    .attr("transform", null)
+                    .transition()
+                    .duration(100)
+                    .ease("linear")
+                    .attr("transform", "translate(" + x(-0.1) + ",0)");
             D0.shift();
-            path.attr("d", line);
         }
 
     }
