@@ -2,12 +2,9 @@ package main
 
 import (
 	"fmt"
-	"math"
 	"time"
 	"github.com/westphae/goflying/mpu9250"
 )
-
-const DEG = 180/math.Pi
 
 func main() {
 	clock := time.NewTicker(100 * time.Millisecond)
@@ -26,6 +23,11 @@ func main() {
 
 	if err != nil {
 		fmt.Println("Error: couldn't initialize MPU9250")
+		return
+	}
+
+	if err := mpu.CalibrateGyro(1); err != nil {
+		fmt.Println(err.Error())
 		return
 	}
 

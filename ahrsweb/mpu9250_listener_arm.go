@@ -20,13 +20,17 @@ func (ml *MPU9250Listener) SetRoom(r *room) {
 	ml.r = r
 }
 
-const updateFreq = 50
+const (
+	gyroRange = 250
+	accelRange = 4
+	updateFreq = 100
+)
 
 func (ml *MPU9250Listener) Init() {
 	var err error
 
 	for i:=0; i<10; i++ {
-		mpu, err := mpu9250.NewMPU9250(250, 4, updateFreq, false)
+		mpu, err := mpu9250.NewMPU9250(gyroRange, accelRange, updateFreq, false)
 		if err != nil {
 			fmt.Printf("Error initializing MPU9250, attempt %d of n\n", i)
 			time.Sleep(5 * time.Second)
@@ -38,6 +42,11 @@ func (ml *MPU9250Listener) Init() {
 
 	if err != nil {
 		fmt.Println("Error: couldn't initialize MPU9250")
+		return
+	}
+
+	if err := ml.mpu.CalibrateGyro(1); err != nil {
+		fmt.Println(err.Error())
 		return
 	}
 

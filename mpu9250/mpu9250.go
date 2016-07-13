@@ -439,7 +439,7 @@ func (m *MPU9250) readMPURaw() {
 
 	for {
 		<-clock.C
-		m.m.Lock()
+		m.m.Lock() //TODO: There must be a better way using channels
 		// Read gyro data:
 		g1, err = m.i2cRead2(MPUREG_GYRO_XOUT_H)
 		if err != nil {
@@ -562,6 +562,60 @@ func (m *MPU9250) Read() (int64, float64, float64, float64, float64, float64, fl
 
 func (m *MPU9250) CloseMPU() {
 	return // Nothing to do for the 9250?
+}
+
+func (m *MPU9250) CalibrateGyro(dur int32) error {
+	const maxVar = 10.0
+	var (
+		n int32 = dur*int32(m.sampleRate)
+		g11, g12, g13 int32	// Accumulators for calculating mean drifts
+		g21, g22, g23 int64	// Accumulators for calculating stdev drifts
+	)
+
+	clock := time.NewTicker(time.Duration(int(1000.0/float32(m.sampleRate)+0.5)) * time.Millisecond)
+	m.m.Lock()
+
+	for i := int32(0); i<n; i++ {
+		<- clock.C
+
+		g1, err := m.i2cRead2(MPUREG_GYRO_XOUT_H)
+		if err != nil {
+			return errors.New("CalibrationGyro: sensor error during calibration")
+		}
+		g2, err := m.i2cRead2(MPUREG_GYRO_YOUT_H)
+		if err != nil {
+			return errors.New("CalibrationGyro: sensor error during calibration")
+		}
+		g3, err := m.i2cRead2(MPUREG_GYRO_ZOUT_H)
+		if err != nil {
+			return errors.New("CalibrationGyro: sensor error during calibration")
+		}
+		g11 += int32(g1)
+		g12 += int32(g2)
+		g13 += int32(g3)
+		g21 += int64(g1)*int64(g1)
+		g22 += int64(g2)*int64(g2)
+		g23 += int64(g3)*int64(g3)
+	}
+	clock.Stop()
+
+	// Too much variance in the gyro readings means it was moving too much for a good calibration
+	fmt.Printf("calibration variance: %f %f %f\n", (float64(g21-int64(g11)*int64(g11)/int64(n))*m.scaleGyro*m.scaleGyro/float64(n)),
+		(float64(g22-int64(g12)*int64(g12)/int64(n))*m.scaleGyro*m.scaleGyro/float64(n)),
+		(float64(g23-int64(g13)*int64(g13)/int64(n))*m.scaleGyro*m.scaleGyro/float64(n)))
+	if (float64(g21-int64(g11)*int64(g11)/int64(n))*m.scaleGyro*m.scaleGyro > float64(n)*maxVar) ||
+		(float64(g22-int64(g12)*int64(g12)/int64(n))*m.scaleGyro*m.scaleGyro > float64(n)*maxVar) ||
+		(float64(g23-int64(g13)*int64(g13)/int64(n))*m.scaleGyro*m.scaleGyro > float64(n)*maxVar) {
+		return errors.New("CalibrationGyro: sensor was not inertial during calibration")
+	}
+
+	m.g01 = int16(g11/n)
+	m.g02 = int16(g12/n)
+	m.g03 = int16(g13/n)
+
+	m.m.Unlock()
+	fmt.Printf("Gyro calibration: %d, %d, %d\n", m.g01, m.g02, m.g03)
+	return nil
 }
 
 func (mpu *MPU9250) SetSampleRate(rate byte) {
