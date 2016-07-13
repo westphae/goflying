@@ -11,7 +11,7 @@ const DEG = 180/math.Pi
 
 func main() {
 	clock := time.NewTicker(100 * time.Millisecond)
-	var mpu = mpu9250.NewMPU9250(500, 4, 100)
+	var mpu = mpu9250.NewMPU9250(1000, 8, 100, false)
 	var t0 = time.Now().UnixNano()
 
 	for {

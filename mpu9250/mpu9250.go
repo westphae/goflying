@@ -190,9 +190,19 @@ const (
 	READ_FLAG = 0x80
 	MPU_BANK_SIZE = 0xFF
 	CFG_MOTION_BIAS = 0x4B8 // Enable/disable gyro bias compensation
-	INV_XYZ_GYRO = 0x70
-	INV_XYZ_ACCEL = 0x08
-	INV_XYZ_COMPASS = 0x01
+	BIT_FIFO_SIZE_1024 = 0x40 // FIFO buffer size
+	BIT_AUX_IF_EN uint8 = 0x20
+	BIT_BYPASS_EN = 0x02
+	AKM_POWER_DOWN = 0x00
+	BIT_I2C_READ = 0x80
+	BIT_SLAVE_EN = 0x80
+	AKM_SINGLE_MEASUREMENT = 0x01
+	INV_CLK_PLL = 0x01
+	AK89xx_FSR = 4915
+	AKM_DATA_READY = 0x01
+	AKM_DATA_OVERRUN = 0x02
+	AKM_OVERFLOW = 0x80
+
 
 	/* = ---- Sensitivity --------------------------------------------------------- */
 
@@ -204,27 +214,29 @@ const (
 type MPU9250 struct {
 	i2cbus                embd.I2CBus
 	scaleGyro, scaleAccel float64 // Max sensor reading for value 2**15-1
-	sampleRate 		int
-	n                     float64 // Number of samples taken since last read
-	g1, g2, g3            float64 // Gyro accumulated values, rad/s
-	a1, a2, a3            float64 // Accel accumulated values, G
-	m1, m2, m3            float64 // Magnetometer accumulated values, uT
-	mcal1, mcal2, mcal3   float64 // Magnetometer calibration values, uT
+	sampleRate 	      int
+	n, nm                 float64 // Number of samples taken since last read
+	g1, g2, g3            int32 // Gyro accumulated values, rad/s
+	a1, a2, a3            int32 // Accel accumulated values, G
+	m1, m2, m3            int32 // Magnetometer accumulated values, uT
+	a01, a02, a03	      int16 // Accelerometer bias
+	g01, g02, g03	      int16 // Gyro bias
+	mcal1, mcal2, mcal3   int32 // Magnetometer calibration values, uT
 }
 
-func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int) *MPU9250 {
+func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, applyHWOffsets bool) *MPU9250 {
 	var mpu = new(MPU9250)
 	var sensGyro, sensAccel byte
 	mpu.sampleRate = sampleRate
 
 	switch {
-	case sensitivityGyro>=1500:
+	case sensitivityGyro>1000:
 		sensGyro = BITS_FS_2000DPS
 		mpu.scaleGyro = 2000.0 / float64(math.MaxInt16)
-	case sensitivityGyro>750:
+	case sensitivityGyro>500:
 		sensGyro = BITS_FS_1000DPS
 		mpu.scaleGyro = 1000.0 / float64(math.MaxInt16)
-	case sensitivityGyro>375:
+	case sensitivityGyro>250:
 		sensGyro = BITS_FS_500DPS
 		mpu.scaleGyro = 500.0 / float64(math.MaxInt16)
 	default:
@@ -233,13 +245,13 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int) *MPU9250 {
 	}
 
 	switch {
-	case sensitivityAccel>=12:
+	case sensitivityAccel>8:
 		sensAccel = BITS_FS_16G
 		mpu.scaleAccel = 16.0 / float64(math.MaxInt16)
-	case sensitivityAccel>=6:
+	case sensitivityAccel>4:
 		sensAccel = BITS_FS_8G
 		mpu.scaleAccel = 8.0 / float64(math.MaxInt16)
-	case sensitivityAccel>=3:
+	case sensitivityAccel>2:
 		sensAccel = BITS_FS_4G
 		mpu.scaleAccel = 4.0 / float64(math.MaxInt16)
 	default:
@@ -250,55 +262,100 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int) *MPU9250 {
 	mpu.i2cbus = embd.NewI2CBus(1)
 
 	// Initialization of MPU
-	mpu.i2cWrite(BIT_H_RESET, MPUREG_PWR_MGMT_1) // Reset Device
+	mpu.i2cWrite(MPUREG_PWR_MGMT_1, BIT_H_RESET) // Reset Device
 	time.Sleep(100*time.Millisecond)		// As in inv_mpu
-	mpu.i2cWrite(0x00, MPUREG_PWR_MGMT_1)        // Wake device
+	mpu.i2cWrite(MPUREG_PWR_MGMT_1, 0x00)        // Wake device
 
-	mpu.i2cWrite(0x01, MPUREG_PWR_MGMT_1)        // Clock Source
-	mpu.i2cWrite(0x00, MPUREG_PWR_MGMT_2)        // Enable Acc & Gyro
-	//i2cWrite(my_low_pass_filter, MPUREG_CONFIG)         	// Use DLPF set Gyroscope bandwidth 184Hz, temperature bandwidth 188Hz
-	mpu.i2cWrite(sensGyro, MPUREG_GYRO_CONFIG)
-	mpu.i2cWrite(sensAccel, MPUREG_ACCEL_CONFIG)
+	mpu.i2cWrite(MPUREG_ACCEL_CONFIG_2, BIT_FIFO_SIZE_1024 | 0x8) // Don't let FIFO overwrite DMP data
 
-	// Next disabled by Eric
-	//mpu.i2cWrite(BITS_DLPF_CFG_98HZ, MPUREG_ACCEL_CONFIG_2) // Set Acc Data Rates, Enable Acc LPF , Bandwidth 184Hz
-	// Next several enabled by Eric
+	// Invalidate some registers
+	/*
+	// Matches gyro_cfg >> 3 & 0x03
+	unsigned char gyro_fsr;
+	// Matches accel_cfg >> 3 & 0x03
+	unsigned char accel_fsr;
+	// Enabled sensors. Uses same masks as fifo_en, NOT pwr_mgmt_2.
+	unsigned char sensors;
+	// Matches config register.
+	unsigned char lpf;
+	unsigned char clk_src;
+	// Sample rate, NOT rate divider.
+	unsigned short sample_rate;
+	// Matches fifo_en register.
+	unsigned char fifo_enable;
+	// Matches int enable register.
+	unsigned char int_enable;
+	// 1 if devices on auxiliary I2C bus appear on the primary.
+	unsigned char bypass_mode;
+	// 1 if half-sensitivity.
+	// NOTE: This doesn't belong here, but everything else in hw_s is const,
+	// and this allows us to save some precious RAM.
+	 //
+	unsigned char accel_half;
+	// 1 if device in low-power accel-only mode.
+	unsigned char lp_accel_mode;
+	// 1 if interrupts are only triggered on motion events.
+	unsigned char int_motion_only;
+	struct motion_int_cache_s cache;
+	// 1 for active low interrupts.
+	unsigned char active_low_int;
+	// 1 for latched interrupts.
+	unsigned char latched_int;
+	// 1 if DMP is enabled.
+	unsigned char dmp_on;
+	// Ensures that DMP will only be loaded once.
+	unsigned char dmp_loaded;
+	// Sampling rate used when DMP is enabled.
+	unsigned short dmp_sample_rate;
+	// Compass sample rate.
+	unsigned short compass_sample_rate;
+	unsigned char compass_addr;
+	short mag_sens_adj[3];
+	*/
+
+
+	mpu.i2cWrite(MPUREG_GYRO_CONFIG, sensGyro)
+	mpu.i2cWrite(MPUREG_ACCEL_CONFIG, sensAccel)
 	sampRate := byte(1000/mpu.sampleRate-1)
-	mpu.SetSampleRate(sampRate) // Set sample rate to chosen
 	mpu.SetLPF(sampRate >> 1) // Set LPF to half of sample rate
-	mpu.i2cWrite(0x00, MPUREG_FIFO_EN)		// Turn off FIFO buffer
+	mpu.SetSampleRate(sampRate) // Set sample rate to chosen
+	mpu.i2cWrite(MPUREG_INT_ENABLE, 0x00)		// Turn off FIFO buffer
+	//mpu.i2cWrite(MPUREG_FIFO_EN, 0x00)		// Turn off FIFO buffer
 
-	mpu.i2cWrite(0x30, MPUREG_INT_PIN_CFG)                  //
-	//mpu.i2cWrite(0x40, MPUREG_I2C_MST_CTRL)   		// I2C Speed 348 kHz
-	//mpu.i2cWrite(0x20, MPUREG_USER_CTRL)      		// Enable AUX
-	mpu.i2cWrite(0x20, MPUREG_USER_CTRL)    // I2C Master mode
-	mpu.i2cWrite(0x0D, MPUREG_I2C_MST_CTRL) //  I2C configuration multi-master  IIC 400KHz
+	// Set up compass
+	mpu.ReadMagCalibration()
 
-	// Set up magnetometer
-	mpu.i2cWrite(AK8963_I2C_ADDR, MPUREG_I2C_SLV0_ADDR) //Set the I2C slave address of AK8963 and set for write.
-	//mpu.i2cWrite(0x09, MPUREG_I2C_SLV4_CTRL)
-	//mpu.i2cWrite(0x81, MPUREG_I2C_MST_DELAY_CTRL)		//Enable I2C delay
+	// Set up AK8963 master mode, master clock and ES bit
+	mpu.i2cWrite(MPUREG_I2C_MST_CTRL, 0x40)
+	mpu.i2cWrite(MPUREG_I2C_SLV0_ADDR, BIT_I2C_READ | AK8963_I2C_ADDR)	// Slave 0 reads from AK8963
+	mpu.i2cWrite(MPUREG_I2C_SLV0_REG, AK8963_ST1)	// Compass reads start at this register
+	mpu.i2cWrite(MPUREG_I2C_SLV0_CTRL, BIT_SLAVE_EN | 8)	// Enable 8-byte reads on slave 0
+	mpu.i2cWrite(MPUREG_I2C_SLV1_ADDR, AK8963_I2C_ADDR) 	// Slave 1 can change AK8963 measurement mode
+	mpu.i2cWrite(MPUREG_I2C_SLV1_REG, AK8963_CNTL1)
+	mpu.i2cWrite(MPUREG_I2C_SLV1_CTRL, BIT_SLAVE_EN | 1)	// Enable 1-byte reads on slave 1
+	mpu.i2cWrite(MPUREG_I2C_SLV1_DO, AKM_SINGLE_MEASUREMENT)	// Set slave 1 data
+	mpu.i2cWrite(MPUREG_I2C_MST_DELAY_CTRL, 0x03)	// Triggers slave 0 and 1 actions at each sample
 
-	mpu.i2cWrite(AK8963_CNTL2, MPUREG_I2C_SLV0_REG) //I2C slave 0 register address from where to begin data transfer
-	mpu.i2cWrite(0x01, MPUREG_I2C_SLV0_DO)          // Reset AK8963
-	mpu.i2cWrite(0x81, MPUREG_I2C_SLV0_CTRL)        //Enable I2C and set 1 byte
-
-	mpu.i2cWrite(AK8963_CNTL1, MPUREG_I2C_SLV0_REG) //I2C slave 0 register address from where to begin data transfer
-	mpu.i2cWrite(0x16, MPUREG_I2C_SLV0_DO)          // Register value to 100Hz continuous measurement in 16bit
-	mpu.i2cWrite(0x81, MPUREG_I2C_SLV0_CTRL)        //Enable I2C and set 1 byte
-
-	// Added by Eric
+	// Set AK8963 sample rate to same as gyro/accel sample rate, up to max
 	var ak8963Rate byte
 	if mpu.sampleRate < AK8963_MAX_SAMPLE_RATE {
 		ak8963Rate = 0
 	} else {
 		ak8963Rate = byte(mpu.sampleRate/AK8963_MAX_SAMPLE_RATE - 1)
 	}
-	mpu.i2cWrite(ak8963Rate, MPUREG_I2C_SLV4_CTRL)	// Set Magnetometer sample rate, same as gyro/accel up to max
+	mpu.i2cWrite(MPUREG_I2C_SLV4_CTRL, ak8963Rate)	// Not so sure of this one--I2C Slave 4??!
 
-	mpu.readMagCal()
+	mpu.i2cWrite(MPUREG_PWR_MGMT_1, INV_CLK_PLL)	 // Set clock source to PLL
+	mpu.i2cWrite(MPUREG_PWR_MGMT_2, 0x63)	// Turn off all sensors -- Not sure if necessary
+	time.Sleep(5 * time.Millisecond)
+	mpu.i2cWrite(MPUREG_PWR_MGMT_2, 0x00)	// Turn on all gyro, all accel
 
-	mpu.SetGyroBiasCal(false) // Usually we don't want the automatic gyro bias compensation - it pollutes the gyro in a non-inertial frame
+	if applyHWOffsets {
+		mpu.ReadAccelBias(sensAccel)
+		mpu.ReadGyroBias(sensGyro)
+	}
+
+	mpu.EnableGyroBiasCal(false) // Usually we don't want the automatic gyro bias compensation - it pollutes the gyro in a non-inertial frame
 
 	go mpu.readMPURaw()
 
@@ -313,52 +370,61 @@ func (m *MPU9250) readMPURaw() {
 	for {
 		<-clock.C
 		// Read gyro data:
-		m.g1 += float64(m.i2cRead(MPUREG_GYRO_XOUT_H))
-		m.g2 += float64(m.i2cRead(MPUREG_GYRO_YOUT_H))
-		m.g3 += float64(m.i2cRead(MPUREG_GYRO_ZOUT_H))
+		m.g1 = int32(m.i2cRead2(MPUREG_GYRO_XOUT_H) - m.g01)
+		m.g2 = int32(m.i2cRead2(MPUREG_GYRO_YOUT_H) - m.g02)
+		m.g3 = int32(m.i2cRead2(MPUREG_GYRO_ZOUT_H) - m.g03)
 
 		// Read accelerometer data:
-		m.a1 += float64(m.i2cRead(MPUREG_ACCEL_XOUT_H))
-		m.a2 += float64(m.i2cRead(MPUREG_ACCEL_YOUT_H))
-		m.a3 += float64(m.i2cRead(MPUREG_ACCEL_ZOUT_H))
+		m.a1 = int32(m.i2cRead2(MPUREG_ACCEL_XOUT_H) - m.a01)
+		m.a2 = int32(m.i2cRead2(MPUREG_ACCEL_YOUT_H) - m.a02)
+		m.a3 = int32(m.i2cRead2(MPUREG_ACCEL_ZOUT_H) - m.a03)
+
+		// Increment count of gyro/accel readings
+		m.n = 1.0
 
 		// Read magnetometer data:
-		m.i2cWrite(AK8963_I2C_ADDR|READ_FLAG, MPUREG_I2C_SLV0_ADDR)
-		m.i2cWrite(AK8963_HXL, MPUREG_I2C_SLV0_REG) //I2C slave 0 register address from where to begin data transfer
-		m.i2cWrite(0x87, MPUREG_I2C_SLV0_CTRL)      //Read 7 bytes from the magnetometer
+		m.i2cWrite(MPUREG_I2C_SLV0_ADDR, AK8963_I2C_ADDR | READ_FLAG)
+		m.i2cWrite(MPUREG_I2C_SLV0_REG, AK8963_HXL) //I2C slave 0 register address from where to begin data transfer
+		m.i2cWrite(MPUREG_I2C_SLV0_CTRL, 0x87)      //Read 7 bytes from the magnetometer
 
-		m.m1 += float64(m.i2cRead(MPUREG_EXT_SENS_DATA_00))
-		m.m2 += float64(m.i2cRead(MPUREG_EXT_SENS_DATA_02))
-		m.m3 += float64(m.i2cRead(MPUREG_EXT_SENS_DATA_04))
-		_ = m.i2cRead(MPUREG_EXT_SENS_DATA_06)
+		m1 := m.i2cRead2(MPUREG_EXT_SENS_DATA_00)
+		m2 := m.i2cRead2(MPUREG_EXT_SENS_DATA_02)
+		m3 := m.i2cRead2(MPUREG_EXT_SENS_DATA_04)
+		m4 := m.i2cRead2(MPUREG_EXT_SENS_DATA_06)
 
-		m.n += 1.0
+		if (byte(m1 & 0xFF) & AKM_DATA_READY) == 0x00 && (byte(m1 & 0xFF) & AKM_DATA_OVERRUN) != 0x00 {
+			fmt.Println("Mag data not ready or overflow")
+			fmt.Printf("m1 LSB: %X\n", byte(m1 & 0xFF))
+			return
+		}
+
+		if (byte((m4 >> 8) & 0xFF) & AKM_OVERFLOW) != 0x00 {
+			fmt.Println("Mag data overflow")
+			fmt.Printf("m4 MSB: %X\n", byte((m1 >> 8) & 0xFF))
+			return
+		}
+
+		m.m1 = (int32(m1) * m.mcal1 >> 8)
+		m.m2 = (int32(m2) * m.mcal2 >> 8)
+		m.m3 = (int32(m3) * m.mcal3 >> 8)
+
+		m.nm = 1.0
+
 	}
 }
 
 func (m *MPU9250) Read() (int64, float64, float64, float64, float64, float64, float64, float64, float64, float64) {
-	g1, g2, g3 := m.g1/m.n*m.scaleGyro,  m.g2/m.n*m.scaleGyro,  m.g3/m.n*m.scaleGyro
-	a1, a2, a3 := m.a1/m.n*m.scaleAccel, m.a2/m.n*m.scaleAccel, m.a3/m.n*m.scaleAccel
-	m1, m2, m3 := m.m1*m.mcal1/m.n,      m.m2*m.mcal2/m.n,      m.m3*m.mcal3/m.n
+	g1, g2, g3 := float64(m.g1)/m.n*m.scaleGyro,  float64(m.g2)/m.n*m.scaleGyro,  float64(m.g3)/m.n*m.scaleGyro
+	a1, a2, a3 := float64(m.a1)/m.n*m.scaleAccel, float64(m.a2)/m.n*m.scaleAccel, float64(m.a3)/m.n*m.scaleAccel
+	m1, m2, m3 := float64(m.m1)/m.nm, float64(m.m2)/m.nm, float64(m.m3)/m.nm
 	t := time.Now().UnixNano()
 
-	m.g1, m.g2, m.g3 = 0.0, 0.0, 0.0
-	m.a1, m.a2, m.a3 = 0.0, 0.0, 0.0
-	m.m1, m.m2, m.m3 = 0.0, 0.0, 0.0
-	m.n = 0.0
+	m.g1, m.g2, m.g3 = 0, 0, 0
+	m.a1, m.a2, m.a3 = 0, 0, 0
+	m.m1, m.m2, m.m3 = 0, 0, 0
+	m.n, m.nm = 0, 0
 
 	return t, g1, g2, g3, a1, a2, a3, m1, m2, m3
-}
-
-func (m *MPU9250) readMagCal() {
-	m.i2cWrite(AK8963_I2C_ADDR|READ_FLAG, MPUREG_I2C_SLV0_ADDR) //Set the I2C slave addres of AK8963 and set for read.
-	m.i2cWrite(AK8963_ASAX, MPUREG_I2C_SLV0_REG)                //I2C slave 0 register address from where to begin data transfer
-	m.i2cWrite(0x83, MPUREG_I2C_SLV0_CTRL)                      //Read 3 bytes from the magnetometer
-
-	m.mcal1 += ((float64(m.i2cRead(MPUREG_EXT_SENS_DATA_00))-128)/256 + 1) * Magnetometer_Sensitivity_Scale_Factor
-	m.mcal2 += ((float64(m.i2cRead(MPUREG_EXT_SENS_DATA_02))-128)/256 + 1) * Magnetometer_Sensitivity_Scale_Factor
-	m.mcal3 += ((float64(m.i2cRead(MPUREG_EXT_SENS_DATA_04))-128)/256 + 1) * Magnetometer_Sensitivity_Scale_Factor
-	fmt.Printf("Mag calibration: %+6.f %+6.f %+6.f\n", m.mcal1, m.mcal2, m.mcal3)
 }
 
 func (m *MPU9250) CloseMPU() {
@@ -366,7 +432,7 @@ func (m *MPU9250) CloseMPU() {
 }
 
 func (mpu *MPU9250) SetSampleRate(rate byte) {
-	mpu.i2cWrite(byte(rate), MPUREG_SMPLRT_DIV) // Set sample rate to chosen
+	mpu.i2cWrite(MPUREG_SMPLRT_DIV, byte(rate)) // Set sample rate to chosen
 }
 
 func (mpu*MPU9250) SetLPF(rate byte) {
@@ -386,10 +452,10 @@ func (mpu*MPU9250) SetLPF(rate byte) {
 		r = BITS_DLPF_CFG_5HZ
 	}
 
-	mpu.i2cWrite(r, MPUREG_CONFIG)
+	mpu.i2cWrite(MPUREG_CONFIG, r)
 }
 
-func (mpu *MPU9250) SetGyroBiasCal(enable bool) (error) {
+func (mpu *MPU9250) EnableGyroBiasCal(enable bool) (error) {
 	enableRegs := []byte{0xb8, 0xaa, 0xb3, 0x8d, 0xb4, 0x98, 0x0d, 0x35, 0x5d}
 	disableRegs := []byte{0xb8, 0xaa, 0xaa, 0xaa, 0xb0, 0x88, 0xc3, 0xc5, 0xc7}
 
@@ -406,7 +472,98 @@ func (mpu *MPU9250) SetGyroBiasCal(enable bool) (error) {
 		return nil
 }
 
-func (mpu *MPU9250) i2cWrite(value, register byte) {
+func (mpu *MPU9250) ReadAccelBias(sensAccel byte) {
+	a0x := mpu.i2cRead2(MPUREG_XA_OFFSET_H)
+	a0y := mpu.i2cRead2(MPUREG_YA_OFFSET_H)
+	a0z := mpu.i2cRead2(MPUREG_ZA_OFFSET_H)
+
+	switch sensAccel {
+	case BITS_FS_16G:
+		fmt.Println("16 G")
+		mpu.a01 = a0x >> 1
+		mpu.a02 = a0y >> 1
+		mpu.a03 = a0z >> 1
+	case BITS_FS_4G:
+		fmt.Println("4 G")
+		mpu.a01 = a0x << 1
+		mpu.a02 = a0y << 1
+		mpu.a03 = a0z << 1
+	case BITS_FS_2G:
+		fmt.Println("2 G")
+		mpu.a01 = a0x << 2
+		mpu.a02 = a0y << 2
+		mpu.a03 = a0z << 2
+	default:
+		mpu.a01 = a0x
+		mpu.a02 = a0y
+		mpu.a03 = a0z
+	}
+	fmt.Printf("Accel bias read: %d %d %d\n", mpu.a01, mpu.a02, mpu.a03)
+}
+
+func (mpu *MPU9250) ReadGyroBias(sensGyro byte) {
+	g0x := mpu.i2cRead2(MPUREG_XG_OFFS_USRH)
+	g0y := mpu.i2cRead2(MPUREG_YG_OFFS_USRH)
+	g0z := mpu.i2cRead2(MPUREG_ZG_OFFS_USRH)
+
+	switch sensGyro {
+	case BITS_FS_2000DPS:
+		fmt.Println("2000 DPS")
+		mpu.g01 = g0x >> 1
+		mpu.g02 = g0y >> 1
+		mpu.g03 = g0z >> 1
+	case BITS_FS_500DPS:
+		fmt.Println("500 DPS")
+		mpu.g01 = g0x << 1
+		mpu.g02 = g0y << 1
+		mpu.g03 = g0z << 1
+	case BITS_FS_250DPS:
+		fmt.Println("250 DPS")
+		mpu.g01 = g0x << 2
+		mpu.g02 = g0y << 2
+		mpu.g03 = g0z << 2
+	default:
+		mpu.g01 = g0x
+		mpu.g02 = g0y
+		mpu.g03 = g0z
+	}
+	fmt.Printf("Gyro  bias read: %d %d %d\n", mpu.g01, mpu.g02, mpu.g03)
+}
+
+func (mpu *MPU9250) ReadMagCalibration() {
+	// Enable bypass mode
+	var tmp uint8
+	tmp = mpu.i2cRead(MPUREG_USER_CTRL)
+	mpu.i2cWrite(MPUREG_USER_CTRL, tmp & ^BIT_AUX_IF_EN)
+	time.Sleep(3 * time.Millisecond)
+	mpu.i2cWrite(MPUREG_INT_PIN_CFG, BIT_BYPASS_EN)
+
+	// Prepare for getting sensitivity data from AK8963
+	mpu.i2cWrite(MPUREG_I2C_SLV0_ADDR, AK8963_I2C_ADDR) //Set the I2C slave address of AK8963
+	mpu.i2cWrite(MPUREG_I2C_SLV0_CTRL, AK8963_CNTL1)  // Power down the AK8963
+	mpu.i2cWrite(MPUREG_I2C_SLV0_DO, AKM_POWER_DOWN)  // Power down the AK8963
+	time.Sleep(time.Millisecond)
+	mpu.i2cWrite(MPUREG_I2C_SLV0_DO, AK8963_I2CDIS)  // Fuse AK8963 ROM access
+	time.Sleep(time.Millisecond)
+
+	// Get sensitivity data from AK8963 fuse ROM
+	mpu.mcal1 = int32(mpu.i2cRead(AK8963_ASAX) + 128)
+	mpu.mcal2 = int32(mpu.i2cRead(AK8963_ASAY) + 128)
+	mpu.mcal3 = int32(mpu.i2cRead(AK8963_ASAZ) + 128)
+
+	// Clean up from getting sensitivity data from AK8963
+	mpu.i2cWrite(MPUREG_I2C_SLV0_DO, AK8963_I2CDIS)  // Fuse AK8963 ROM access
+	time.Sleep(time.Millisecond)
+
+	// Disable bypass mode now that we're done getting sensitivity data
+	tmp = mpu.i2cRead(MPUREG_USER_CTRL)
+	mpu.i2cWrite(MPUREG_USER_CTRL, tmp | BIT_AUX_IF_EN)
+	time.Sleep(3 * time.Millisecond)
+	mpu.i2cWrite(MPUREG_INT_PIN_CFG, 0x00)
+	fmt.Printf("Mag   bias: %d %d %d\n", mpu.mcal1, mpu.mcal2, mpu.mcal3)
+}
+
+func (mpu *MPU9250) i2cWrite(register, value byte) {
 
 	if err := mpu.i2cbus.WriteByteToReg(MPU_ADDRESS, register, value); err != nil {
 		fmt.Printf("Error writing %x to %x: %s\n", value, register, err.Error())
@@ -414,7 +571,16 @@ func (mpu *MPU9250) i2cWrite(value, register byte) {
 	time.Sleep(time.Millisecond)
 }
 
-func (mpu *MPU9250) i2cRead(register byte) int16 {
+func (mpu *MPU9250) i2cRead(register byte) uint8 {
+
+	value, err := mpu.i2cbus.ReadByteFromReg(MPU_ADDRESS, register)
+	if err != nil {
+		fmt.Printf("Error reading %x: %s\n", register, err.Error())
+	}
+	return value
+}
+
+func (mpu *MPU9250) i2cRead2(register byte) int16 {
 
 	value, err := mpu.i2cbus.ReadWordFromReg(MPU_ADDRESS, register)
 	if err != nil {

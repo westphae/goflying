@@ -277,10 +277,10 @@
 
     var updateAccel = makeRollingPlot("accel", 4, "A"),
             updateGyro = makeRollingPlot("gyro", 250, "G"),
-            updateMag = makeRollingPlot("mag", 1000, "M");
+            updateMag = makeRollingPlot("mag", 5000, "M");
 
     function makeRollingPlot(el, ylim, v) {
-        const TMAX = 20;
+        const TMAX = 10;
 
         var D0 = d3.range(TMAX*10).map(function() { return 0; });
 
