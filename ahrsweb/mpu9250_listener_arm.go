@@ -7,7 +7,7 @@ import (
 	"github.com/westphae/goflying/mpu9250"
 	"log"
 	"time"
-	"math"
+	"fmt"
 )
 
 type MPU9250Listener struct {
@@ -20,10 +20,27 @@ func (ml *MPU9250Listener) SetRoom(r *room) {
 	ml.r = r
 }
 
-const updateFreq = 20
+const updateFreq = 50
 
 func (ml *MPU9250Listener) Init() {
-	ml.mpu = mpu9250.NewMPU9250(250, 4, updateFreq, false)
+	var err error
+
+	for i:=0; i<10; i++ {
+		mpu, err := mpu9250.NewMPU9250(250, 4, updateFreq, false)
+		if err != nil {
+			fmt.Printf("Error initializing MPU9250, attempt %d of n\n", i)
+			time.Sleep(5 * time.Second)
+		} else {
+			ml.mpu = mpu
+			break
+		}
+	}
+
+	if err != nil {
+		fmt.Println("Error: couldn't initialize MPU9250")
+		return
+	}
+
 	ml.data = new(AHRSData)
 	time.Sleep(100 * time.Millisecond)
 }
@@ -37,27 +54,31 @@ func (ml *MPU9250Listener) GetData() *AHRSData {
 }
 
 func (ml *MPU9250Listener) update() {
-	ml.data.Ts, ml.data.Gx, ml.data.Gy, ml.data.Gz,
-		ml.data.Ax, ml.data.Ay, ml.data.Az,
-		ml.data.Mx, ml.data.My, ml.data.Mz = ml.mpu.Read()
+	Ts, Gx, Gy, Gz, Ax, Ay, Az, Mx, My, Mz, gaError, magError := ml.mpu.Read()
 
-	// Quick and dirty calcs
-	ml.data.Tsm = ml.data.Ts
-	if !math.IsNaN(ml.data.Gy) {
+	if gaError == nil {
+		ml.data.Ts = Ts
+		ml.data.Gx, ml.data.Gy, ml.data.Gz = Gx, Gy, Gz
+		ml.data.Ax, ml.data.Ay, ml.data.Az = Ax, Ay, Az
+
+		// Quick and dirty calcs
 		ml.data.Pitch += 0.1 * ml.data.Gy
-	}
-	if !math.IsNaN(ml.data.Gx) {
 		ml.data.Roll += 0.1 * ml.data.Gx
-	}
-	if !math.IsNaN(ml.data.Gz) {
 		ml.data.Heading += 0.1 * ml.data.Gz
+
+		ml.data.X_accel = ml.data.Ax
+		ml.data.Y_accel = ml.data.Ay
+		ml.data.Z_accel = ml.data.Az
 	}
-	ml.data.X_accel = ml.data.Ax
-	ml.data.Y_accel = ml.data.Ay
-	ml.data.Z_accel = ml.data.Az
-	ml.data.X_mag = ml.data.Mx
-	ml.data.Y_mag = ml.data.My
-	ml.data.Z_mag = ml.data.Mz
+
+	if magError == nil {
+		ml.data.Tsm = Ts
+		ml.data.Mx, ml.data.My, ml.data.Mz = Mx, My, Mz
+
+		ml.data.X_mag = ml.data.Mx
+		ml.data.Y_mag = ml.data.My
+		ml.data.Z_mag = ml.data.Mz
+	}
 }
 
 func (ml *MPU9250Listener) Run() {
