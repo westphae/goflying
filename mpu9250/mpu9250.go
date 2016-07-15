@@ -212,8 +212,9 @@ const (
 	Magnetometer_Sensitivity_Scale_Factor = 0.15
 
 	// Calibration variances
-	maxGyroVar  = 10.0
-	maxAccelVar = 10.0
+	MAXGYROVAR = 10.0
+	MAXACCELVAR = 10.0
+	USEMAG      = false
 )
 
 
@@ -348,57 +349,59 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, applyHWOffset
 	// Turn off FIFO buffer
 	//mpu.i2cWrite(MPUREG_FIFO_EN, 0x00)
 
-	// Set up compass
-	if err := mpu.ReadMagCalibration(); err != nil {
-		return nil, errors.New("Error reading calibration from magnetometer")
-	}
+	// Set up magnetometer
+	if USEMAG {
+		if err := mpu.ReadMagCalibration(); err != nil {
+			return nil, errors.New("Error reading calibration from magnetometer")
+		}
 
-	// Set up AK8963 master mode, master clock and ES bit
-	if err := mpu.i2cWrite(MPUREG_I2C_MST_CTRL, 0x40); err != nil {
-		return nil, errors.New("Error setting up AK8963")
-	}
-	// Slave 0 reads from AK8963
-	if err := mpu.i2cWrite(MPUREG_I2C_SLV0_ADDR, BIT_I2C_READ | AK8963_I2C_ADDR); err != nil {
-		return nil, errors.New("Error setting up AK8963")
-	}
-	// Compass reads start at this register
-	if err := mpu.i2cWrite(MPUREG_I2C_SLV0_REG, AK8963_ST1); err != nil {
-		return nil, errors.New("Error setting up AK8963")
-	}
-	// Enable 8-byte reads on slave 0
-	if err := mpu.i2cWrite(MPUREG_I2C_SLV0_CTRL, BIT_SLAVE_EN | 8); err != nil {
-		return nil, errors.New("Error setting up AK8963")
-	}
-	// Slave 1 can change AK8963 measurement mode
-	if err := mpu.i2cWrite(MPUREG_I2C_SLV1_ADDR, AK8963_I2C_ADDR); err != nil {
-		return nil, errors.New("Error setting up AK8963")
-	}
-	if err := mpu.i2cWrite(MPUREG_I2C_SLV1_REG, AK8963_CNTL1); err != nil {
-		return nil, errors.New("Error setting up AK8963")
-	}
-	// Enable 1-byte reads on slave 1
-	if err := mpu.i2cWrite(MPUREG_I2C_SLV1_CTRL, BIT_SLAVE_EN | 1); err != nil {
-		return nil, errors.New("Error setting up AK8963")
-	}
-	// Set slave 1 data
-	if err := mpu.i2cWrite(MPUREG_I2C_SLV1_DO, AKM_SINGLE_MEASUREMENT); err != nil {
-		return nil, errors.New("Error setting up AK8963")
-	}
-	// Triggers slave 0 and 1 actions at each sample
-	if err := mpu.i2cWrite(MPUREG_I2C_MST_DELAY_CTRL, 0x03); err != nil {
-		return nil, errors.New("Error setting up AK8963")
-	}
+		// Set up AK8963 master mode, master clock and ES bit
+		if err := mpu.i2cWrite(MPUREG_I2C_MST_CTRL, 0x40); err != nil {
+			return nil, errors.New("Error setting up AK8963")
+		}
+		// Slave 0 reads from AK8963
+		if err := mpu.i2cWrite(MPUREG_I2C_SLV0_ADDR, BIT_I2C_READ | AK8963_I2C_ADDR); err != nil {
+			return nil, errors.New("Error setting up AK8963")
+		}
+		// Compass reads start at this register
+		if err := mpu.i2cWrite(MPUREG_I2C_SLV0_REG, AK8963_ST1); err != nil {
+			return nil, errors.New("Error setting up AK8963")
+		}
+		// Enable 8-byte reads on slave 0
+		if err := mpu.i2cWrite(MPUREG_I2C_SLV0_CTRL, BIT_SLAVE_EN | 8); err != nil {
+			return nil, errors.New("Error setting up AK8963")
+		}
+		// Slave 1 can change AK8963 measurement mode
+		if err := mpu.i2cWrite(MPUREG_I2C_SLV1_ADDR, AK8963_I2C_ADDR); err != nil {
+			return nil, errors.New("Error setting up AK8963")
+		}
+		if err := mpu.i2cWrite(MPUREG_I2C_SLV1_REG, AK8963_CNTL1); err != nil {
+			return nil, errors.New("Error setting up AK8963")
+		}
+		// Enable 1-byte reads on slave 1
+		if err := mpu.i2cWrite(MPUREG_I2C_SLV1_CTRL, BIT_SLAVE_EN | 1); err != nil {
+			return nil, errors.New("Error setting up AK8963")
+		}
+		// Set slave 1 data
+		if err := mpu.i2cWrite(MPUREG_I2C_SLV1_DO, AKM_SINGLE_MEASUREMENT); err != nil {
+			return nil, errors.New("Error setting up AK8963")
+		}
+		// Triggers slave 0 and 1 actions at each sample
+		if err := mpu.i2cWrite(MPUREG_I2C_MST_DELAY_CTRL, 0x03); err != nil {
+			return nil, errors.New("Error setting up AK8963")
+		}
 
-	// Set AK8963 sample rate to same as gyro/accel sample rate, up to max
-	var ak8963Rate byte
-	if mpu.sampleRate < AK8963_MAX_SAMPLE_RATE {
-		ak8963Rate = 0
-	} else {
-		ak8963Rate = byte(mpu.sampleRate/AK8963_MAX_SAMPLE_RATE - 1)
-	}
-	// Not so sure of this one--I2C Slave 4??!
-	if err := mpu.i2cWrite(MPUREG_I2C_SLV4_CTRL, ak8963Rate); err != nil {
-		return nil, errors.New("Error setting up AK8963")
+		// Set AK8963 sample rate to same as gyro/accel sample rate, up to max
+		var ak8963Rate byte
+		if mpu.sampleRate < AK8963_MAX_SAMPLE_RATE {
+			ak8963Rate = 0
+		} else {
+			ak8963Rate = byte(mpu.sampleRate / AK8963_MAX_SAMPLE_RATE - 1)
+		}
+		// Not so sure of this one--I2C Slave 4??!
+		if err := mpu.i2cWrite(MPUREG_I2C_SLV4_CTRL, ak8963Rate); err != nil {
+			return nil, errors.New("Error setting up AK8963")
+		}
 	}
 
 	// Set clock source to PLL
@@ -490,49 +493,51 @@ func (m *MPU9250) readMPURaw() {
 		m.n += 1.0
 
 		readMagData:
-		// Read magnetometer data:
-		m.i2cWrite(MPUREG_I2C_SLV0_ADDR, AK8963_I2C_ADDR | READ_FLAG)
-		m.i2cWrite(MPUREG_I2C_SLV0_REG, AK8963_HXL) //I2C slave 0 register address from where to begin data transfer
-		m.i2cWrite(MPUREG_I2C_SLV0_CTRL, 0x87)      //Read 7 bytes from the magnetometer
+		if USEMAG {
+			// Read magnetometer data:
+			m.i2cWrite(MPUREG_I2C_SLV0_ADDR, AK8963_I2C_ADDR | READ_FLAG)
+			m.i2cWrite(MPUREG_I2C_SLV0_REG, AK8963_HXL) //I2C slave 0 register address from where to begin data transfer
+			m.i2cWrite(MPUREG_I2C_SLV0_CTRL, 0x87)      //Read 7 bytes from the magnetometer
 
-		m1, err = m.i2cRead2(MPUREG_EXT_SENS_DATA_00)
-		if err != nil {
-			log.Println("MPU9250 Warning: error reading magnetometer")
-			return	// Don't update the accumulated values
-		}
-		m2, err = m.i2cRead2(MPUREG_EXT_SENS_DATA_02)
-		if err != nil {
-			log.Println("MPU9250 Warning: error reading magnetometer")
-			return	// Don't update the accumulated values
-		}
-		m3, err = m.i2cRead2(MPUREG_EXT_SENS_DATA_04)
-		if err != nil {
-			log.Println("MPU9250 Warning: error reading magnetometer")
-			return	// Don't update the accumulated values
-		}
-		m4, err = m.i2cRead2(MPUREG_EXT_SENS_DATA_06)
-		if err != nil {
-			log.Println("MPU9250 Warning: error reading magnetometer")
-			return	// Don't update the accumulated values
-		}
+			m1, err = m.i2cRead2(MPUREG_EXT_SENS_DATA_00)
+			if err != nil {
+				log.Println("MPU9250 Warning: error reading magnetometer")
+				return        // Don't update the accumulated values
+			}
+			m2, err = m.i2cRead2(MPUREG_EXT_SENS_DATA_02)
+			if err != nil {
+				log.Println("MPU9250 Warning: error reading magnetometer")
+				return        // Don't update the accumulated values
+			}
+			m3, err = m.i2cRead2(MPUREG_EXT_SENS_DATA_04)
+			if err != nil {
+				log.Println("MPU9250 Warning: error reading magnetometer")
+				return        // Don't update the accumulated values
+			}
+			m4, err = m.i2cRead2(MPUREG_EXT_SENS_DATA_06)
+			if err != nil {
+				log.Println("MPU9250 Warning: error reading magnetometer")
+				return        // Don't update the accumulated values
+			}
 
-		if (byte(m1 & 0xFF) & AKM_DATA_READY) == 0x00 && (byte(m1 & 0xFF) & AKM_DATA_OVERRUN) != 0x00 {
-			log.Println("MPU9250 Mag data not ready or overflow")
-			log.Printf("MPU9250 m1 LSB: %X\n", byte(m1 & 0xFF))
-			return	// Don't update the accumulated values
+			if (byte(m1 & 0xFF) & AKM_DATA_READY) == 0x00 && (byte(m1 & 0xFF) & AKM_DATA_OVERRUN) != 0x00 {
+				log.Println("MPU9250 Mag data not ready or overflow")
+				log.Printf("MPU9250 m1 LSB: %X\n", byte(m1 & 0xFF))
+				return        // Don't update the accumulated values
+			}
+
+			if (byte((m4 >> 8) & 0xFF) & AKM_OVERFLOW) != 0x00 {
+				log.Println("MPU9250 Mag data overflow")
+				log.Printf("MPU9250 m4 MSB: %X\n", byte((m1 >> 8) & 0xFF))
+				return        // Don't update the accumulated values
+			}
+
+			m.m1 += (int32(m1) * m.mcal1 >> 8)
+			m.m2 += (int32(m2) * m.mcal2 >> 8)
+			m.m3 += (int32(m3) * m.mcal3 >> 8)
+
+			m.nm += 1.0
 		}
-
-		if (byte((m4 >> 8) & 0xFF) & AKM_OVERFLOW) != 0x00 {
-			log.Println("MPU9250 Mag data overflow")
-			log.Printf("MPU9250 m4 MSB: %X\n", byte((m1 >> 8) & 0xFF))
-			return	// Don't update the accumulated values
-		}
-
-		m.m1 += (int32(m1) * m.mcal1 >> 8)
-		m.m2 += (int32(m2) * m.mcal2 >> 8)
-		m.m3 += (int32(m3) * m.mcal3 >> 8)
-
-		m.nm += 1.0
 		m.m.Unlock()
 	}
 }
@@ -552,8 +557,10 @@ func (m *MPU9250) Read() (int64, float64, float64, float64, float64, float64, fl
 	if m.nm > 0 {
 		m1, m2, m3 = float64(m.m1) / m.nm, float64(m.m2) / m.nm, float64(m.m3) / m.nm
 		magError = nil
-	} else {
+	} else if USEMAG {
 		magError = errors.New("MPU9250 Read: error reading magnetometer")
+	} else {
+		magError = nil
 	}
 	t := time.Now().UnixNano()
 
@@ -635,12 +642,12 @@ func (m *MPU9250) Calibrate(dur int) error {
 	log.Printf("MPU9250 accel calibration variance: %f %f %f\n", (float64(a21-int64(a11)*int64(a11)/int64(n))*m.scaleAccel*m.scaleAccel/float64(n)),
 		(float64(a22-int64(a12)*int64(a12)/int64(n))*m.scaleAccel*m.scaleAccel/float64(n)),
 		(float64(a23-int64(a13)*int64(a13)/int64(n))*m.scaleAccel*m.scaleAccel/float64(n)))
-	if (float64(g21-int64(g11)*int64(g11)/int64(n))*m.scaleGyro*m.scaleGyro > float64(n)* maxGyroVar) ||
-		(float64(g22-int64(g12)*int64(g12)/int64(n))*m.scaleGyro*m.scaleGyro > float64(n)* maxGyroVar) ||
-		(float64(g23-int64(g13)*int64(g13)/int64(n))*m.scaleGyro*m.scaleGyro > float64(n)* maxGyroVar) ||
-		(float64(a21-int64(a11)*int64(a11)/int64(n))*m.scaleAccel*m.scaleAccel > float64(n)* maxAccelVar) ||
-		(float64(a22-int64(a12)*int64(a12)/int64(n))*m.scaleAccel*m.scaleAccel > float64(n)* maxAccelVar) ||
-		(float64(a23-int64(a13)*int64(a13)/int64(n))*m.scaleAccel*m.scaleAccel > float64(n)* maxAccelVar) {
+	if (float64(g21-int64(g11)*int64(g11)/int64(n))*m.scaleGyro*m.scaleGyro > float64(n)* MAXGYROVAR) ||
+		(float64(g22-int64(g12)*int64(g12)/int64(n))*m.scaleGyro*m.scaleGyro > float64(n)* MAXGYROVAR) ||
+		(float64(g23-int64(g13)*int64(g13)/int64(n))*m.scaleGyro*m.scaleGyro > float64(n)* MAXGYROVAR) ||
+		(float64(a21-int64(a11)*int64(a11)/int64(n))*m.scaleAccel*m.scaleAccel > float64(n)* MAXACCELVAR) ||
+		(float64(a22-int64(a12)*int64(a12)/int64(n))*m.scaleAccel*m.scaleAccel > float64(n)* MAXACCELVAR) ||
+		(float64(a23-int64(a13)*int64(a13)/int64(n))*m.scaleAccel*m.scaleAccel > float64(n)* MAXACCELVAR) {
 		return errors.New("MPU9250 CalibrationAll: sensor was not inertial during calibration")
 	}
 
