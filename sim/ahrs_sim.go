@@ -72,7 +72,7 @@ func (s *Situation) interpolate(t float64) (ahrs.State, error) {
 		M1: f*s.m1[ix] + (1-f)*s.m1[ix+1],
 		M2: f*s.m2[ix] + (1-f)*s.m2[ix+1],
 		M3: f*s.m3[ix] + (1-f)*s.m3[ix+1],
-		T:  uint32(t*1000 + 0.5), // easy rounding for uint
+		T:  int64(t*1000000000 + 0.5), // easy rounding for uint
 		M:  matrix.DenseMatrix{},
 	}, nil
 }
@@ -112,7 +112,7 @@ func (s *Situation) derivative(t float64) (ahrs.State, error) {
 		M1: (s1.M1 - s0.M1) / ddt,
 		M2: (s1.M2 - s0.M2) / ddt,
 		M3: (s1.M3 - s0.M3) / ddt,
-		T:  uint32(t*1000 + 0.5), // easy rounding for uint
+		T:  int64(t*1000000000 + 0.5), // easy rounding for uint
 		M:  matrix.DenseMatrix{},
 	}, nil
 }
@@ -157,7 +157,7 @@ func (s *Situation) control(
 		A1: y1*f11 + y2*f12 + y3*f13 + ab[0] + an * rand.NormFloat64(),
 		A2: y1*f21 + y2*f22 + y3*f23 + ab[1] + an * rand.NormFloat64(),
 		A3: y1*f31 + y2*f32 + y3*f33 + ab[2] + an * rand.NormFloat64(),
-		T:  uint32(t*1000 + 0.5),
+		T:  int64(t*1000000000 + 0.5),
 	}
 	return c, nil
 }
@@ -212,7 +212,7 @@ func (s *Situation) measurement(
 			x.M3 * 2 * (+x.E0 * x.E0 + x.E3 * x.E3 - 0.5) +
 			mb[2] + mn * rand.NormFloat64()
 	}
-	m.T =  uint32(t*1000 + 0.5)
+	m.T = int64(t*1000000000 + 0.5)
 	return *m, nil
 }
 
@@ -457,7 +457,7 @@ func main() {
 			panic(err)
 		}
 		phi, theta, psi := ahrs.FromQuaternion(s0.E0, s0.E1, s0.E2, s0.E3)
-		lActual.Log(float64(s0.T)/1000, s0.U1, s0.U2, s0.U3, phi, theta, psi,
+		lActual.Log(float64(s0.T)/1000000000, s0.U1, s0.U2, s0.U3, phi, theta, psi,
 			s0.V1, s0.V2, s0.V3, s0.M1, s0.M2, s0.M3)
 
 		// Take control "measurements"
@@ -466,7 +466,7 @@ func main() {
 			fmt.Printf("Error calculating control value at time %f: %s", t, err.Error())
 			panic(err)
 		}
-		lControl.Log(float64(c.T)/1000, -c.H1, c.H2, c.H3, c.A1, c.A2, c.A3)
+		lControl.Log(float64(c.T)/1000000000, -c.H1, c.H2, c.H3, c.A1, c.A2, c.A3)
 
 		// Take sensor measurements
 		m, err := sit.measurement(t, !gpsInop, !asiInop, !magInop, gpsNoise, asiNoise, magNoise, asiBias, magBias)
@@ -474,7 +474,7 @@ func main() {
 			fmt.Printf("Error calculating measurement value at time %f: %s", t, err.Error())
 			panic(err)
 		}
-		lMeas.Log(float64(m.T)/1000, m.W1, m.W2, m.W3, m.M1, m.M2, m.M3, m.U1, m.U2, m.U3)
+		lMeas.Log(float64(m.T)/1000000000, m.W1, m.W2, m.W3, m.M1, m.M2, m.M3, m.U1, m.U2, m.U3)
 
 		// Try to initialize
 		if !s.Initialized {
@@ -490,11 +490,11 @@ func main() {
 			// Predict stage of Kalman filter
 			s.Predict(c)
 			phi, theta, psi = ahrs.FromQuaternion(s.E0, s.E1, s.E2, s.E3)
-			lPredict.Log(float64(s.T) / 1000, s.U1, s.U2, s.U3, phi, theta, psi,
+			lPredict.Log(float64(s.T) / 1000000000, s.U1, s.U2, s.U3, phi, theta, psi,
 				s.V1, s.V2, s.V3, s.M1, s.M2, s.M3)
 
 			pm := s.PredictMeasurement()
-			lPMeas.Log(float64(m.T) / 1000, pm.W1, pm.W2, pm.W3, pm.M1, pm.M2, pm.M3, pm.U1, pm.U2, pm.U3)
+			lPMeas.Log(float64(m.T) / 1000000000, pm.W1, pm.W2, pm.W3, pm.M1, pm.M2, pm.M3, pm.U1, pm.U2, pm.U3)
 
 			// Update stage of Kalman filter
 			if t > tNextUpdate - 1e-9 {
@@ -505,16 +505,19 @@ func main() {
 			dphi, dtheta, dpsi := ahrs.VarFromQuaternion(s.E0, s.E1, s.E2, s.E3,
 				math.Sqrt(s.M.Get(3, 3)), math.Sqrt(s.M.Get(4, 4)),
 				math.Sqrt(s.M.Get(5, 5)), math.Sqrt(s.M.Get(6, 6)))
-			lKalman.Log(float64(s.T) / 1000, s.U1, s.U2, s.U3, phi, theta, psi,
+			lKalman.Log(float64(s.T) / 1000000000, s.U1, s.U2, s.U3, phi, theta, psi,
 				s.V1, s.V2, s.V3, s.M1, s.M2, s.M3)
-			lVar.Log(float64(s.T) / 1000,
+			lVar.Log(float64(s.T) / 1000000000,
 				math.Sqrt(s.M.Get(0, 0)), math.Sqrt(s.M.Get(1, 1)), math.Sqrt(s.M.Get(2, 2)),
 				dphi, dtheta, dpsi,
 				math.Sqrt(s.M.Get(7, 7)), math.Sqrt(s.M.Get(8, 8)), math.Sqrt(s.M.Get(9, 9)),
 				math.Sqrt(s.M.Get(10, 10)), math.Sqrt(s.M.Get(11, 11)), math.Sqrt(s.M.Get(12, 12)),
 			)
-
 		} else {
+			lPredict.Log(t, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+			lPMeas.Log(t, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+			lKalman.Log(t, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+			lVar.Log(t, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 			tNextUpdate += pdt
 		}
 		t += pdt

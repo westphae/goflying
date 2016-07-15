@@ -17,15 +17,15 @@ type State struct {
 	E0, E1, E2, E3	float64             // Quaternion rotating aircraft to earth frame
 	V1, V2, V3    	float64             // Vector describing windspeed, latlong axes, earth (inertial) frame
 	M1, M2, M3    	float64             // Vector describing reference magnetometer direction, earth (inertial) frame
-	T             	uint32              // Timestamp when last updated
+	T             	int64               // Timestamp when last updated
 	M             	matrix.DenseMatrix  // Covariance matrix of state uncertainty, same order as above vars
 
 	tLastCal	float64		    // Last time calibration was run
 	cS, cL		Control		    // Short-term and long-term control moving averages, for determining inertiality
-	mS, mL	 	Measurement	    // Short-term and long-term measurement moving anverages, for determining inertiality
+	mS, mL	 	Measurement	    // Short-term and long-term measurement moving averages, for determining inertiality
 
 	F0, F1, F2, F3	float64             // Calibration quaternion describing roll, pitch and heading biases due to placement of stratux, aircraft frame
-	f11, f12, f13,			    // After calibration, these are quaterion fragments for rotating stratux to level
+	f11, f12, f13,			    // After calibration, these are quaternion fragments for rotating stratux to level
 	f21, f22, f23,
 	f31, f32, f33	float64
 }
@@ -34,21 +34,21 @@ type State struct {
 type Control struct {
 	H1, H2, H3 float64 // Vector of gyro rates in roll, pitch, heading axes, aircraft (accelerated) frame
 	A1, A2, A3 float64 // Vector holding accelerometer readings, g's, aircraft (accelerated) frame
-	T          uint32  // Timestamp of readings
+	T          int64   // Timestamp of readings
 }
 
 // Measurement holds the measurements used for updating the Kalman filter: groundspeed, true airspeed, magnetometer
 // Note: airspeed and magnetometer may not be available until appropriate sensors are working
-type Measurement struct { // Order here also defines order in the matrices below
+type Measurement struct {  // Order here also defines order in the matrices below
 	WValid, UValid, MValid bool // Do we have valid GPS, airspeed and magnetometer readings?
 	W1, W2, W3 float64 // Quaternion holding GPS speed in N/S, E/W and U/D directions, knots, latlong axes, earth (inertial) frame
 	U1, U2, U3 float64 // Quaternion holding measured airspeed, knots, aircraft (accelerated) frame
 	M1, M2, M3 float64 // Quaternion holding magnetometer readings, aircraft (accelerated) frame
-	T          uint32  // Timestamp of GPS, airspeed and magnetometer readings
+	T          int64   // Timestamp of GPS, airspeed and magnetometer readings
 }
 
 const (
-	G = 32.1740 / 1.687810 // G is the acceleration due to gravity, kt/s
+	G = 32.1740 / 1.687810  // G is the acceleration due to gravity, kt/s
 	tL = 2.0		// Long-term timescale for determining inertiality
 	tS = 0.5		// Short-term timescale for determining inertiality
 )
@@ -59,7 +59,7 @@ var vx = State{
 	E0: 2e-2, E1: 2e-2, E2: 2e-2, E3: 2e-2,
 	V1: 0.5, V2: 0.5, V3: 0.5,
 	M1: 0.005, M2: 0.005, M3: 0.005,
-	T: 1000,
+	T: 1000000000,
 }
 
 // vm represents measurement uncertainties, assuming sensor is present
@@ -84,7 +84,7 @@ func (s *State) IsInertial(c Control, m Measurement) (bool) {
 	var kS, kL float64
 	var t0, t float64
 
-	t0, t = s.tLastCal, float64(c.T)/1000
+	t0, t = s.tLastCal, float64(c.T)/1000000000
 	s.tLastCal = t
 	kS = tS/(tS+t-t0)
 	s.cS.H1 = kS*s.cS.H1 + (1-kS)*c.H1
@@ -93,7 +93,7 @@ func (s *State) IsInertial(c Control, m Measurement) (bool) {
 	s.cS.A1 = kS*s.cS.A1 + (1-kS)*c.A1
 	s.cS.A2 = kS*s.cS.A2 + (1-kS)*c.A2
 	s.cS.A3 = kS*s.cS.A3 + (1-kS)*c.A3
-	s.cS.T  = uint32((kS*float64(s.cS.T)  + (1-kS)*t*1000)+0.5)
+	s.cS.T  = int64((kS*float64(s.cS.T)  + (1-kS)*t*1000000000)+0.5)
 
 	kL = tL/(tL+t-t0)
 	s.cL.H1 = kL*s.cL.H1 + (1-kL)*c.H1
@@ -102,9 +102,9 @@ func (s *State) IsInertial(c Control, m Measurement) (bool) {
 	s.cL.A1 = kL*s.cL.A1 + (1-kL)*c.A1
 	s.cL.A2 = kL*s.cL.A2 + (1-kL)*c.A2
 	s.cL.A3 = kL*s.cL.A3 + (1-kL)*c.A3
-	s.cL.T  = uint32((kL*float64(s.cL.T)  + (1-kL)*t*1000)+0.5)
+	s.cL.T  = int64((kL*float64(s.cL.T)  + (1-kL)*t*1000000000)+0.5)
 
-	t = float64(m.T)/1000
+	t = float64(m.T)/1000000000
 	kS = tS/(tS+t-t0)
 	s.mS.W1 = kS*s.mS.W1 + (1-kS)*m.W1
 	s.mS.W2 = kS*s.mS.W2 + (1-kS)*m.W2
@@ -113,7 +113,7 @@ func (s *State) IsInertial(c Control, m Measurement) (bool) {
 	s.mS.M1 = kS*s.mS.M1 + (1-kS)*m.M1
 	s.mS.M2 = kS*s.mS.M2 + (1-kS)*m.M2
 	s.mS.M3 = kS*s.mS.M3 + (1-kS)*m.M3
-	s.mS.T  = uint32((kS*float64(s.mS.T)  + (1-kS)*t*1000)+0.5)
+	s.mS.T  = int64((kS*float64(s.mS.T)  + (1-kS)*t*1000000000)+0.5)
 
 	kL = tL/(tL+t-t0)
 	s.mL.W1 = kL*s.mL.W1 + (1-kL)*m.W1
@@ -123,7 +123,7 @@ func (s *State) IsInertial(c Control, m Measurement) (bool) {
 	s.mL.M1 = kL*s.mL.M1 + (1-kL)*m.M1
 	s.mL.M2 = kL*s.mL.M2 + (1-kL)*m.M2
 	s.mL.M3 = kL*s.mL.M3 + (1-kL)*m.M3
-	s.mL.T  = uint32((kL*float64(s.mL.T)  + (1-kL)*t*1000)+0.5)
+	s.mL.T  = int64((kL*float64(s.mL.T)  + (1-kL)*t*1000000000)+0.5)
 
 	// Tests for inertial frame:
 	var inertial bool
@@ -153,7 +153,6 @@ func (s *State) IsInertial(c Control, m Measurement) (bool) {
 // Initialize the state at the start of the Kalman filter, based on current
 // measurements and controls
 func (s *State) Initialize(m Measurement, c Control) {
-	//TODO: If m.UValid then calculate correct airspeed and windspeed;
 	// for now just treat the case !m.UValid
 	if m.WValid {
 		s.U1 = math.Sqrt(m.W1 * m.W1 + m.W2 * m.W2) // Best guess at initial airspeed is initial groundspeed
@@ -169,7 +168,8 @@ func (s *State) Initialize(m Measurement, c Control) {
 			s.E3 *= -1
 		}
 		s.Initialized = true
-	} else if !m.WValid {	// If no groundspeed then no idea which direction we're pointing; assume north
+	} else if !m.WValid {	// If no groundspeed available then no idea which direction we're pointing
+		// assume north
 		s.E0, s.E3 = math.Sqrt2/2, -math.Sqrt2/2
 		s.Initialized = true
 	} else {
@@ -188,6 +188,7 @@ func (s *State) Initialize(m Measurement, c Control) {
 			2 * m.M2 * (s.E3 * s.E2 - s.E0 * s.E1) +
 			2 * m.M3 * (s.E3 * s.E3 + s.E0 * s.E0 - 0.5)
 	}
+	s.tLastCal = float64(m.T)/1000000000-3600	// If just initialized, do a fresh calibration
 	s.M = *matrix.Diagonal([]float64{
 		20*20, 1*1, 1*1,
 		0.1*0.1, 0.1*0.1, 0.1*0.1, 0.1*0.1,
@@ -225,7 +226,7 @@ func (s *State) Calibrate(c Control, m Measurement) {
 // Predict performs the prediction phase of the Kalman filter given the control inputs
 func (s *State) Predict(c Control) {
 	f := s.calcJacobianState(c)
-	dt := float64(c.T-s.T) / 1000
+	dt := float64(c.T-s.T) / 1000000000
 
 	// Apply the calibration quaternion F to rotate the stratux sensors to level
 	h1 := c.H1*s.f11 + c.H2*s.f12 + c.H3*s.f13
@@ -250,7 +251,7 @@ func (s *State) Predict(c Control) {
 
 	s.T = c.T
 
-	tf := dt / (float64(vx.T) / 1000)
+	tf := dt / (float64(vx.T) / 1000000000)
 	s.M = *matrix.Sum(matrix.Product(&f, matrix.Product(&s.M, f.Transpose())),
 		matrix.Diagonal([]float64{
 			vx.U1 * vx.U1 * tf, vx.U2 * vx.U2 * tf, vx.U3 * vx.U3 * tf,
@@ -364,7 +365,7 @@ func (s *State) PredictMeasurement() Measurement {
 }
 
 func (s *State) calcJacobianState(c Control) matrix.DenseMatrix {
-	dt := float64(c.T-s.T) / 1000
+	dt := float64(c.T-s.T) / 1000000000
 	data := make([][]float64, 13)
 	for i := 0; i < 13; i++ {
 		data[i] = make([]float64, 13)
