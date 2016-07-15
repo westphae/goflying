@@ -431,6 +431,7 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, applyHWOffset
 
 	go mpu.readMPURaw()
 
+	time.Sleep(100 * time.Millisecond) // Make sure it's ready
 	return mpu, nil
 }
 
