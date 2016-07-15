@@ -31,6 +31,17 @@ func main() {
 		return
 	}
 
+	if err := mpu.CalibrateAccel(1); err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+
+	if err := mpu.Calibrate(1); err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
 	var t0 = time.Now().UnixNano()
 
 	for {

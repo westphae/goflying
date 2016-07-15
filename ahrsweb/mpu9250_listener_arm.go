@@ -24,15 +24,16 @@ const (
 	gyroRange = 250
 	accelRange = 4
 	updateFreq = 100
+	MPURETRIES = 10
 )
 
 func (ml *MPU9250Listener) Init() {
 	var err error
 
-	for i:=0; i<10; i++ {
+	for i:=0; i<MPURETRIES; i++ {
 		mpu, err := mpu9250.NewMPU9250(gyroRange, accelRange, updateFreq, false)
 		if err != nil {
-			fmt.Printf("Error initializing MPU9250, attempt %d of n\n", i)
+			fmt.Printf("Error initializing MPU9250, attempt %d of %d\n", i, MPURETRIES)
 			time.Sleep(5 * time.Second)
 		} else {
 			ml.mpu = mpu
