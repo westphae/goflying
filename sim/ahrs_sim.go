@@ -32,65 +32,6 @@ type Situation struct {
 	m1, m2, m3         []float64 // magnetometer reading
 }
 
-// ToQuaternion calculates the 0,1,2,3 components of the rotation quaternion
-// corresponding to the Tait-Bryan angles phi, theta, psi
-func ToQuaternion(phi, theta, psi float64) (float64, float64, float64, float64) {
-	phi = -phi            // We want psi positive to mean a roll to the right
-	psi = psi - pi/2 // We want psi=0 means north, psi=Pi/2 means east
-	cphi := math.Cos(phi / 2)
-	sphi := math.Sin(phi / 2)
-	ctheta := math.Cos(theta / 2)
-	stheta := math.Sin(theta / 2)
-	cpsi := math.Cos(psi / 2)
-	spsi := math.Sin(psi / 2)
-
-	q0 := cphi*ctheta*cpsi - sphi*stheta*spsi
-	q1 := sphi*ctheta*cpsi + cphi*stheta*spsi
-	q2 := cphi*stheta*cpsi - sphi*ctheta*spsi
-	q3 := cphi*ctheta*spsi + sphi*stheta*cpsi
-	return q0, q1, q2, q3
-}
-
-// FromQuaternion calculates the Tait-Bryan angles phi, theta, psi corresponding to
-// the quaternion
-func FromQuaternion(q0, q1, q2, q3 float64) (float64, float64, float64) {
-	phi := math.Atan2(-2*(q0*q1-q2*q3), q0*q0-q1*q1-q2*q2+q3*q3)
-	theta := math.Asin(2 * (q0*q2 + q3*q1) / math.Sqrt(q0*q0+q1*q1+q2*q2+q3*q3))
-	psi := pi/2 + math.Atan2(2*(q0*q3-q1*q2), q0*q0+q1*q1-q2*q2-q3*q3)
-	if psi < -1e-4 {
-		psi += 2 * pi
-	}
-	return phi, theta, psi
-}
-
-// VarFromQuaternion returns the standard deviation of the Tate-Bryan angles phi, theta, psi
-// corresponding to the quaternion q0, q1, q2, q3 with stdev dq0, dq1, dq2, dq3
-func VarFromQuaternion(q0, q1, q2, q3, dq0, dq1, dq2, dq3 float64) (float64, float64, float64) {
-	var qq, rr, denom float64
-	qq = q0*q0 - q1*q1 - q2*q2 + q3*q3
-	rr = q0*q1 - q2*q3
-	denom = 4*rr*rr + qq*qq
-	dphidq0 := (-2*q1*qq + 4*q0*rr)/denom
-	dphidq1 := (-2*q0*qq - 4*q1*rr)/denom
-	dphidq2 := (+2*q3*qq - 4*q2*rr )/denom
-	dphidq3 := (+2*q2*qq + 4*q3*rr)/denom
-	rr = 2/math.Sqrt(1-4*(q0*q2 + q1*q3)*(q0*q2 + q1*q3))
-	dthetadq0 := q2*rr
-	dthetadq1 := q3*rr
-	dthetadq2 := q0*rr
-	dthetadq3 := q1*rr
-	qq = q0*q0 + q1*q1 - q2*q2 - q3*q3
-	rr = q0*q3 - q1*q2
-	denom = 4*(q0*q3 - q1*q2)*(q0*q3 - q1*q2) + qq*qq
-	dpsidq0 := (+2*q3*qq - 4*q0*rr)/denom
-	dpsidq1 := (-2*q2*qq - 4*q1*rr)/denom
-	dpsidq2 := (-2*q1*qq + 4*q2*rr)/denom
-	dpsidq3 := (+2*q0*qq + 4*q3*rr)/denom
-	return (dphidq0*dq0 + dphidq1*dq1 +dphidq2*dq2 +dphidq3*dq3),
-		(dthetadq0*dq0 + dthetadq1*dq1 +dthetadq2*dq2 +dthetadq3*dq3),
-		(dpsidq0*dq0 + dpsidq1*dq1 +dpsidq2*dq2 +dpsidq3*dq3)
-}
-
 // Interpolate an ahrs.State from a Situation definition at a given time
 func (s *Situation) interpolate(t float64) (ahrs.State, error) {
 	if t < s.t[0] || t > s.t[len(s.t)-1] {
@@ -102,12 +43,12 @@ func (s *Situation) interpolate(t float64) (ahrs.State, error) {
 	}
 
 	f := (s.t[ix+1] - t) / (s.t[ix+1] - s.t[ix])
-	e0, e1, e2, e3 := ToQuaternion(
+	e0, e1, e2, e3 := ahrs.ToQuaternion(
 		f*s.phi[ix]+(1-f)*s.phi[ix+1],
 		f*s.theta[ix]+(1-f)*s.theta[ix+1],
 		f*s.psi[ix]+(1-f)*s.psi[ix+1])
 	ee := math.Sqrt(e0*e0 + e1*e1 + e2*e2 + e3*e3)
-	f0, f1, f2, f3 := ToQuaternion(
+	f0, f1, f2, f3 := ahrs.ToQuaternion(
 		f*s.phi0[ix]+(1-f)*s.phi0[ix+1],
 		f*s.theta0[ix]+(1-f)*s.theta0[ix+1],
 		f*s.psi0[ix]+(1-f)*s.psi0[ix+1])
@@ -515,7 +456,7 @@ func main() {
 			fmt.Printf("Error interpolating at time %f: %s", t, err.Error())
 			panic(err)
 		}
-		phi, theta, psi := FromQuaternion(s0.E0, s0.E1, s0.E2, s0.E3)
+		phi, theta, psi := ahrs.FromQuaternion(s0.E0, s0.E1, s0.E2, s0.E3)
 		lActual.Log(float64(s0.T)/1000, s0.U1, s0.U2, s0.U3, phi, theta, psi,
 			s0.V1, s0.V2, s0.V3, s0.M1, s0.M2, s0.M3)
 
@@ -548,7 +489,7 @@ func main() {
 		if s.Initialized && s.Calibrated {
 			// Predict stage of Kalman filter
 			s.Predict(c)
-			phi, theta, psi = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
+			phi, theta, psi = ahrs.FromQuaternion(s.E0, s.E1, s.E2, s.E3)
 			lPredict.Log(float64(s.T) / 1000, s.U1, s.U2, s.U3, phi, theta, psi,
 				s.V1, s.V2, s.V3, s.M1, s.M2, s.M3)
 
@@ -560,8 +501,8 @@ func main() {
 				tNextUpdate += udt
 				s.Update(m)
 			}
-			phi, theta, psi = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
-			dphi, dtheta, dpsi := VarFromQuaternion(s.E0, s.E1, s.E2, s.E3,
+			phi, theta, psi = ahrs.FromQuaternion(s.E0, s.E1, s.E2, s.E3)
+			dphi, dtheta, dpsi := ahrs.VarFromQuaternion(s.E0, s.E1, s.E2, s.E3,
 				math.Sqrt(s.M.Get(3, 3)), math.Sqrt(s.M.Get(4, 4)),
 				math.Sqrt(s.M.Get(5, 5)), math.Sqrt(s.M.Get(6, 6)))
 			lKalman.Log(float64(s.T) / 1000, s.U1, s.U2, s.U3, phi, theta, psi,
