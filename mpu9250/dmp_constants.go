@@ -196,8 +196,4 @@ const (
 	MPU9250T_85degC                       = 0.002995177763 // 0.002995177763 degC/LSB
 	Magnetometer_Sensitivity_Scale_Factor = 0.15
 
-	// Calibration variances
-	MAXGYROVAR = 10.0
-	MAXACCELVAR = 10.0
-	USEMAG      = false
 )

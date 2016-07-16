@@ -16,6 +16,14 @@ import (
 	"sync"
 )
 
+
+const (
+	// Calibration variances
+	MAXGYROVAR = 10.0
+	MAXACCELVAR = 10.0
+	USEMAG      = true
+)
+
 type MPU9250 struct {
 	i2cbus                embd.I2CBus
 	scaleGyro, scaleAccel float64 // Max sensor reading for value 2**15-1
@@ -255,6 +263,12 @@ func (m *MPU9250) readMPURaw() {
 			&a2: MPUREG_ACCEL_YOUT_H,
 			&a3: MPUREG_ACCEL_ZOUT_H,
 		}
+		magmap = map[*int16]byte{
+			&m1: MPUREG_EXT_SENS_DATA_00,
+			&m2: MPUREG_EXT_SENS_DATA_02,
+			&m3: MPUREG_EXT_SENS_DATA_04,
+			&m4: MPUREG_EXT_SENS_DATA_06,
+		}
 	)
 
 	clock := time.NewTicker(time.Duration(int(1000.0/float32(m.sampleRate)+0.5)) * time.Millisecond)
@@ -284,31 +298,27 @@ func (m *MPU9250) readMPURaw() {
 		readMagData:
 		if USEMAG {
 			// Read magnetometer data:
-			m.i2cWrite(MPUREG_I2C_SLV0_ADDR, AK8963_I2C_ADDR | READ_FLAG)
-			m.i2cWrite(MPUREG_I2C_SLV0_REG, AK8963_HXL) //I2C slave 0 register address from where to begin data transfer
-			m.i2cWrite(MPUREG_I2C_SLV0_CTRL, 0x87)      //Read 7 bytes from the magnetometer
-
-			m1, err = m.i2cRead2(MPUREG_EXT_SENS_DATA_00)
-			if err != nil {
-				log.Println("MPU9250 Warning: error reading magnetometer")
-				return        // Don't update the accumulated values
+			if err := m.i2cWrite(MPUREG_I2C_SLV0_ADDR, AK8963_I2C_ADDR | READ_FLAG); err != nil {
+				fmt.Errorf("MPU9250 Error: couldn't set AK8963 address for reading: %s", err.Error())
 			}
-			m2, err = m.i2cRead2(MPUREG_EXT_SENS_DATA_02)
-			if err != nil {
-				log.Println("MPU9250 Warning: error reading magnetometer")
-				return        // Don't update the accumulated values
+			//I2C slave 0 register address from where to begin data transfer
+			if err := m.i2cWrite(MPUREG_I2C_SLV0_REG, AK8963_HXL); err != nil {
+				fmt.Errorf("MPU9250 Error: couldn't set AK8963 read register: %s", err.Error())
 			}
-			m3, err = m.i2cRead2(MPUREG_EXT_SENS_DATA_04)
-			if err != nil {
-				log.Println("MPU9250 Warning: error reading magnetometer")
-				return        // Don't update the accumulated values
-			}
-			m4, err = m.i2cRead2(MPUREG_EXT_SENS_DATA_06)
-			if err != nil {
-				log.Println("MPU9250 Warning: error reading magnetometer")
-				return        // Don't update the accumulated values
+			//Tell AK8963 that we will read 7 bytes
+			if err := m.i2cWrite(MPUREG_I2C_SLV0_CTRL, 0x87); err != nil {
+				fmt.Errorf("MPU9250 Error: couldn't communicate with AK8963: %s", err.Error())
 			}
 
+			// Read the actual data
+			for p, reg := range magmap {
+				*p, err = m.i2cRead2(reg)
+				if err != nil {
+					log.Println("MPU9250 Warning: error reading magnetometer")
+				}
+			}
+
+			// Test validity of magnetometer data
 			if (byte(m1 & 0xFF) & AKM_DATA_READY) == 0x00 && (byte(m1 & 0xFF) & AKM_DATA_OVERRUN) != 0x00 {
 				log.Println("MPU9250 Mag data not ready or overflow")
 				log.Printf("MPU9250 m1 LSB: %X\n", byte(m1 & 0xFF))
