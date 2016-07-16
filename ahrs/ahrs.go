@@ -3,10 +3,9 @@
 package ahrs
 
 import (
-	"fmt"
-	"math"
-
 	"github.com/skelterjohn/go.matrix"
+	"log"
+	"math"
 )
 
 // State holds the complete information describing the state of the aircraft
@@ -96,9 +95,9 @@ func (s *State) IsInertial(c Control, m Measurement) (bool) {
 	s.cS.T  = int64((kS*float64(s.cS.T)  + (1-kS)*t*1000000000)+0.5)
 
 	kL = tL/(tL+t-t0)
-	s.cL.H1 = kL*s.cL.H1 + (1-kL)*c.H1
-	s.cL.H2 = kL*s.cL.H2 + (1-kL)*c.H2
-	s.cL.H3 = kL*s.cL.H3 + (1-kL)*c.H3
+	//s.cL.H1 = kL*s.cL.H1 + (1-kL)*c.H1	// Don't need these for now
+	//s.cL.H2 = kL*s.cL.H2 + (1-kL)*c.H2
+	//s.cL.H3 = kL*s.cL.H3 + (1-kL)*c.H3
 	s.cL.A1 = kL*s.cL.A1 + (1-kL)*c.A1
 	s.cL.A2 = kL*s.cL.A2 + (1-kL)*c.A2
 	s.cL.A3 = kL*s.cL.A3 + (1-kL)*c.A3
@@ -110,9 +109,9 @@ func (s *State) IsInertial(c Control, m Measurement) (bool) {
 	s.mS.W2 = kS*s.mS.W2 + (1-kS)*m.W2
 	s.mS.W3 = kS*s.mS.W3 + (1-kS)*m.W3
 	s.mS.U1 = kS*s.mS.U1 + (1-kS)*m.U1
-	s.mS.M1 = kS*s.mS.M1 + (1-kS)*m.M1
-	s.mS.M2 = kS*s.mS.M2 + (1-kS)*m.M2
-	s.mS.M3 = kS*s.mS.M3 + (1-kS)*m.M3
+	//s.mS.M1 = kS*s.mS.M1 + (1-kS)*m.M1	// Don't need these for now
+	//s.mS.M2 = kS*s.mS.M2 + (1-kS)*m.M2
+	//s.mS.M3 = kS*s.mS.M3 + (1-kS)*m.M3
 	s.mS.T  = int64((kS*float64(s.mS.T)  + (1-kS)*t*1000000000)+0.5)
 
 	kL = tL/(tL+t-t0)
@@ -120,34 +119,38 @@ func (s *State) IsInertial(c Control, m Measurement) (bool) {
 	s.mL.W2 = kL*s.mL.W2 + (1-kL)*m.W2
 	s.mL.W3 = kL*s.mL.W3 + (1-kL)*m.W3
 	s.mL.U1 = kL*s.mL.U1 + (1-kL)*m.U1
-	s.mL.M1 = kL*s.mL.M1 + (1-kL)*m.M1
-	s.mL.M2 = kL*s.mL.M2 + (1-kL)*m.M2
-	s.mL.M3 = kL*s.mL.M3 + (1-kL)*m.M3
+	//s.mL.M1 = kL*s.mL.M1 + (1-kL)*m.M1	// Don't need these for now
+	//s.mL.M2 = kL*s.mL.M2 + (1-kL)*m.M2
+	//s.mL.M3 = kL*s.mL.M3 + (1-kL)*m.M3
 	s.mL.T  = int64((kL*float64(s.mL.T)  + (1-kL)*t*1000000000)+0.5)
 
-	// Tests for inertial frame:
-	var inertial bool
-	// 1. Gyro rates are nearly zero
-	inertial = math.Abs(s.cS.H1-0) < 0.1 && math.Abs(s.cS.H2-0) < 0.1 && math.Abs(s.cS.H3-0) < 0.1 &&
-	// 2. Acceleration has magnitude nearly G in nearly steady direction
-		math.Abs(s.cL.A1-s.cS.A1) < 0.05 && math.Abs(s.cL.A2-s.cS.A2) < 0.05 && math.Abs(s.cL.A3-s.cS.A3) < 0.05 &&
-	// 3. If valid, GPS speed and track are nearly steady
-		(!m.WValid || (math.Abs(s.mL.W1-s.mS.W1) < 0.1 && math.Abs(s.mL.W2-s.mS.W2) < 0.05 && math.Abs(s.mL.W3-s.mS.W3) < 0.05)) &&
-	// 4. If valid, airspeed is nearly steady
-		(!m.UValid || (math.Abs(s.mL.U1-s.mS.U1) < 1)) &&
-	// 5. If valid, magnetometer is nearly steady
-		(!m.MValid || (math.Abs(s.mL.M1-s.mS.M1) < 0.1 && math.Abs(s.mL.M2-s.mS.M2) < 0.05 && math.Abs(s.mL.M3-s.mS.M3) < 0.05))
-	if inertial {
-		fmt.Printf("%6f Inertial: %t\n", t, inertial)
+	if t-float64(s.mL.T/1000000000)>tL/2 {
+		// Tests for inertial frame:
+		//TODO westphae: this needs to be tuned!
+		var inertial bool
+		// 1. Gyro rates are nearly zero
+		inertial = math.Abs(s.cS.H1 - 0) < 0.1 && math.Abs(s.cS.H2 - 0) < 0.1 && math.Abs(s.cS.H3 - 0) < 0.1 &&
+		// 2. Acceleration has magnitude nearly G in nearly steady direction
+			math.Abs(s.cL.A1 - s.cS.A1) < 0.05 && math.Abs(s.cL.A2 - s.cS.A2) < 0.05 && math.Abs(s.cL.A3 - s.cS.A3) < 0.05 &&
+		// 3. If valid, GPS speed and track are nearly steady
+			(!m.WValid || (math.Abs(s.mL.W1 - s.mS.W1) < 0.1 && math.Abs(s.mL.W2 - s.mS.W2) < 0.1 && math.Abs(s.mL.W3 - s.mS.W3) < 0.05)) &&
+		// 4. If valid, airspeed is nearly steady
+			(!m.UValid || (math.Abs(s.mL.U1 - s.mS.U1) < 1))
+		// 5. If valid, magnetometer is nearly steady
+		//	(!m.MValid || (math.Abs(s.mL.M1-s.mS.M1) < 0.1 && math.Abs(s.mL.M2-s.mS.M2) < 0.05 && math.Abs(s.mL.M3-s.mS.M3) < 0.05))
+		log.Printf("\nTime: %f\n", t)
+		log.Printf("%f %f\n", s.mS.W2, s.mL.W2)
+		log.Printf("Initialized: %t, Calibrated: %t, Inertial: %t\n", s.Initialized, s.Calibrated, inertial)
+		log.Printf("Gyro:  %f %f %f\n", s.cS.H1, s.cS.H2, s.cS.H3)
+		log.Printf("Accel: %f %f %f\n", s.cL.A1-s.cS.A1, s.cL.A2-s.cS.A2, s.cL.A3-s.cS.A3)
+		log.Printf("GPS:   %f %f %f\n", s.mL.W1-s.mS.W1, s.mL.W2-s.mS.W2, s.mL.W3-s.mS.W3)
+		log.Printf("ASI:   %f\n", s.mL.U1-s.mS.U1)
+		log.Printf("Mag:   %f %f %f\n", s.mL.M1-s.mS.M1, s.mL.M2-s.mS.M2, s.mL.M3-s.mS.M3)
+		log.Printf("Frame is inertial: %t\n", inertial)
+		return inertial
 	} else {
-		fmt.Printf("\nTime: %f\n", t)
-		fmt.Printf("Gyro:  %f %f %f\n", s.cS.H1, s.cS.H2, s.cS.H3)
-		fmt.Printf("Accel: %f %f %f\n", s.cL.A1-s.cS.A1, s.cL.A2-s.cS.A2, s.cL.A3-s.cS.A3)
-		fmt.Printf("GPS:   %f %f %f\n", s.mL.W1-s.mS.W1, s.mL.W2-s.mS.W2, s.mL.W3-s.mS.W3)
-		fmt.Printf("ASI:   %f\n", s.mL.U1-s.mS.U1)
-		fmt.Printf("Mag:   %f %f %f\n", s.mL.M1-s.mS.M1, s.mL.M2-s.mS.M2, s.mL.M3-s.mS.M3)
+		return false // Not enough data yet to decide
 	}
-	return inertial && t-float64(s.mL.T/1000)>tL/2
 }
 
 // Initialize the state at the start of the Kalman filter, based on current
@@ -161,7 +164,8 @@ func (s *State) Initialize(m Measurement, c Control) {
 	}
 	s.U2, s.U3 = 0, 0
 	s.E1, s.E2 = 0, 0
-	if m.WValid && s.U1 > 0 {	// Best guess at initial heading is initial track
+	if m.WValid && s.U1 > 0 {
+		// Best guess at initial heading is initial track
 		// Simplified half-angle formulae
 		s.E0, s.E3 = math.Sqrt((s.U1 + m.W1) / (2 * s.U1)), math.Sqrt((s.U1 - m.W1) / (2 * s.U1))
 		if m.W2 > 0 {
@@ -172,22 +176,12 @@ func (s *State) Initialize(m Measurement, c Control) {
 		// assume north
 		s.E0, s.E3 = math.Sqrt2/2, -math.Sqrt2/2
 		s.Initialized = true
-	} else {
-		s.E0, s.E3 = math.Sqrt2/2, -math.Sqrt2/2
+	} else {	// We're just stationary; wait until we start moving to initialize
+		//TODO westphae: could use magnetometer to initially point north
 		s.Initialized = false
+		return
 	}
 	s.V1, s.V2, s.V3 = 0, 0, 0	// Best guess at initial windspeed is zero (actually headwind...)
-	if m.MValid {
-		s.M1 = 2 * m.M1 * (s.E1 * s.E1 + s.E0 * s.E0 - 0.5) +
-			2 * m.M2 * (s.E1 * s.E2 + s.E0 * s.E3) +
-			2 * m.M3 * (s.E1 * s.E3 - s.E0 * s.E2)
-		s.M2 = 2 * m.M1 * (s.E2 * s.E1 - s.E0 * s.E3) +
-			2 * m.M2 * (s.E2 * s.E2 + s.E0 * s.E0 - 0.5) +
-			2 * m.M3 * (s.E2 * s.E3 + s.E0 * s.E1)
-		s.M3 = 2 * m.M1 * (s.E3 * s.E1 + s.E0 * s.E2) +
-			2 * m.M2 * (s.E3 * s.E2 - s.E0 * s.E1) +
-			2 * m.M3 * (s.E3 * s.E3 + s.E0 * s.E0 - 0.5)
-	}
 	s.tLastCal = float64(m.T)/1000000000-3600	// If just initialized, do a fresh calibration
 	s.M = *matrix.Diagonal([]float64{
 		20*20, 1*1, 1*1,
@@ -200,25 +194,38 @@ func (s *State) Initialize(m Measurement, c Control) {
 // Calibrate performs a calibration, determining the quaternion to rotate it to
 // be effectively level and pointing forward.  Must be run when in an unaccelerated state.
 func (s *State) Calibrate(c Control, m Measurement) {
-	// Persist last known to storage
-	// Initial is last known
-	// If no GPS or GPS stationary, assume straight and level: Ai is down
-	// If GPS speed, assume heading = track
+	//TODO: I have the math for this, just no time to implement it yet; will do soon
+	// For now, just assume it's place in the aircraft level and pointing forward
+	//TODO: If m.UValid then calculate correct airspeed and windspeed;
+	// Must have some change in acceleration to calibrate
+	// Then match up GPS acceleration with sensor acceleration to rotate sensor into aircraft frame
 	s.F0 = 1
 	s.F1 = 0
 	s.F2 = 0
 	s.F3 = 0
 
 	// Set the quaternion fragments to rotate from sensor frame into aircraft frame
-	s.f11 = 2 * (+s.F0*s.F0 + s.F1*s.F1 - 0.5)
-	s.f12 = 2 * (+s.F0*s.F3 + s.F1*s.F2)
-	s.f13 = 2 * (-s.F0*s.F2 + s.F1*s.F3)
-	s.f21 = 2 * (-s.F0*s.F3 + s.F2*s.F1)
-	s.f22 = 2 * (+s.F0*s.F0 + s.F2*s.F2 - 0.5)
-	s.f23 = 2 * (+s.F0*s.F1 + s.F2*s.F3)
-	s.f31 = 2 * (+s.F0*s.F2 + s.F3*s.F1)
-	s.f32 = 2 * (-s.F0*s.F1 + s.F3*s.F2)
-	s.f33 = 2 * (+s.F0*s.F0 + s.F3*s.F3 - 0.5)
+	s.f11 = 2 * (+s.F0 * s.F0 + s.F1 * s.F1 - 0.5)
+	s.f12 = 2 * (+s.F0 * s.F3 + s.F1 * s.F2)
+	s.f13 = 2 * (-s.F0 * s.F2 + s.F1 * s.F3)
+	s.f21 = 2 * (-s.F0 * s.F3 + s.F2 * s.F1)
+	s.f22 = 2 * (+s.F0 * s.F0 + s.F2 * s.F2 - 0.5)
+	s.f23 = 2 * (+s.F0 * s.F1 + s.F2 * s.F3)
+	s.f31 = 2 * (+s.F0 * s.F2 + s.F3 * s.F1)
+	s.f32 = 2 * (-s.F0 * s.F1 + s.F3 * s.F2)
+	s.f33 = 2 * (+s.F0 * s.F0 + s.F3 * s.F3 - 0.5)
+
+	if m.MValid {
+		s.M1 = 2 * m.M1 * (s.E1 * s.E1 + s.E0 * s.E0 - 0.5) +
+		2 * m.M2 * (s.E1 * s.E2 + s.E0 * s.E3) +
+		2 * m.M3 * (s.E1 * s.E3 - s.E0 * s.E2)
+		s.M2 = 2 * m.M1 * (s.E2 * s.E1 - s.E0 * s.E3) +
+		2 * m.M2 * (s.E2 * s.E2 + s.E0 * s.E0 - 0.5) +
+		2 * m.M3 * (s.E2 * s.E3 + s.E0 * s.E1)
+		s.M3 = 2 * m.M1 * (s.E3 * s.E1 + s.E0 * s.E2) +
+		2 * m.M2 * (s.E3 * s.E2 - s.E0 * s.E1) +
+		2 * m.M3 * (s.E3 * s.E3 + s.E0 * s.E0 - 0.5)
+	}
 
 	s.Calibrated = true
 }
@@ -308,7 +315,7 @@ func (s *State) Update(m Measurement) {
 
 	m2, err := ss.Inverse()
 	if err != nil {
-		fmt.Println("Can't invert Kalman gain matrix")
+		log.Println("AHRS: Can't invert Kalman gain matrix")
 	}
 	kk := matrix.Product(&s.M, matrix.Product(h.Transpose(), m2))
 	su := matrix.Product(kk, matrix.MakeDenseMatrix(y, 9, 1))
@@ -328,7 +335,6 @@ func (s *State) Update(m Measurement) {
 	s.M3 += su.Get(12, 0)
 	s.T = m.T
 	s.M = *matrix.Product(matrix.Difference(matrix.Eye(13), matrix.Product(kk, &h)), &s.M)
-	//fmt.Println(kk)
 }
 
 func (s *State) PredictMeasurement() Measurement {
