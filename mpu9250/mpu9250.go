@@ -243,19 +243,22 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, applyHWOffset
 		return nil, err
 	}
 
-	go mpu.readMPURaw()
+	go mpu.readGyroAccelRaw()
+	if USEMAG {
+		go mpu.readMagRaw()
+	}
 
 	time.Sleep(100 * time.Millisecond) // Make sure it's ready
 	return mpu, nil
 }
 
-// readMPURaw reads all sensors and totals the values and number of samples
+// readGyroAccelRaw reads the gyro and accel sensors and totals the values and number of samples
 // When Read is called, we will return the averages
-func (m *MPU9250) readMPURaw() {
+func (m *MPU9250) readGyroAccelRaw() {
 	var (
-		g1, g2, g3, a1, a2, a3, m1, m2, m3, m4 int16
+		g1, g2, g3, a1, a2, a3 int16
 		err error
-		gamap = map[*int16]byte{
+		regmap = map[*int16]byte{
 			&g1: MPUREG_GYRO_XOUT_H,
 			&g2: MPUREG_GYRO_YOUT_H,
 			&g3: MPUREG_GYRO_ZOUT_H,
@@ -263,7 +266,41 @@ func (m *MPU9250) readMPURaw() {
 			&a2: MPUREG_ACCEL_YOUT_H,
 			&a3: MPUREG_ACCEL_ZOUT_H,
 		}
-		magmap = map[*int16]byte{
+	)
+
+	clock := time.NewTicker(time.Duration(int(1000.0/float32(m.sampleRate)+0.5)) * time.Millisecond)
+	defer clock.Stop()
+
+	for {
+		<-clock.C
+		// Read gyro & accel data:
+		for p, reg := range regmap {
+			*p, err = m.i2cRead2(reg)
+			if err != nil {
+				log.Println("MPU9250 Warning: error reading gyro/accel")
+			}
+		}
+
+		// Update values and increment count of gyro/accel readings
+		m.mu.Lock()
+		m.g1 += int32(g1 - m.g01)
+		m.g2 += int32(g2 - m.g02)
+		m.g3 += int32(g3 - m.g03)
+		m.a1 += int32(a1 - m.a01)
+		m.a2 += int32(a2 - m.a02)
+		m.a3 += int32(a3 - m.a03)
+		m.n++
+		m.mu.Unlock()
+	}
+}
+
+// readMagRaw reads all sensors and totals the values and number of samples
+// When Read is called, we will return the averages
+func (m *MPU9250) readMagRaw() {
+	var (
+		m1, m2, m3, m4 int16
+		err error
+		regmap = map[*int16]byte{
 			&m1: MPUREG_EXT_SENS_DATA_00,
 			&m2: MPUREG_EXT_SENS_DATA_02,
 			&m3: MPUREG_EXT_SENS_DATA_04,
@@ -276,67 +313,46 @@ func (m *MPU9250) readMPURaw() {
 
 	for {
 		<-clock.C
-		m.mu.Lock()
-		// Read gyro & accel data:
-		for p, reg := range gamap {
+		// Read magnetometer data:
+		if err := m.i2cWrite(MPUREG_I2C_SLV0_ADDR, AK8963_I2C_ADDR | READ_FLAG); err != nil {
+			fmt.Errorf("MPU9250 Error: couldn't set AK8963 address for reading: %s", err.Error())
+		}
+		//I2C slave 0 register address from where to begin data transfer
+		if err := m.i2cWrite(MPUREG_I2C_SLV0_REG, AK8963_HXL); err != nil {
+			fmt.Errorf("MPU9250 Error: couldn't set AK8963 read register: %s", err.Error())
+		}
+		//Tell AK8963 that we will read 7 bytes
+		if err := m.i2cWrite(MPUREG_I2C_SLV0_CTRL, 0x87); err != nil {
+			fmt.Errorf("MPU9250 Error: couldn't communicate with AK8963: %s", err.Error())
+		}
+
+		// Read the actual data
+		for p, reg := range regmap {
 			*p, err = m.i2cRead2(reg)
 			if err != nil {
-				log.Println("MPU9250 Warning: error reading gyro/accel")
-				goto readMagData // The rest of the data probably isn't there either
+				log.Println("MPU9250 Warning: error reading magnetometer")
 			}
 		}
 
-		// Update values and increment count of gyro/accel readings
-		m.g1 += int32(g1 - m.g01)
-		m.g2 += int32(g2 - m.g02)
-		m.g3 += int32(g3 - m.g03)
-		m.a1 += int32(a1 - m.a01)
-		m.a2 += int32(a2 - m.a02)
-		m.a3 += int32(a3 - m.a03)
-		m.n += 1.0
-
-		readMagData:
-		if USEMAG {
-			// Read magnetometer data:
-			if err := m.i2cWrite(MPUREG_I2C_SLV0_ADDR, AK8963_I2C_ADDR | READ_FLAG); err != nil {
-				fmt.Errorf("MPU9250 Error: couldn't set AK8963 address for reading: %s", err.Error())
-			}
-			//I2C slave 0 register address from where to begin data transfer
-			if err := m.i2cWrite(MPUREG_I2C_SLV0_REG, AK8963_HXL); err != nil {
-				fmt.Errorf("MPU9250 Error: couldn't set AK8963 read register: %s", err.Error())
-			}
-			//Tell AK8963 that we will read 7 bytes
-			if err := m.i2cWrite(MPUREG_I2C_SLV0_CTRL, 0x87); err != nil {
-				fmt.Errorf("MPU9250 Error: couldn't communicate with AK8963: %s", err.Error())
-			}
-
-			// Read the actual data
-			for p, reg := range magmap {
-				*p, err = m.i2cRead2(reg)
-				if err != nil {
-					log.Println("MPU9250 Warning: error reading magnetometer")
-				}
-			}
-
-			// Test validity of magnetometer data
-			if (byte(m1 & 0xFF) & AKM_DATA_READY) == 0x00 && (byte(m1 & 0xFF) & AKM_DATA_OVERRUN) != 0x00 {
-				log.Println("MPU9250 Mag data not ready or overflow")
-				log.Printf("MPU9250 m1 LSB: %X\n", byte(m1 & 0xFF))
-				return        // Don't update the accumulated values
-			}
-
-			if (byte((m4 >> 8) & 0xFF) & AKM_OVERFLOW) != 0x00 {
-				log.Println("MPU9250 Mag data overflow")
-				log.Printf("MPU9250 m4 MSB: %X\n", byte((m1 >> 8) & 0xFF))
-				return        // Don't update the accumulated values
-			}
-
-			m.m1 += (int32(m1) * m.mcal1 >> 8)
-			m.m2 += (int32(m2) * m.mcal2 >> 8)
-			m.m3 += (int32(m3) * m.mcal3 >> 8)
-
-			m.nm += 1.0
+		// Test validity of magnetometer data
+		if (byte(m1 & 0xFF) & AKM_DATA_READY) == 0x00 && (byte(m1 & 0xFF) & AKM_DATA_OVERRUN) != 0x00 {
+			log.Println("MPU9250 Mag data not ready or overflow")
+			log.Printf("MPU9250 m1 LSB: %X\n", byte(m1 & 0xFF))
+			return        // Don't update the accumulated values
 		}
+
+		if (byte((m4 >> 8) & 0xFF) & AKM_OVERFLOW) != 0x00 {
+			log.Println("MPU9250 Mag data overflow")
+			log.Printf("MPU9250 m4 MSB: %X\n", byte((m1 >> 8) & 0xFF))
+			return        // Don't update the accumulated values
+		}
+
+		// Update values and increment count of magnetometer readings
+		m.mu.Lock()
+		m.m1 += (int32(m1) * m.mcal1 >> 8)
+		m.m2 += (int32(m2) * m.mcal2 >> 8)
+		m.m3 += (int32(m3) * m.mcal3 >> 8)
+		m.nm++
 		m.mu.Unlock()
 	}
 }
