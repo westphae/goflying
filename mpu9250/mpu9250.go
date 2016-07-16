@@ -21,13 +21,13 @@ const (
 	// Calibration variances
 	MAXGYROVAR = 10.0
 	MAXACCELVAR = 10.0
-	USEMAG      = true
 )
 
 type MPU9250 struct {
 	i2cbus                embd.I2CBus
 	scaleGyro, scaleAccel float64 // Max sensor reading for value 2**15-1
 	sampleRate            int
+	enableMag	      bool
 	n, nm                 float64 // Number of samples taken since last read
 	g1, g2, g3            int32 // Gyro accumulated values, rad/s
 	a1, a2, a3            int32 // Accel accumulated values, G
@@ -38,7 +38,7 @@ type MPU9250 struct {
 	mu                    sync.Mutex
 }
 
-func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, applyHWOffsets bool) (*MPU9250, error) {
+func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, enableMag bool, applyHWOffsets bool) (*MPU9250, error) {
 	var mpu = new(MPU9250)
 	var sensGyro, sensAccel byte
 
@@ -161,7 +161,7 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, applyHWOffset
 	//mpu.i2cWrite(MPUREG_FIFO_EN, 0x00)
 
 	// Set up magnetometer
-	if USEMAG {
+	if mpu.enableMag {
 		if err := mpu.ReadMagCalibration(); err != nil {
 			return nil, errors.New("Error reading calibration from magnetometer")
 		}
@@ -244,9 +244,7 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, applyHWOffset
 	}
 
 	go mpu.readGyroAccelRaw()
-	if USEMAG {
-		go mpu.readMagRaw()
-	}
+	go mpu.readMagRaw()
 
 	time.Sleep(100 * time.Millisecond) // Make sure it's ready
 	return mpu, nil
@@ -311,7 +309,7 @@ func (m *MPU9250) readMagRaw() {
 	clock := time.NewTicker(time.Duration(int(1000.0/float32(m.sampleRate)+0.5)) * time.Millisecond)
 	defer clock.Stop()
 
-	for {
+	for m.enableMag{
 		<-clock.C
 		// Read magnetometer data:
 		if err := m.i2cWrite(MPUREG_I2C_SLV0_ADDR, AK8963_I2C_ADDR | READ_FLAG); err != nil {
@@ -371,7 +369,7 @@ func (m *MPU9250) Read() (t int64, g1, g2, g3, a1, a2, a3, m1, m2, m3 float64, g
 	if m.nm > 0 {
 		m1, m2, m3 = float64(m.m1) / m.nm, float64(m.m2) / m.nm, float64(m.m3) / m.nm
 		magError = nil
-	} else if USEMAG {
+	} else if m.enableMag {
 		magError = errors.New("MPU9250 Read: error reading magnetometer")
 	} else {
 		magError = nil
@@ -641,6 +639,14 @@ func (mpu *MPU9250) EnableGyroBiasCal(enable bool) (error) {
 	}
 
 		return nil
+}
+
+func (mpu *MPU9250) SampleRate() (int) {
+	return mpu.sampleRate
+}
+
+func (mpu *MPU9250) MagEnabled() (bool) {
+	return mpu.enableMag
 }
 
 func (mpu *MPU9250) ReadAccelBias(sensAccel byte) error {

@@ -12,7 +12,7 @@ func main() {
 	var err error
 
 	for i:=0; i<10; i++ {
-		mpu, err = mpu9250.NewMPU9250(250, 4, 100, false)
+		mpu, err = mpu9250.NewMPU9250(250, 4, 100, true, false)
 		if err != nil {
 			fmt.Printf("Error initializing MPU9250, attempt %d of n\n", i)
 			time.Sleep(5 * time.Second)
@@ -56,8 +56,10 @@ func main() {
 			fmt.Printf("Accel:  % +8.2f % +8.2f % +8.2f\n", a1, a2, a3)
 		}
 
-		if magError != nil {
-			fmt.Printf("Error %s reading magnetometer\n", magError.Error())
+		if !mpu.MagEnabled() {
+			fmt.Println("Magnetometer disabled")
+		} else if magError != nil {
+			fmt.Println(magError.Error())
 		} else {
 			fmt.Printf("Mag:    % +8.0f % +8.0f % +8.0f\n", m1, m2, m3)
 		}
