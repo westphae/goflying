@@ -4,6 +4,7 @@ package mpu9250
 // https://github.com/brianc118/MPU9250/blob/master/MPU9250.cpp
 
 import (
+	"fmt"
 	"github.com/kidoman/embd"
 	_ "github.com/kidoman/embd/host/all"
 	_ "github.com/kidoman/embd/host/rpi"
@@ -542,10 +543,8 @@ func (m *MPU9250) readMPURaw() {
 	}
 }
 
-func (m *MPU9250) Read() (int64, float64, float64, float64, float64, float64, float64, float64, float64, float64, error, error) {
+func (m *MPU9250) Read() (t int64, g1, g2, g3, a1, a2, a3, m1, m2, m3 float64, gaError, magError error) {
 	m.m.Lock()
-	var g1, g2, g3, a1, a2, a3, m1, m2, m3 float64
-	var gaError, magError error
 
 	if m.n > 0 {
 		g1, g2, g3 = float64(m.g1) / m.n * m.scaleGyro, float64(m.g2) / m.n * m.scaleGyro, float64(m.g3) / m.n * m.scaleGyro
@@ -563,7 +562,7 @@ func (m *MPU9250) Read() (int64, float64, float64, float64, float64, float64, fl
 	} else {
 		magError = nil
 	}
-	t := time.Now().UnixNano()
+	t = time.Now().UnixNano()
 
 	m.g1, m.g2, m.g3 = 0, 0, 0
 	m.a1, m.a2, m.a3 = 0, 0, 0
@@ -571,7 +570,7 @@ func (m *MPU9250) Read() (int64, float64, float64, float64, float64, float64, fl
 	m.n, m.nm = 0, 0
 	m.m.Unlock()
 
-	return t, g1, g2, g3, a1, a2, a3, m1, m2, m3, gaError, magError
+	return
 }
 
 func (m *MPU9250) CloseMPU() {
@@ -974,34 +973,34 @@ func (mpu *MPU9250) ReadMagCalibration() error {
 	return nil
 }
 
-func (mpu *MPU9250) i2cWrite(register, value byte) error {
+func (mpu *MPU9250) i2cWrite(register, value byte) (err error) {
 
-	if err := mpu.i2cbus.WriteByteToReg(MPU_ADDRESS, register, value); err != nil {
-		log.Printf("MPU9250 Error writing %x to %x: %s\n", value, register, err.Error())
-		return errors.New("i2cWrite error")
+	if errWrite := mpu.i2cbus.WriteByteToReg(MPU_ADDRESS, register, value); errWrite != nil {
+		err = fmt.Errorf("MPU9250 Error writing %X to %X: %s\n",
+			value, register, errWrite.Error())
+	} else {
+		time.Sleep(time.Millisecond)
 	}
-
-	time.Sleep(time.Millisecond)
-	return nil
+	return
 }
 
-func (mpu *MPU9250) i2cRead(register byte) (uint8, error) {
-
-	value, err := mpu.i2cbus.ReadByteFromReg(MPU_ADDRESS, register)
-	if err != nil {
-		return 0, errors.New("i2cRead error")
+func (mpu *MPU9250) i2cRead(register byte) (value uint8, err error) {
+	value, errWrite := mpu.i2cbus.ReadByteFromReg(MPU_ADDRESS, register)
+	if errWrite != nil {
+		err = fmt.Errorf("i2cRead error: %s", errWrite.Error())
 	}
-	return value, nil
+	return
 }
 
-func (mpu *MPU9250) i2cRead2(register byte) (int16, error) {
+func (mpu *MPU9250) i2cRead2(register byte) (value int16, err error) {
 
-	value, err := mpu.i2cbus.ReadWordFromReg(MPU_ADDRESS, register)
-	if err != nil {
-		log.Printf("MPU9250 Error reading %x: %s\n", register, err.Error())
-		return 0, errors.New("i2cRead2 error")
+	v, errWrite := mpu.i2cbus.ReadWordFromReg(MPU_ADDRESS, register)
+	if errWrite != nil {
+		err = fmt.Errorf("MPU9250 Error reading %x: %s\n", register, err.Error())
+	} else {
+		value = int16(v)
 	}
-	return int16(value), nil
+	return
 }
 
 func (mpu *MPU9250) memWrite(addr uint16, data *[]byte) (error) {
@@ -1018,14 +1017,12 @@ func (mpu *MPU9250) memWrite(addr uint16, data *[]byte) (error) {
 
 	err = mpu.i2cbus.WriteToReg(MPU_ADDRESS, MPUREG_BANK_SEL, tmp)
 	if err != nil {
-		log.Printf("MPU9250 Error selecting memory bank: %s\n", err.Error())
-		return err
+		return fmt.Errorf("MPU9250 Error selecting memory bank: %s\n", err.Error())
 	}
 
 	err = mpu.i2cbus.WriteToReg(MPU_ADDRESS, MPUREG_MEM_R_W, *data)
 	if err != nil {
-		log.Printf("MPU9250 Error writing to the memory bank: %s\n", err.Error())
-		return err
+		return fmt.Errorf("MPU9250 Error writing to the memory bank: %s\n", err.Error())
 	}
 
 	return nil
