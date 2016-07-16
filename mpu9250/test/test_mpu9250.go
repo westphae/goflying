@@ -12,7 +12,7 @@ func main() {
 	var err error
 
 	for i:=0; i<10; i++ {
-		mpu, err = mpu9250.NewMPU9250(1000, 8, 100, false)
+		mpu, err = mpu9250.NewMPU9250(250, 4, 100, false)
 		if err != nil {
 			fmt.Printf("Error initializing MPU9250, attempt %d of n\n", i)
 			time.Sleep(5 * time.Second)

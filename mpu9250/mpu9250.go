@@ -552,6 +552,7 @@ func (m *MPU9250) Read() (int64, float64, float64, float64, float64, float64, fl
 		a1, a2, a3 = float64(m.a1) / m.n * m.scaleAccel, float64(m.a2) / m.n * m.scaleAccel, float64(m.a3) / m.n * m.scaleAccel
 		gaError = nil
 	} else {
+		log.Printf("MPU error: %2.f values accumulated\n", m.n)
 		gaError = errors.New("MPU9250 Read: error reading gyro/accel")
 	}
 	if m.nm > 0 {
