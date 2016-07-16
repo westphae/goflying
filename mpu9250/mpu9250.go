@@ -137,9 +137,13 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, applyHWOffset
 	}
 	sampRate := byte(1000/mpu.sampleRate-1)
 	// Set LPF to half of sample rate
-	mpu.SetLPF(sampRate >> 1)
+	if err := mpu.SetLPF(sampRate >> 1); err != nil {
+		return err
+	}
 	// Set sample rate to chosen
-	mpu.SetSampleRate(sampRate)
+	if err := mpu.SetSampleRate(sampRate); err != nil {
+		return err
+	}
 	// Turn off FIFO buffer
 	if err := mpu.i2cWrite(MPUREG_INT_ENABLE, 0x00); err != nil {
 		return nil, errors.New("Error setting up MPU9250")
@@ -577,11 +581,15 @@ func (m *MPU9250) CalibrateAccel(dur int) error {
 	return nil
 }
 
-func (mpu *MPU9250) SetSampleRate(rate byte) {
-	mpu.i2cWrite(MPUREG_SMPLRT_DIV, byte(rate)) // Set sample rate to chosen
+func (mpu *MPU9250) SetSampleRate(rate byte) (err error) {
+	errWrite := mpu.i2cWrite(MPUREG_SMPLRT_DIV, byte(rate)) // Set sample rate to chosen
+	if errWrite != nil {
+		err = fmt.Errorf("MPU9250 Error: Couldn't set sample rate: %s", errWrite.Error())
+	}
+	return
 }
 
-func (mpu*MPU9250) SetLPF(rate byte) {
+func (mpu*MPU9250) SetLPF(rate byte) (err error) {
 	var r byte
 	switch {
 	case rate >= 188:
@@ -598,7 +606,11 @@ func (mpu*MPU9250) SetLPF(rate byte) {
 		r = BITS_DLPF_CFG_5HZ
 	}
 
-	mpu.i2cWrite(MPUREG_CONFIG, r)
+	errWrite := mpu.i2cWrite(MPUREG_CONFIG, r)
+	if errWrite != nil {
+		err = fmt.Errorf("MPU9250 Error: couldn't set LPF: %s", errWrite.Error())
+	}
+	return
 }
 
 func (mpu *MPU9250) EnableGyroBiasCal(enable bool) (error) {
