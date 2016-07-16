@@ -481,7 +481,7 @@ func main() {
 			s.Initialize(m, c)
 		}
 		// If aircraft frame is inertial, then check calibration
-		if s.IsInertial(c, m) && s.Initialized {
+		if s.Initialized {
 			s.Calibrate(c, m)
 		}
 
@@ -520,6 +520,13 @@ func main() {
 			lVar.Log(t, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 			tNextUpdate += pdt
 		}
+
+		// Apply some heuristics
+		if s.U1 < 0 {
+			s.U1 = -s.U1
+			s.V1 = -s.V1
+		}
+
 		t += pdt
 	}
 
