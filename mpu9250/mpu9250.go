@@ -19,20 +19,21 @@ import (
 type MPU9250 struct {
 	i2cbus                embd.I2CBus
 	scaleGyro, scaleAccel float64 // Max sensor reading for value 2**15-1
-	sampleRate 	      int
+	sampleRate            int
 	n, nm                 float64 // Number of samples taken since last read
 	g1, g2, g3            int32 // Gyro accumulated values, rad/s
 	a1, a2, a3            int32 // Accel accumulated values, G
 	m1, m2, m3            int32 // Magnetometer accumulated values, uT
-	a01, a02, a03	      int16 // Accelerometer bias
-	g01, g02, g03	      int16 // Gyro bias
+	a01, a02, a03         int16 // Accelerometer bias
+	g01, g02, g03         int16 // Gyro bias
 	mcal1, mcal2, mcal3   int32 // Magnetometer calibration values, uT
-	m 			sync.Mutex
+	mu                    sync.Mutex
 }
 
 func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, applyHWOffsets bool) (*MPU9250, error) {
 	var mpu = new(MPU9250)
 	var sensGyro, sensAccel byte
+
 	mpu.sampleRate = sampleRate
 
 	switch {
@@ -138,11 +139,11 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, applyHWOffset
 	sampRate := byte(1000/mpu.sampleRate-1)
 	// Set LPF to half of sample rate
 	if err := mpu.SetLPF(sampRate >> 1); err != nil {
-		return err
+		return nil, err
 	}
 	// Set sample rate to chosen
 	if err := mpu.SetSampleRate(sampRate); err != nil {
-		return err
+		return nil, err
 	}
 	// Turn off FIFO buffer
 	if err := mpu.i2cWrite(MPUREG_INT_ENABLE, 0x00); err != nil {
@@ -243,46 +244,32 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, applyHWOffset
 // readMPURaw reads all sensors and totals the values and number of samples
 // When Read is called, we will return the averages
 func (m *MPU9250) readMPURaw() {
-	var g1, g2, g3, a1, a2, a3, m1, m2, m3, m4 int16
-	var err error
+	var (
+		g1, g2, g3, a1, a2, a3, m1, m2, m3, m4 int16
+		err error
+		gamap = map[*int16]byte{
+			&g1: MPUREG_GYRO_XOUT_H,
+			&g2: MPUREG_GYRO_YOUT_H,
+			&g3: MPUREG_GYRO_ZOUT_H,
+			&a1: MPUREG_ACCEL_XOUT_H,
+			&a2: MPUREG_ACCEL_YOUT_H,
+			&a3: MPUREG_ACCEL_ZOUT_H,
+		}
+	)
 
 	clock := time.NewTicker(time.Duration(int(1000.0/float32(m.sampleRate)+0.5)) * time.Millisecond)
+	defer clock.Stop()
 
 	for {
 		<-clock.C
-		m.m.Lock() //TODO: There must be a better way using channels
-		// Read gyro data:
-		g1, err = m.i2cRead2(MPUREG_GYRO_XOUT_H)
-		if err != nil {
-			log.Println("MPU9250 Warning: error reading gyro")
-			goto readMagData
-		}
-		g2, err = m.i2cRead2(MPUREG_GYRO_YOUT_H)
-		if err != nil {
-			log.Println("MPU9250 Warning: error reading gyro")
-			goto readMagData
-		}
-		g3, err = m.i2cRead2(MPUREG_GYRO_ZOUT_H)
-		if err != nil {
-			log.Println("MPU9250 Warning: error reading gyro")
-			goto readMagData
-		}
-
-		// Read accelerometer data:
-		a1, err = m.i2cRead2(MPUREG_ACCEL_XOUT_H)
-		if err != nil {
-			log.Println("MPU9250 Warning: error reading accelerometer")
-			goto readMagData
-		}
-		a2, err = m.i2cRead2(MPUREG_ACCEL_YOUT_H)
-		if err != nil {
-			log.Println("MPU9250 Warning: error reading accelerometer")
-			goto readMagData
-		}
-		a3, err = m.i2cRead2(MPUREG_ACCEL_ZOUT_H)
-		if err != nil {
-			log.Println("MPU9250 Warning: error reading accelerometer")
-			goto readMagData
+		m.mu.Lock()
+		// Read gyro & accel data:
+		for p, reg := range gamap {
+			*p, err = m.i2cRead2(reg)
+			if err != nil {
+				log.Println("MPU9250 Warning: error reading gyro/accel")
+				goto readMagData // The rest of the data probably isn't there either
+			}
 		}
 
 		// Update values and increment count of gyro/accel readings
@@ -340,12 +327,12 @@ func (m *MPU9250) readMPURaw() {
 
 			m.nm += 1.0
 		}
-		m.m.Unlock()
+		m.mu.Unlock()
 	}
 }
 
 func (m *MPU9250) Read() (t int64, g1, g2, g3, a1, a2, a3, m1, m2, m3 float64, gaError, magError error) {
-	m.m.Lock()
+	m.mu.Lock()
 
 	if m.n > 0 {
 		g1, g2, g3 = float64(m.g1) / m.n * m.scaleGyro, float64(m.g2) / m.n * m.scaleGyro, float64(m.g3) / m.n * m.scaleGyro
@@ -369,7 +356,7 @@ func (m *MPU9250) Read() (t int64, g1, g2, g3, a1, a2, a3, m1, m2, m3 float64, g
 	m.a1, m.a2, m.a3 = 0, 0, 0
 	m.m1, m.m2, m.m3 = 0, 0, 0
 	m.n, m.nm = 0, 0
-	m.m.Unlock()
+	m.mu.Unlock()
 
 	return
 }
@@ -390,7 +377,8 @@ func (m *MPU9250) Calibrate(dur int) error {
 	)
 
 	clock := time.NewTicker(time.Duration(int(1000.0/float32(m.sampleRate)+0.5)) * time.Millisecond)
-	m.m.Lock()
+	defer clock.Stop()
+	m.mu.Lock()
 
 	for i := int32(0); i<n; i++ {
 		<- clock.C
@@ -434,7 +422,6 @@ func (m *MPU9250) Calibrate(dur int) error {
 		a22 += int64(a2)*int64(a2)
 		a23 += int64(a3)*int64(a3)
 	}
-	clock.Stop()
 
 	// Too much variance in the gyro readings means it was moving too much for a good calibration
 	log.Printf("MPU9250 gyro calibration variance: %f %f %f\n", (float64(g21-int64(g11)*int64(g11)/int64(n))*m.scaleGyro*m.scaleGyro/float64(n)),
@@ -461,7 +448,7 @@ func (m *MPU9250) Calibrate(dur int) error {
 	m.a03 = int16(a13/n)
 
 
-	m.m.Unlock()
+	m.mu.Unlock()
 	log.Printf("MPU9250 Gyro calibration: %d, %d, %d\n", m.g01, m.g02, m.g03)
 	log.Printf("MPU9250 Accel calibration: %d, %d, %d\n", m.a01, m.a02, m.a03)
 	return nil
@@ -478,7 +465,8 @@ func (m *MPU9250) CalibrateGyro(dur int) error {
 	)
 
 	clock := time.NewTicker(time.Duration(int(1000.0/float32(m.sampleRate)+0.5)) * time.Millisecond)
-	m.m.Lock()
+	defer clock.Stop()
+	m.mu.Lock()
 
 	for i := int32(0); i<n; i++ {
 		<- clock.C
@@ -502,7 +490,6 @@ func (m *MPU9250) CalibrateGyro(dur int) error {
 		g22 += int64(g2)*int64(g2)
 		g23 += int64(g3)*int64(g3)
 	}
-	clock.Stop()
 
 	// Too much variance in the gyro readings means it was moving too much for a good calibration
 	log.Printf("MPU9250 calibration variance: %f %f %f\n", (float64(g21-int64(g11)*int64(g11)/int64(n))*m.scaleGyro*m.scaleGyro/float64(n)),
@@ -518,7 +505,7 @@ func (m *MPU9250) CalibrateGyro(dur int) error {
 	m.g02 = int16(g12/n)
 	m.g03 = int16(g13/n)
 
-	m.m.Unlock()
+	m.mu.Unlock()
 	log.Printf("MPU9250 Gyro calibration: %d, %d, %d\n", m.g01, m.g02, m.g03)
 	return nil
 }
@@ -535,7 +522,8 @@ func (m *MPU9250) CalibrateAccel(dur int) error {
 	)
 
 	clock := time.NewTicker(time.Duration(int(1000.0/float32(m.sampleRate)+0.5)) * time.Millisecond)
-	m.m.Lock()
+	defer clock.Stop()
+	m.mu.Lock()
 
 	for i := int32(0); i<n; i++ {
 		<- clock.C
@@ -560,7 +548,6 @@ func (m *MPU9250) CalibrateAccel(dur int) error {
 		a22 += int64(a2)*int64(a2)
 		a23 += int64(a3)*int64(a3)
 	}
-	clock.Stop()
 
 	// Too much variance in the accel readings means it was moving too much for a good calibration
 	log.Printf("MPU9250 calibration variance: %f %f %f\n", (float64(a21-int64(a11)*int64(a11)/int64(n))*m.scaleAccel*m.scaleAccel/float64(n)),
@@ -576,7 +563,7 @@ func (m *MPU9250) CalibrateAccel(dur int) error {
 	m.a02 = int16(a12/n)
 	m.a03 = int16(a13/n)
 
-	m.m.Unlock()
+	m.mu.Unlock()
 	log.Printf("MPU9250 Accel calibration: %d, %d, %d\n", m.a01, m.a02, m.a03)
 	return nil
 }
