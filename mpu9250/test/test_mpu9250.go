@@ -8,9 +8,11 @@ import (
 
 func main() {
 	clock := time.NewTicker(100 * time.Millisecond)
-	var mpu *mpu9250.MPU9250
-	var data *mpu9250.MPUData
-	var err error
+	var (
+		mpu      *mpu9250.MPU9250
+		avg, cur *mpu9250.MPUData
+		err      error
+	)
 
 	for i:=0; i<10; i++ {
 		mpu, err = mpu9250.NewMPU9250(250, 4, 100, true, false)
@@ -38,18 +40,29 @@ func main() {
 	for {
 		<-clock.C
 
-		data = <-mpu.CAvg
-		fmt.Printf("\nTime:   %6.1f ms\n", float64(data.DT.Nanoseconds())/1000000)
-		fmt.Printf("Number of Observations: %d\n", data.N)
-		fmt.Printf("Gyro:   % +8.2f % +8.2f % +8.2f\n", data.G1, data.G2, data.G3)
-		fmt.Printf("Accel:  % +8.2f % +8.2f % +8.2f\n", data.A1, data.A2, data.A3)
+		avg = <-mpu.CAvg
+		fmt.Printf("\nTime:   %6.1f ms\n", float64(avg.DT.Nanoseconds())/1000000)
+		fmt.Printf("Number of Observations: %d\n", avg.N)
+		fmt.Printf("Avg Gyro:   % +8.2f % +8.2f % +8.2f\n", avg.G1, avg.G2, avg.G3)
+		fmt.Printf("Avg Accel:  % +8.2f % +8.2f % +8.2f\n", avg.A1, avg.A2, avg.A3)
 
 		if !mpu.MagEnabled() {
 			fmt.Println("Magnetometer disabled")
-		} else if data.MagError != nil {
-			fmt.Println(data.MagError.Error())
+		} else if avg.MagError != nil {
+			fmt.Println(avg.MagError.Error())
 		} else {
-			fmt.Printf("Mag:    % +8.0f % +8.0f % +8.0f\n", data.M1, data.M2, data.M3)
+			fmt.Printf("Mag:        % +8.0f % +8.0f % +8.0f\n", avg.M1, avg.M2, avg.M3)
 		}
+
+		cur = <-mpu.C
+		fmt.Printf("Cur Gyro:   % +8.2f % +8.2f % +8.2f\n", cur.G1, cur.G2, cur.G3)
+		fmt.Printf("Cur Accel:  % +8.2f % +8.2f % +8.2f\n", cur.A1, cur.A2, cur.A3)
+
+		fmt.Printf("Length of buffered channel: %d\n", len(mpu.CBuf))
+		for i := 0; i<10; i++ {
+			d := <-mpu.CBuf
+			fmt.Printf("%6.3f ", float64(d.T.Nanosecond())/1000000000)
+		}
+		fmt.Println()
 	}
 }
