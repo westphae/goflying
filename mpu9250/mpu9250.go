@@ -18,8 +18,8 @@ import (
 const (
 	// Calibration variance tolerances
 	//TODO westphae: would be nice to have some mathematical reasoning for this
-	MAXGYROVAR  = 10.0
-	MAXACCELVAR = 10.0
+	MAXGYROVAR  = 0.1
+	MAXACCELVAR = 0.1
 	BUFSIZE     = 250
 )
 
@@ -191,10 +191,13 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, enableMag boo
 		} else {
 			ak8963Rate = byte(mpu.sampleRate/AK8963_MAX_SAMPLE_RATE - 1)
 		}
+
 		// Not so sure of this one--I2C Slave 4??!
 		if err := mpu.i2cWrite(MPUREG_I2C_SLV4_CTRL, ak8963Rate); err != nil {
 			return nil, errors.New("Error setting up AK8963")
 		}
+
+		time.Sleep(100 * time.Millisecond) // Make sure mag is ready
 	}
 
 	// Set clock source to PLL
@@ -225,16 +228,15 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, enableMag boo
 		return nil, err
 	}
 
-	go mpu.readGyroAccelRaw()
-	//go mpu.readMagRaw()
+	go mpu.readSensors()
+	time.Sleep(50 * time.Millisecond) // Make sure it's ready
 
-	time.Sleep(100 * time.Millisecond) // Make sure it's ready
 	return mpu, nil
 }
 
 // readGyroAccelRaw reads the gyro and accel sensors and totals the values and number of samples
 // When Read is called, we will return the averages
-func (m *MPU9250) readGyroAccelRaw() {
+func (m *MPU9250) readSensors() {
 	var (
 		g1, g2, g3, a1, a2, a3, m1, m2, m3, m4               int16 // Current values
 		avg1, avg2, avg3, ava1, ava2, ava3                   float64 // Accumulators for averages
@@ -377,7 +379,7 @@ func (m *MPU9250) readGyroAccelRaw() {
 				if      a11/nc*m.scaleAccel > 0.5 || a11/nc*m.scaleAccel < -0.5 ||
 					a12/nc*m.scaleAccel > 0.5 || a12/nc*m.scaleAccel < -0.5 ||
 					a13/nc*m.scaleAccel > 0.5 || a13/nc*m.scaleAccel < -0.5 {
-					cCalResult<- fmt.Errorf("MPU9250 Calibration Error: sensor is maxing out: %6f %6f %6f",
+					cCalResult<- fmt.Errorf("MPU9250 Calibration Error: accel is maxing out: %6f %6f %6f",
 						a11/nc*m.scaleAccel, a12/nc*m.scaleAccel, a12/nc*m.scaleAccel)
 				} else if vg1 > MAXGYROVAR || vg2 > MAXGYROVAR || vg3 > MAXGYROVAR ||
 					va1 > MAXACCELVAR || va2 > MAXACCELVAR || va3 > MAXACCELVAR {
@@ -444,8 +446,8 @@ func (m *MPU9250) readGyroAccelRaw() {
 			avg1, avg2, avg3 = 0, 0, 0
 			ava1, ava2, ava3 = 0, 0, 0
 			avm1, avm2, avm3 = 0, 0, 0
-			n = 0
-			t0 = t
+			n, nm = 0, 0
+			t0, t0m = t, tm
 		case dur := <-cCal:
 			nc = float64(dur * m.sampleRate) // nc>0 triggers sampling for a calibration
 			i = 0
