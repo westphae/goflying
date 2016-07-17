@@ -26,17 +26,6 @@ func main() {
 		return
 	}
 
-	if err := mpu.CalibrateGyro(1); err != nil {
-		fmt.Println(err.Error())
-		return
-	}
-
-	if err := mpu.CalibrateAccel(1); err != nil {
-		fmt.Println(err.Error())
-		return
-	}
-
-
 	if err := mpu.Calibrate(1); err != nil {
 		fmt.Println(err.Error())
 		return
@@ -50,7 +39,7 @@ func main() {
 		data = <-mpu.CAvg
 		fmt.Printf("\nTime:   %6.1f ms\n", float64(data.DT.Nanoseconds())/1000000)
 		fmt.Printf("Number of Observations: %d\n", data.N)
-		fmt.Printf("Gyro:   % +8.1f % +8.1f % +8.1f\n", data.G1, data.G2, data.G3)
+		fmt.Printf("Gyro:   % +8.2f % +8.2f % +8.2f\n", data.G1, data.G2, data.G3)
 		fmt.Printf("Accel:  % +8.2f % +8.2f % +8.2f\n", data.A1, data.A2, data.A3)
 
 		if !mpu.MagEnabled() {

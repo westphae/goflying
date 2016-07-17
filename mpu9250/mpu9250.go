@@ -12,7 +12,6 @@ import (
 	"errors"
 	"log"
 	"math"
-	"sync"
 	"time"
 )
 
@@ -20,16 +19,17 @@ const (
 	// Calibration variance tolerances
 	MAXGYROVAR  = 10.0
 	MAXACCELVAR = 10.0
+	BUFSIZE     = 250
 )
 
 type MPUData struct {
-	G1, G2, G3 float64
-	A1, A2, A3 float64
-	M1, M2, M3 float64
+	G1, G2, G3        float64
+	A1, A2, A3        float64
+	M1, M2, M3        float64
 	GAError, MagError error
-	N                 int
-	T          time.Time
-	DT         time.Duration
+	N, NM             int
+	T                 time.Time
+	DT                time.Duration
 }
 
 type MPU9250 struct {
@@ -37,13 +37,13 @@ type MPU9250 struct {
 	scaleGyro, scaleAccel float64 // Max sensor reading for value 2**15-1
 	sampleRate            int
 	enableMag             bool
-	a01, a02, a03       int16   // Accelerometer bias
-	g01, g02, g03       int16   // Gyro bias
-	mcal1, mcal2, mcal3 int16   // Magnetometer calibration values, uT
-	mu                  sync.Mutex
-	C                   chan *MPUData
-	CAvg                chan *MPUData
-	cClose              chan bool
+	a01, a02, a03         float64   // Accelerometer bias
+	g01, g02, g03         float64   // Gyro bias
+	mcal1, mcal2, mcal3   int16   // Magnetometer calibration values, uT
+	C                     chan *MPUData
+	CAvg                  chan *MPUData
+	CBuf                  chan *MPUData
+	cClose                chan bool
 }
 
 func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, enableMag bool, applyHWOffsets bool) (*MPU9250, error) {
@@ -51,10 +51,6 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, enableMag boo
 
 	mpu.sampleRate = sampleRate
 	mpu.enableMag = enableMag
-	// Round robin storage for readings
-	mpu.C = make(chan *MPUData)
-	mpu.CAvg = make(chan *MPUData)
-	mpu.cClose = make(chan bool)
 
 	mpu.i2cbus = embd.NewI2CBus(1)
 
@@ -238,40 +234,89 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, enableMag boo
 func (m *MPU9250) readGyroAccelRaw() {
 	var (
 		g1, g2, g3, a1, a2, a3, m1, m2, m3                   int16
-		avg1, avg2, avg3, ava1, ava2, ava3, avm1, avm2, avm3 int32
+		avg1, avg2, avg3, ava1, ava2, ava3                   float64
+		avm1, avm2, avm3                                     int32
 		gaError, magError                                    error
-		n                                                    int32
+		n, nm                                                float64
 		t0, t                                                time.Time
 		regmap                                               map[*int16]byte
+		//magSampleRate                                        int
 	)
 
 	regmap = map[*int16]byte{
 		&g1: MPUREG_GYRO_XOUT_H,  &g2: MPUREG_GYRO_YOUT_H,  &g3: MPUREG_GYRO_ZOUT_H,
 		&a1: MPUREG_ACCEL_XOUT_H, &a2: MPUREG_ACCEL_YOUT_H, &a3: MPUREG_ACCEL_ZOUT_H,
 	}
+	//if m.sampleRate > 100 {
+	//	magSampleRate = 100
+	//} else {
+	//	magSampleRate = m.sampleRate
+	//}
+
+	m.C = make(chan *MPUData)
+	defer close(m.C)
+	m.CAvg = make(chan *MPUData)
+	defer close(m.CAvg)
+	m.CBuf = make(chan *MPUData, BUFSIZE)
+	defer close(m.CBuf)
+	m.cClose = make(chan bool)
+	defer close(m.cClose)
 
 	clock := time.NewTicker(time.Duration(int(1000.0/float32(m.sampleRate)+0.5)) * time.Millisecond)
 	defer clock.Stop()
+
+	//clockMag := time.NewTicker(time.Duration(int(1000.0/float32(magSampleRate)+0.5)) * time.Millisecond)
 	t0 = time.Now()
 
-	makeAvgMPUData := func() *MPUData {
-		if n == 0 {
-			return &MPUData{}
-		} else {
-			return &MPUData{
-				G1: float64(((avg1 - int32(m.g01)) / n)) * m.scaleGyro,
-				G2: float64(((avg2 - int32(m.g02)) / n)) * m.scaleGyro,
-				G3: float64(((avg3 - int32(m.g03)) / n)) * m.scaleGyro,
-				A1: float64(((ava1 - int32(m.a01)) / n)) * m.scaleAccel,
-				A2: float64(((ava2 - int32(m.a01)) / n)) * m.scaleAccel,
-				A3: float64(((ava3 - int32(m.a01)) / n)) * m.scaleAccel,
-				M1: float64(int32(m1) * int32(m.mcal1) >> 8),
-				M2: float64(int32(m2) * int32(m.mcal2) >> 8),
-				M3: float64(int32(m3) * int32(m.mcal3) >> 8),
-				N: int(n), T: t, DT: t.Sub(t0),
-			}
+	makeMPUData := func() *MPUData {
+		d := MPUData{
+			G1: (float64(g1) - m.g01) * m.scaleGyro,
+			G2: (float64(g2) - m.g02) * m.scaleGyro,
+			G3: (float64(g3) - m.g03) * m.scaleGyro,
+			A1: (float64(a1) - m.a01) * m.scaleAccel,
+			A2: (float64(a2) - m.a01) * m.scaleAccel,
+			A3: (float64(a3) - m.a01) * m.scaleAccel,
+			M1: float64(int32(m1) * int32(m.mcal1) >> 8),
+			M2: float64(int32(m2) * int32(m.mcal2) >> 8),
+			M3: float64(int32(m3) * int32(m.mcal3) >> 8),
+			GAError: gaError, MagError: magError,
+			N: 1, NM: 1, T: t, DT: time.Duration(0),
 		}
+		if gaError != nil {
+			d.N = 0
+		}
+		if magError != nil {
+			d.NM = 0
+		}
+		return &d
 	}
+
+	makeAvgMPUData := func() *MPUData {
+		d := MPUData{}
+		if n > 0.5 {
+			d.G1 = (avg1/n-m.g01) * m.scaleGyro
+			d.G2 = (avg2/n-m.g02) * m.scaleGyro
+			d.G3 = (avg3/n-m.g03) * m.scaleGyro
+			d.A1 = (ava1/n-m.a01) * m.scaleAccel
+			d.A2 = (ava2/n-m.a02) * m.scaleAccel
+			d.A3 = (ava3/n-m.a03) * m.scaleAccel
+			d.N = int(n+0.5)
+			d.T = t
+			d.DT = t.Sub(t0)
+		} else {
+			d.GAError = errors.New("MPU9250 Error: No new accel/gyro values")
+		}
+		if nm > 0 {
+			d.M1 = float64(int32(m1) * int32(m.mcal1) >> 8)
+			d.M2 = float64(int32(m2) * int32(m.mcal2) >> 8)
+			d.M3 = float64(int32(m3) * int32(m.mcal3) >> 8)
+			d.NM = int(nm+0.5); d.T = t; d.DT = t.Sub(t0)
+		} else {
+			d.MagError = errors.New("MPU9250 Error: No new magnetometer values")
+		}
+		return &d
+	}
+
 	for {
 		select {
 		case t = <-clock.C: // Read gyro & accel data:
@@ -281,17 +326,13 @@ func (m *MPU9250) readGyroAccelRaw() {
 					log.Println("MPU9250 Warning: error reading gyro/accel")
 				}
 			}
-		// Update accumulated values and increment count of gyro/accel readings
-			avg1 += int32(g1); avg2 += int32(g2); avg3 += int32(g3)
-			ava1 += int32(a1); ava2 += int32(a2); ava3 += int32(a3)
+			// Update accumulated values and increment count of gyro/accel readings
+			avg1 += float64(g1); avg2 += float64(g2); avg3 += float64(g3)
+			ava1 += float64(a1); ava2 += float64(a2); ava3 += float64(a3)
 			avm1 += int32(m1); avm2 += int32(m2); avm3 += int32(m3)
 			n++
-		case m.C<- &MPUData{
-			G1: float64(g1-m.g01)*m.scaleGyro, G2: float64(g2-m.g02)*m.scaleGyro, G3: float64(g3-m.g03)*m.scaleGyro,
-			A1: float64(a1-m.a01)*m.scaleAccel, A2: float64(a2-m.a01)*m.scaleAccel, A3: float64(a3-m.a01)*m.scaleAccel,
-			M1: float64(int32(m1)*int32(m.mcal1)>>8), M2: float64(int32(m2)*int32(m.mcal2)>>8), M3: float64(int32(m3)*int32(m.mcal3)>>8),
-			GAError: gaError, MagError: magError,
-			N: 1, T: t, DT: time.Duration(0)}: // Send the latest values
+		case m.C<- makeMPUData(): // Send the latest values
+		case m.CBuf<- makeMPUData():
 		case m.CAvg<- makeAvgMPUData(): // Send the averages
 			avg1, avg2, avg3 = 0, 0, 0
 			ava1, ava2, ava3 = 0, 0, 0
@@ -299,9 +340,6 @@ func (m *MPU9250) readGyroAccelRaw() {
 			n = 0
 			t0 = t
 		case <-m.cClose: // Stop the goroutine, ease up on the CPU
-			close(m.C)
-			close(m.CAvg)
-			close(m.cClose)
 			break
 		}
 	}
@@ -361,12 +399,10 @@ func (m *MPU9250) readMagRaw() {
 		}
 
 		// Update values and increment count of magnetometer readings
-		m.mu.Lock()
 		//m.m1 += int16(m1) * m.mcal1 >> 8
 		//m.m2 += int16(m2) * m.mcal2 >> 8
 		//m.m3 += int16(m3) * m.mcal3 >> 8
 		//m.nm++
-		m.mu.Unlock()
 	}
 }
 
@@ -379,7 +415,7 @@ func (m *MPU9250) CloseMPU() {
 // It is only intended to be run intelligently so that it isn't called when the sensor is in a non-inertial state.
 func (m *MPU9250) Calibrate(dur int) error {
 	var (
-		n             int32 = int32(dur) * int32(m.sampleRate)
+		n             float64 = float64(dur * m.sampleRate)
 		g11, g12, g13 int32 // Accumulators for calculating mean drifts
 		g21, g22, g23 int64 // Accumulators for calculating stdev drifts
 		a11, a12, a13 int32 // Accumulators for calculating mean drifts
@@ -388,9 +424,8 @@ func (m *MPU9250) Calibrate(dur int) error {
 
 	clock := time.NewTicker(time.Duration(int(1000.0/float32(m.sampleRate)+0.5)) * time.Millisecond)
 	defer clock.Stop()
-	m.mu.Lock()
 
-	for i := int32(0); i < n; i++ {
+	for i := float64(0); i < n; i++ {
 		<-clock.C
 
 		g1, err := m.i2cRead2(MPUREG_GYRO_XOUT_H)
@@ -434,146 +469,29 @@ func (m *MPU9250) Calibrate(dur int) error {
 	}
 
 	// Too much variance in the gyro readings means it was moving too much for a good calibration
-	log.Printf("MPU9250 gyro calibration variance: %f %f %f\n", (float64(g21-int64(g11)*int64(g11)/int64(n)) * m.scaleGyro * m.scaleGyro / float64(n)),
-		(float64(g22-int64(g12)*int64(g12)/int64(n)) * m.scaleGyro * m.scaleGyro / float64(n)),
-		(float64(g23-int64(g13)*int64(g13)/int64(n)) * m.scaleGyro * m.scaleGyro / float64(n)))
-	log.Printf("MPU9250 accel calibration variance: %f %f %f\n", (float64(a21-int64(a11)*int64(a11)/int64(n)) * m.scaleAccel * m.scaleAccel / float64(n)),
-		(float64(a22-int64(a12)*int64(a12)/int64(n)) * m.scaleAccel * m.scaleAccel / float64(n)),
-		(float64(a23-int64(a13)*int64(a13)/int64(n)) * m.scaleAccel * m.scaleAccel / float64(n)))
-	if (float64(g21-int64(g11)*int64(g11)/int64(n))*m.scaleGyro*m.scaleGyro > float64(n)*MAXGYROVAR) ||
-		(float64(g22-int64(g12)*int64(g12)/int64(n))*m.scaleGyro*m.scaleGyro > float64(n)*MAXGYROVAR) ||
-		(float64(g23-int64(g13)*int64(g13)/int64(n))*m.scaleGyro*m.scaleGyro > float64(n)*MAXGYROVAR) ||
-		(float64(a21-int64(a11)*int64(a11)/int64(n))*m.scaleAccel*m.scaleAccel > float64(n)*MAXACCELVAR) ||
-		(float64(a22-int64(a12)*int64(a12)/int64(n))*m.scaleAccel*m.scaleAccel > float64(n)*MAXACCELVAR) ||
-		(float64(a23-int64(a13)*int64(a13)/int64(n))*m.scaleAccel*m.scaleAccel > float64(n)*MAXACCELVAR) {
+	log.Printf("MPU9250 gyro calibration variance: %f %f %f\n", (float64(g21-int64(g11)*int64(g11)/int64(n)) * m.scaleGyro * m.scaleGyro / n),
+		(float64(g22-int64(g12)*int64(g12)/int64(n)) * m.scaleGyro * m.scaleGyro / n),
+		(float64(g23-int64(g13)*int64(g13)/int64(n)) * m.scaleGyro * m.scaleGyro / n))
+	log.Printf("MPU9250 accel calibration variance: %f %f %f\n", (float64(a21-int64(a11)*int64(a11)/int64(n)) * m.scaleAccel * m.scaleAccel / n),
+		(float64(a22-int64(a12)*int64(a12)/int64(n)) * m.scaleAccel * m.scaleAccel / n),
+		(float64(a23-int64(a13)*int64(a13)/int64(n)) * m.scaleAccel * m.scaleAccel / n))
+	if (float64(g21-int64(g11)*int64(g11)/int64(n))*m.scaleGyro*m.scaleGyro > n*MAXGYROVAR) ||
+		(float64(g22-int64(g12)*int64(g12)/int64(n))*m.scaleGyro*m.scaleGyro > n*MAXGYROVAR) ||
+		(float64(g23-int64(g13)*int64(g13)/int64(n))*m.scaleGyro*m.scaleGyro > n*MAXGYROVAR) ||
+		(float64(a21-int64(a11)*int64(a11)/int64(n))*m.scaleAccel*m.scaleAccel > n*MAXACCELVAR) ||
+		(float64(a22-int64(a12)*int64(a12)/int64(n))*m.scaleAccel*m.scaleAccel > n*MAXACCELVAR) ||
+		(float64(a23-int64(a13)*int64(a13)/int64(n))*m.scaleAccel*m.scaleAccel > n*MAXACCELVAR) {
 		return errors.New("MPU9250 CalibrationAll: sensor was not inertial during calibration")
 	}
 
-	m.g01 = int16(g11 / n)
-	m.g02 = int16(g12 / n)
-	m.g03 = int16(g13 / n)
-	m.a01 = int16(a11 / n)
-	m.a02 = int16(a12 / n)
-	m.a03 = int16(a13 / n)
+	m.g01 = float64(g11) / n
+	m.g02 = float64(g12) / n
+	m.g03 = float64(g13) / n
+	m.a01 = float64(a11) / n
+	m.a02 = float64(a12) / n
+	m.a03 = float64(a13) / n
 
-	m.mu.Unlock()
 	log.Printf("MPU9250 Gyro calibration: %d, %d, %d\n", m.g01, m.g02, m.g03)
-	log.Printf("MPU9250 Accel calibration: %d, %d, %d\n", m.a01, m.a02, m.a03)
-	return nil
-}
-
-// CalibrateGyro does a live calibration of the gyro, sampling over (dur int) seconds.
-// It is only intended to be run intelligently so that it isn't called when the sensor is in a non-inertial state.
-func (m *MPU9250) CalibrateGyro(dur int) error {
-	const maxVar = 10.0
-	var (
-		n             int32 = int32(dur) * int32(m.sampleRate)
-		g11, g12, g13 int32 // Accumulators for calculating mean drifts
-		g21, g22, g23 int64 // Accumulators for calculating stdev drifts
-	)
-
-	clock := time.NewTicker(time.Duration(int(1000.0/float32(m.sampleRate)+0.5)) * time.Millisecond)
-	defer clock.Stop()
-	m.mu.Lock()
-
-	for i := int32(0); i < n; i++ {
-		<-clock.C
-
-		g1, err := m.i2cRead2(MPUREG_GYRO_XOUT_H)
-		if err != nil {
-			return errors.New("CalibrationGyro: sensor error during calibration")
-		}
-		g2, err := m.i2cRead2(MPUREG_GYRO_YOUT_H)
-		if err != nil {
-			return errors.New("CalibrationGyro: sensor error during calibration")
-		}
-		g3, err := m.i2cRead2(MPUREG_GYRO_ZOUT_H)
-		if err != nil {
-			return errors.New("CalibrationGyro: sensor error during calibration")
-		}
-		g11 += int32(g1)
-		g12 += int32(g2)
-		g13 += int32(g3)
-		g21 += int64(g1) * int64(g1)
-		g22 += int64(g2) * int64(g2)
-		g23 += int64(g3) * int64(g3)
-	}
-
-	// Too much variance in the gyro readings means it was moving too much for a good calibration
-	log.Printf("MPU9250 gyro calibration variance: %f %f %f\n",
-		(float64(g21-int64(g11)*int64(g11)/int64(n)) * m.scaleGyro * m.scaleGyro / float64(n)),
-		(float64(g22-int64(g12)*int64(g12)/int64(n)) * m.scaleGyro * m.scaleGyro / float64(n)),
-		(float64(g23-int64(g13)*int64(g13)/int64(n)) * m.scaleGyro * m.scaleGyro / float64(n)))
-	if (float64(g21-int64(g11)*int64(g11)/int64(n))*m.scaleGyro*m.scaleGyro > float64(n)*maxVar) ||
-		(float64(g22-int64(g12)*int64(g12)/int64(n))*m.scaleGyro*m.scaleGyro > float64(n)*maxVar) ||
-		(float64(g23-int64(g13)*int64(g13)/int64(n))*m.scaleGyro*m.scaleGyro > float64(n)*maxVar) {
-		return errors.New("CalibrationGyro: sensor was not inertial during calibration")
-	}
-
-	m.g01 = int16(g11 / n)
-	m.g02 = int16(g12 / n)
-	m.g03 = int16(g13 / n)
-
-	m.mu.Unlock()
-	log.Printf("MPU9250 Gyro calibration: %d, %d, %d\n", m.g01, m.g02, m.g03)
-	return nil
-}
-
-// CalibrateAccel does a live calibration of the accelerometer, sampling over (dur int) seconds.
-// It is only intended to be run intelligently so that it isn't called when the sensor is in a non-inertial state.
-// It assumes that the gyro is level, so it should only be feeling 1G in the z direction
-func (m *MPU9250) CalibrateAccel(dur int) error {
-	const maxVar = 10.0
-	var (
-		n             int32 = int32(dur) * int32(m.sampleRate)
-		a11, a12, a13 int32 // Accumulators for calculating mean drifts
-		a21, a22, a23 int64 // Accumulators for calculating stdev drifts
-	)
-
-	clock := time.NewTicker(time.Duration(int(1000.0/float32(m.sampleRate)+0.5)) * time.Millisecond)
-	defer clock.Stop()
-	m.mu.Lock()
-
-	for i := int32(0); i < n; i++ {
-		<-clock.C
-
-		a1, err := m.i2cRead2(MPUREG_ACCEL_XOUT_H)
-		if err != nil {
-			return errors.New("CalibrationAccel: sensor error during calibration")
-		}
-		a2, err := m.i2cRead2(MPUREG_ACCEL_YOUT_H)
-		if err != nil {
-			return errors.New("CalibrationAccel: sensor error during calibration")
-		}
-		a3, err := m.i2cRead2(MPUREG_ACCEL_ZOUT_H)
-		if err != nil {
-			return errors.New("CalibrationAccel: sensor error during calibration")
-		}
-		a3 -= int16(1.0 / m.scaleAccel)
-		a11 += int32(a1)
-		a12 += int32(a2)
-		a13 += int32(a3)
-		a21 += int64(a1) * int64(a1)
-		a22 += int64(a2) * int64(a2)
-		a23 += int64(a3) * int64(a3)
-	}
-
-	// Too much variance in the accel readings means it was moving too much for a good calibration
-	log.Printf("MPU9250 accel calibration variance: %f %f %f\n",
-		(float64(a21-int64(a11)*int64(a11)/int64(n)) * m.scaleAccel * m.scaleAccel / float64(n)),
-		(float64(a22-int64(a12)*int64(a12)/int64(n)) * m.scaleAccel * m.scaleAccel / float64(n)),
-		(float64(a23-int64(a13)*int64(a13)/int64(n)) * m.scaleAccel * m.scaleAccel / float64(n)))
-	if (float64(a21-int64(a11)*int64(a11)/int64(n))*m.scaleAccel*m.scaleAccel > float64(n)*maxVar) ||
-		(float64(a22-int64(a12)*int64(a12)/int64(n))*m.scaleAccel*m.scaleAccel > float64(n)*maxVar) ||
-		(float64(a23-int64(a13)*int64(a13)/int64(n))*m.scaleAccel*m.scaleAccel > float64(n)*maxVar) {
-		return errors.New("CalibrationAccel: sensor was not inertial during calibration")
-	}
-
-	m.a01 = int16(a11 / n)
-	m.a02 = int16(a12 / n)
-	m.a03 = int16(a13 / n)
-
-	m.mu.Unlock()
 	log.Printf("MPU9250 Accel calibration: %d, %d, %d\n", m.a01, m.a02, m.a03)
 	return nil
 }
@@ -705,21 +623,21 @@ func (mpu *MPU9250) ReadAccelBias(sensitivityAccel int) error {
 
 	switch sensitivityAccel {
 	case 16:
-		mpu.a01 = a0x >> 1
-		mpu.a02 = a0y >> 1
-		mpu.a03 = a0z >> 1
+		mpu.a01 = float64(a0x >> 1)
+		mpu.a02 = float64(a0y >> 1)
+		mpu.a03 = float64(a0z >> 1)
 	case 8:
-		mpu.a01 = a0x
-		mpu.a02 = a0y
-		mpu.a03 = a0z
+		mpu.a01 = float64(a0x)
+		mpu.a02 = float64(a0y)
+		mpu.a03 = float64(a0z)
 	case 4:
-		mpu.a01 = a0x << 1
-		mpu.a02 = a0y << 1
-		mpu.a03 = a0z << 1
+		mpu.a01 = float64(a0x << 1)
+		mpu.a02 = float64(a0y << 1)
+		mpu.a03 = float64(a0z << 1)
 	case 2:
-		mpu.a01 = a0x << 2
-		mpu.a02 = a0y << 2
-		mpu.a03 = a0z << 2
+		mpu.a01 = float64(a0x << 2)
+		mpu.a02 = float64(a0y << 2)
+		mpu.a03 = float64(a0z << 2)
 	default:
 		return fmt.Errorf("MPU9250 Error: %d is not a valid acceleration sensitivity", sensitivityAccel)
 	}
@@ -744,21 +662,21 @@ func (mpu *MPU9250) ReadGyroBias(sensitivityGyro int) error {
 
 	switch sensitivityGyro {
 	case 2000:
-		mpu.g01 = g0x >> 1
-		mpu.g02 = g0y >> 1
-		mpu.g03 = g0z >> 1
+		mpu.g01 = float64(g0x >> 1)
+		mpu.g02 = float64(g0y >> 1)
+		mpu.g03 = float64(g0z >> 1)
 	case 1000:
-		mpu.g01 = g0x
-		mpu.g02 = g0y
-		mpu.g03 = g0z
+		mpu.g01 = float64(g0x)
+		mpu.g02 = float64(g0y)
+		mpu.g03 = float64(g0z)
 	case 500:
-		mpu.g01 = g0x << 1
-		mpu.g02 = g0y << 1
-		mpu.g03 = g0z << 1
+		mpu.g01 = float64(g0x << 1)
+		mpu.g02 = float64(g0y << 1)
+		mpu.g03 = float64(g0z << 1)
 	case 250:
-		mpu.g01 = g0x << 2
-		mpu.g02 = g0y << 2
-		mpu.g03 = g0z << 2
+		mpu.g01 = float64(g0x << 2)
+		mpu.g02 = float64(g0y << 2)
+		mpu.g03 = float64(g0z << 2)
 	default:
 		return fmt.Errorf("MPU9250 Error: %d is not a valid gyro sensitivity", sensitivityGyro)
 	}
