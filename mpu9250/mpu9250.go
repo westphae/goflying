@@ -41,11 +41,11 @@ type MPU9250 struct {
 	a01, a02, a03         float64   // Accelerometer bias
 	g01, g02, g03         float64   // Gyro bias
 	mcal1, mcal2, mcal3   int16   // Magnetometer calibration values, uT
-	C                     chan *MPUData
-	CAvg                  chan *MPUData
-	CBuf                  chan *MPUData
-	CCal                  chan int
-	CCalResult            chan error
+	C                     <-chan *MPUData
+	CAvg                  <-chan *MPUData
+	CBuf                  <-chan *MPUData
+	CCal                  chan<- int
+	CCalResult            <-chan error
 	cClose                chan bool
 }
 
@@ -261,16 +261,21 @@ func (m *MPU9250) readGyroAccelRaw() {
 		magSampleRate = m.sampleRate
 	}
 
-	m.C = make(chan *MPUData)
-	defer close(m.C)
-	m.CAvg = make(chan *MPUData)
-	defer close(m.CAvg)
-	m.CBuf = make(chan *MPUData, BUFSIZE)
-	defer close(m.CBuf)
-	m.CCal = make(chan int)
-	defer close(m.CCal)
-	m.CCalResult = make(chan error)
-	defer close(m.CCalResult)
+	cC := make(chan *MPUData)
+	defer close(cC)
+	m.C = cC
+	cAvg := make(chan *MPUData)
+	defer close(cAvg)
+	m.CAvg = cAvg
+	cBuf := make(chan *MPUData, BUFSIZE)
+	defer close(cBuf)
+	m.CBuf = cBuf
+	cCal := make(chan int)
+	defer close(cCal)
+	m.CCal = cCal
+	cCalResult := make(chan error)
+	defer close(cCalResult)
+	m.CCalResult = cCalResult
 	m.cClose = make(chan bool)
 	defer close(m.cClose)
 
@@ -372,11 +377,11 @@ func (m *MPU9250) readGyroAccelRaw() {
 				if      a11/nc*m.scaleAccel > 0.5 || a11/nc*m.scaleAccel < -0.5 ||
 					a12/nc*m.scaleAccel > 0.5 || a12/nc*m.scaleAccel < -0.5 ||
 					a13/nc*m.scaleAccel > 0.5 || a13/nc*m.scaleAccel < -0.5 {
-					m.CCalResult<- fmt.Errorf("MPU9250 Calibration Error: sensor is maxing out: %6f %6f %6f",
+					cCalResult<- fmt.Errorf("MPU9250 Calibration Error: sensor is maxing out: %6f %6f %6f",
 						a11/nc*m.scaleAccel, a12/nc*m.scaleAccel, a12/nc*m.scaleAccel)
 				} else if vg1 > MAXGYROVAR || vg2 > MAXGYROVAR || vg3 > MAXGYROVAR ||
 					va1 > MAXACCELVAR || va2 > MAXACCELVAR || va3 > MAXACCELVAR {
-					m.CCalResult<- errors.New("MPU9250 Calibration Error: sensor was not inertial during calibration")
+					cCalResult<- errors.New("MPU9250 Calibration Error: sensor was not inertial during calibration")
 				} else {
 					m.g01 = g11 / nc
 					m.g02 = g12 / nc
@@ -387,7 +392,7 @@ func (m *MPU9250) readGyroAccelRaw() {
 
 					log.Printf("MPU9250 Gyro Calibration: %6f, %6f, %6f\n", m.g01*m.scaleGyro, m.g02*m.scaleGyro, m.g03*m.scaleGyro)
 					log.Printf("MPU9250 Accel Calibration: %6f, %6f, %6f\n", m.a01*m.scaleAccel, m.a02*m.scaleAccel, m.a03*m.scaleAccel)
-					m.CCalResult <- nil
+					cCalResult <- nil
 				}
 				nc = 0
 			}
@@ -433,15 +438,15 @@ func (m *MPU9250) readGyroAccelRaw() {
 				avm3 += int32(m3)
 				nm++
 			}
-		case m.C<- makeMPUData(): // Send the latest values
-		case m.CBuf<- makeMPUData():
-		case m.CAvg<- makeAvgMPUData(): // Send the averages
+		case cC<- makeMPUData(): // Send the latest values
+		case cBuf<- makeMPUData():
+		case cAvg<- makeAvgMPUData(): // Send the averages
 			avg1, avg2, avg3 = 0, 0, 0
 			ava1, ava2, ava3 = 0, 0, 0
 			avm1, avm2, avm3 = 0, 0, 0
 			n = 0
 			t0 = t
-		case dur := <-m.CCal:
+		case dur := <-cCal:
 			nc = float64(dur * m.sampleRate) // nc>0 triggers sampling for a calibration
 			i = 0
 		case <-m.cClose: // Stop the goroutine, ease up on the CPU
