@@ -9,6 +9,7 @@ import (
 func main() {
 	clock := time.NewTicker(100 * time.Millisecond)
 	var mpu *mpu9250.MPU9250
+	var data *mpu9250.MPUData
 	var err error
 
 	for i:=0; i<10; i++ {
@@ -26,12 +27,13 @@ func main() {
 		return
 	}
 
-	if err := mpu.Calibrate(1); err != nil {
+	mpu.CCal<- 1
+	fmt.Println("Awaiting Calibration Result")
+	if err := <-mpu.CCalResult; err != nil {
 		fmt.Println(err.Error())
-		return
+	} else {
+		fmt.Println("Calibration succeeded")
 	}
-
-	var data *mpu9250.MPUData
 
 	for {
 		<-clock.C

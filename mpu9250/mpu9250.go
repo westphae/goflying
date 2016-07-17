@@ -17,6 +17,7 @@ import (
 
 const (
 	// Calibration variance tolerances
+	//TODO westphae: would be nice to have some mathematical reasoning for this
 	MAXGYROVAR  = 10.0
 	MAXACCELVAR = 10.0
 	BUFSIZE     = 250
@@ -43,6 +44,8 @@ type MPU9250 struct {
 	C                     chan *MPUData
 	CAvg                  chan *MPUData
 	CBuf                  chan *MPUData
+	CCal                  chan int
+	CCalResult            chan error
 	cClose                chan bool
 }
 
@@ -233,11 +236,13 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, enableMag boo
 // When Read is called, we will return the averages
 func (m *MPU9250) readGyroAccelRaw() {
 	var (
-		g1, g2, g3, a1, a2, a3, m1, m2, m3                   int16
-		avg1, avg2, avg3, ava1, ava2, ava3                   float64
+		g1, g2, g3, a1, a2, a3, m1, m2, m3                   int16 // Current values
+		avg1, avg2, avg3, ava1, ava2, ava3                   float64 // Accumulators for averages
 		avm1, avm2, avm3                                     int32
+		g11, g12, g13, a11, a12, a13                         float64 // Accumulators for calculating mean drifts
+		g21, g22, g23, a21, a22, a23                         float64 // Accumulators for calculating stdev drifts
+		n, nm, nc, i                                         float64
 		gaError, magError                                    error
-		n, nm                                                float64
 		t0, t                                                time.Time
 		regmap                                               map[*int16]byte
 		//magSampleRate                                        int
@@ -259,6 +264,10 @@ func (m *MPU9250) readGyroAccelRaw() {
 	defer close(m.CAvg)
 	m.CBuf = make(chan *MPUData, BUFSIZE)
 	defer close(m.CBuf)
+	m.CCal = make(chan int)
+	defer close(m.CCal)
+	m.CCalResult = make(chan error)
+	defer close(m.CCalResult)
 	m.cClose = make(chan bool)
 	defer close(m.cClose)
 
@@ -331,6 +340,47 @@ func (m *MPU9250) readGyroAccelRaw() {
 			ava1 += float64(a1); ava2 += float64(a2); ava3 += float64(a3)
 			avm1 += int32(m1); avm2 += int32(m2); avm3 += int32(m3)
 			n++
+			if i < nc-0.5 { // Then we're doing a calibration
+				g11 += float64(g1)
+				g12 += float64(g2)
+				g13 += float64(g3)
+				g21 += float64(g1) * float64(g1)
+				g22 += float64(g2) * float64(g2)
+				g23 += float64(g3) * float64(g3)
+				a11 += float64(a1)
+				a12 += float64(a2)
+				a13 += float64(a3) - 1/m.scaleAccel
+				a21 += float64(a1) * float64(a1)
+				a22 += float64(a2) * float64(a2)
+				a23 += (float64(a3) - 1/m.scaleAccel) * (float64(a3) - 1/m.scaleAccel)
+				i++
+			} else if nc > 0.5 { // Then we're finished with a calibration
+				vg1 := (g21-g11*g11/nc) * m.scaleGyro * m.scaleGyro / nc
+				vg2 := (g22-g12*g12/nc) * m.scaleGyro * m.scaleGyro / nc
+				vg3 := (g23-g13*g13/nc) * m.scaleGyro * m.scaleGyro / nc
+				va1 := (a21-a11*a11/nc) * m.scaleAccel * m.scaleAccel / nc
+				va2 := (a22-a12*a12/nc) * m.scaleAccel * m.scaleAccel / nc
+				va3 := (a23-a13*a13/nc) * m.scaleAccel * m.scaleAccel / nc
+				log.Printf("MPU9250 Calibration: %.0f values collected\n", i)
+				log.Printf("MPU9250 Calibration: gyro variance:  %f %f %f\n", vg1, vg2, vg3)
+				log.Printf("MPU9250 Calibration: accel variance: %f %f %f\n", va1, va2, va3)
+				// Could check that it's not nearly level here too
+				if vg1 > MAXGYROVAR || vg2 > MAXGYROVAR || vg3 > MAXGYROVAR ||
+					va1 > MAXACCELVAR || va2 > MAXACCELVAR || va3 > MAXACCELVAR {
+					m.CCalResult<- errors.New("MPU9250 Calibration Error: sensor was not inertial during calibration")
+				}
+				m.g01 = g11 / nc
+				m.g02 = g12 / nc
+				m.g03 = g13 / nc
+				m.a01 = a11 / nc
+				m.a02 = a12 / nc
+				m.a03 = a13 / nc
+
+				log.Printf("MPU9250 Gyro Calibration: %6f, %6f, %6f\n", m.g01, m.g02, m.g03)
+				log.Printf("MPU9250 Accel Calibration: %6f, %6f, %6f\n", m.a01, m.a02, m.a03)
+				nc = 0
+				m.CCalResult<- nil
+			}
 		case m.C<- makeMPUData(): // Send the latest values
 		case m.CBuf<- makeMPUData():
 		case m.CAvg<- makeAvgMPUData(): // Send the averages
@@ -339,6 +389,9 @@ func (m *MPU9250) readGyroAccelRaw() {
 			avm1, avm2, avm3 = 0, 0, 0
 			n = 0
 			t0 = t
+		case dur := <-m.CCal:
+			nc = float64(dur * m.sampleRate) // nc>0 triggers sampling for a calibration
+			i = 0
 		case <-m.cClose: // Stop the goroutine, ease up on the CPU
 			break
 		}
@@ -409,91 +462,6 @@ func (m *MPU9250) readMagRaw() {
 func (m *MPU9250) CloseMPU() {
 	// Nothing to do bitwise for the 9250?
 	m.cClose<- true
-}
-
-// CalibrateGyro does a live calibration of the gyro, sampling over (dur int) seconds.
-// It is only intended to be run intelligently so that it isn't called when the sensor is in a non-inertial state.
-func (m *MPU9250) Calibrate(dur int) error {
-	var (
-		n             float64 = float64(dur * m.sampleRate)
-		g11, g12, g13 int32 // Accumulators for calculating mean drifts
-		g21, g22, g23 int64 // Accumulators for calculating stdev drifts
-		a11, a12, a13 int32 // Accumulators for calculating mean drifts
-		a21, a22, a23 int64 // Accumulators for calculating stdev drifts
-	)
-
-	clock := time.NewTicker(time.Duration(int(1000.0/float32(m.sampleRate)+0.5)) * time.Millisecond)
-	defer clock.Stop()
-
-	for i := float64(0); i < n; i++ {
-		<-clock.C
-
-		g1, err := m.i2cRead2(MPUREG_GYRO_XOUT_H)
-		if err != nil {
-			return errors.New("CalibrationGyro: sensor error during calibration")
-		}
-		g2, err := m.i2cRead2(MPUREG_GYRO_YOUT_H)
-		if err != nil {
-			return errors.New("CalibrationGyro: sensor error during calibration")
-		}
-		g3, err := m.i2cRead2(MPUREG_GYRO_ZOUT_H)
-		if err != nil {
-			return errors.New("CalibrationGyro: sensor error during calibration")
-		}
-		g11 += int32(g1)
-		g12 += int32(g2)
-		g13 += int32(g3)
-		g21 += int64(g1) * int64(g1)
-		g22 += int64(g2) * int64(g2)
-		g23 += int64(g3) * int64(g3)
-
-		a1, err := m.i2cRead2(MPUREG_ACCEL_XOUT_H)
-		if err != nil {
-			return errors.New("CalibrationAccel: sensor error during calibration")
-		}
-		a2, err := m.i2cRead2(MPUREG_ACCEL_YOUT_H)
-		if err != nil {
-			return errors.New("CalibrationAccel: sensor error during calibration")
-		}
-		a3, err := m.i2cRead2(MPUREG_ACCEL_ZOUT_H)
-		if err != nil {
-			return errors.New("CalibrationAccel: sensor error during calibration")
-		}
-		a3 -= int16(1.0 / m.scaleAccel)
-		a11 += int32(a1)
-		a12 += int32(a2)
-		a13 += int32(a3)
-		a21 += int64(a1) * int64(a1)
-		a22 += int64(a2) * int64(a2)
-		a23 += int64(a3) * int64(a3)
-	}
-
-	// Too much variance in the gyro readings means it was moving too much for a good calibration
-	log.Printf("MPU9250 gyro calibration variance: %f %f %f\n", (float64(g21-int64(g11)*int64(g11)/int64(n)) * m.scaleGyro * m.scaleGyro / n),
-		(float64(g22-int64(g12)*int64(g12)/int64(n)) * m.scaleGyro * m.scaleGyro / n),
-		(float64(g23-int64(g13)*int64(g13)/int64(n)) * m.scaleGyro * m.scaleGyro / n))
-	log.Printf("MPU9250 accel calibration variance: %f %f %f\n", (float64(a21-int64(a11)*int64(a11)/int64(n)) * m.scaleAccel * m.scaleAccel / n),
-		(float64(a22-int64(a12)*int64(a12)/int64(n)) * m.scaleAccel * m.scaleAccel / n),
-		(float64(a23-int64(a13)*int64(a13)/int64(n)) * m.scaleAccel * m.scaleAccel / n))
-	if (float64(g21-int64(g11)*int64(g11)/int64(n))*m.scaleGyro*m.scaleGyro > n*MAXGYROVAR) ||
-		(float64(g22-int64(g12)*int64(g12)/int64(n))*m.scaleGyro*m.scaleGyro > n*MAXGYROVAR) ||
-		(float64(g23-int64(g13)*int64(g13)/int64(n))*m.scaleGyro*m.scaleGyro > n*MAXGYROVAR) ||
-		(float64(a21-int64(a11)*int64(a11)/int64(n))*m.scaleAccel*m.scaleAccel > n*MAXACCELVAR) ||
-		(float64(a22-int64(a12)*int64(a12)/int64(n))*m.scaleAccel*m.scaleAccel > n*MAXACCELVAR) ||
-		(float64(a23-int64(a13)*int64(a13)/int64(n))*m.scaleAccel*m.scaleAccel > n*MAXACCELVAR) {
-		return errors.New("MPU9250 CalibrationAll: sensor was not inertial during calibration")
-	}
-
-	m.g01 = float64(g11) / n
-	m.g02 = float64(g12) / n
-	m.g03 = float64(g13) / n
-	m.a01 = float64(a11) / n
-	m.a02 = float64(a12) / n
-	m.a03 = float64(a13) / n
-
-	log.Printf("MPU9250 Gyro calibration: %d, %d, %d\n", m.g01, m.g02, m.g03)
-	log.Printf("MPU9250 Accel calibration: %d, %d, %d\n", m.a01, m.a02, m.a03)
-	return nil
 }
 
 func (mpu *MPU9250) SetSampleRate(rate byte) (err error) {
