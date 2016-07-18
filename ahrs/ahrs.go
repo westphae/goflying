@@ -8,6 +8,12 @@ import (
 	"math"
 )
 
+const (
+	G = 32.1740 / 1.687810  // G is the acceleration due to gravity, kt/s
+	tL = 2.0		// Long-term timescale for determining inertiality
+	tS = 0.5		// Short-term timescale for determining inertiality
+)
+
 // State holds the complete information describing the state of the aircraft
 // Order within State also defines order in the matrices below
 type State struct {
@@ -46,12 +52,6 @@ type Measurement struct {  // Order here also defines order in the matrices belo
 	T          int64   // Timestamp of GPS, airspeed and magnetometer readings
 }
 
-const (
-	G = 32.1740 / 1.687810  // G is the acceleration due to gravity, kt/s
-	tL = 2.0		// Long-term timescale for determining inertiality
-	tS = 0.5		// Short-term timescale for determining inertiality
-)
-
 // vx represents process uncertainties, per second
 var vx = State{
 	U1: 1, U2: 5, U3: 5,
@@ -78,7 +78,7 @@ func (s *State) normalize() {
 }
 
 // IsInertial determines heuristically whether the aircraft frame is reasonably inertial
-func (s *State) IsInertial(c Control, m Measurement) (bool) {
+func (s *State) IsInertial(c *Control, m *Measurement) (inertial bool) {
 	// Update moving averages
 	var kS, kL float64
 	var t0, t float64
@@ -127,7 +127,6 @@ func (s *State) IsInertial(c Control, m Measurement) (bool) {
 	if t-float64(s.mL.T/1000000000)>tL/2 {
 		// Tests for inertial frame:
 		//TODO westphae: this needs to be tuned!
-		var inertial bool
 		// 1. Gyro rates are nearly zero
 		inertial = math.Abs(s.cS.H1 - 0) < 0.1 && math.Abs(s.cS.H2 - 0) < 0.1 && math.Abs(s.cS.H3 - 0) < 0.1 &&
 		// 2. Acceleration has magnitude nearly G in nearly steady direction
@@ -147,15 +146,13 @@ func (s *State) IsInertial(c Control, m Measurement) (bool) {
 		log.Printf("ASI:   %f\n", s.mL.U1-s.mS.U1)
 		log.Printf("Mag:   %f %f %f\n", s.mL.M1-s.mS.M1, s.mL.M2-s.mS.M2, s.mL.M3-s.mS.M3)
 		log.Printf("Frame is inertial: %t\n", inertial)
-		return inertial
-	} else {
-		return false // Not enough data yet to decide
 	}
+	return
 }
 
 // Initialize the state at the start of the Kalman filter, based on current
 // measurements and controls
-func (s *State) Initialize(m Measurement, c Control) {
+func (s *State) Initialize(m *Measurement, c *Control) {
 	// for now just treat the case !m.UValid
 	if m.WValid {
 		s.U1 = math.Sqrt(m.W1 * m.W1 + m.W2 * m.W2) // Best guess at initial airspeed is initial groundspeed
@@ -193,7 +190,7 @@ func (s *State) Initialize(m Measurement, c Control) {
 
 // Calibrate performs a calibration, determining the quaternion to rotate it to
 // be effectively level and pointing forward.  Must be run when in an unaccelerated state.
-func (s *State) Calibrate(c Control, m Measurement) {
+func (s *State) Calibrate(c *Control, m *Measurement) {
 	//TODO: I have the math for this, just no time to implement it yet; will do soon
 	// For now, just assume it's place in the aircraft level and pointing forward
 	//TODO: If m.UValid then calculate correct airspeed and windspeed;
@@ -231,7 +228,7 @@ func (s *State) Calibrate(c Control, m Measurement) {
 }
 
 // Predict performs the prediction phase of the Kalman filter given the control inputs
-func (s *State) Predict(c Control) {
+func (s *State) Predict(c *Control) {
 	f := s.calcJacobianState(c)
 	dt := float64(c.T-s.T) / 1000000000
 
@@ -259,7 +256,7 @@ func (s *State) Predict(c Control) {
 	s.T = c.T
 
 	tf := dt / (float64(vx.T) / 1000000000)
-	s.M = matrix.Sum(matrix.Product(&f, matrix.Product(s.M, f.Transpose())),
+	s.M = matrix.Sum(matrix.Product(f, matrix.Product(s.M, f.Transpose())),
 		matrix.Diagonal([]float64{
 			vx.U1 * vx.U1 * tf, vx.U2 * vx.U2 * tf, vx.U3 * vx.U3 * tf,
 			vx.E0 * vx.E0 * tf, vx.E1 * vx.E1 * tf, vx.E2 * vx.E2 * tf, vx.E3 * vx.E3 * tf,
@@ -269,8 +266,9 @@ func (s *State) Predict(c Control) {
 }
 
 // Update applies the Kalman filter corrections given the measurements
-func (s *State) Update(m Measurement) {
-	z := s.PredictMeasurement()
+func (s *State) Update(m *Measurement) {
+	z := new(Measurement)
+	s.PredictMeasurement(z)
 	y := []float64{
 		m.W1 - z.W1, m.W2 - z.W2, m.W3 - z.W3,
 		m.U1 - z.U1, m.U2 - z.U2, m.U3 - z.U3,
@@ -311,7 +309,7 @@ func (s *State) Update(m Measurement) {
 		mnoise[7] = 1e9
 		mnoise[8] = 1e9
 	}
-	ss := *matrix.Sum(matrix.Product(&h, matrix.Product(s.M, h.Transpose())), matrix.Diagonal(mnoise))
+	ss := *matrix.Sum(matrix.Product(h, matrix.Product(s.M, h.Transpose())), matrix.Diagonal(mnoise))
 
 	m2, err := ss.Inverse()
 	if err != nil {
@@ -334,12 +332,10 @@ func (s *State) Update(m Measurement) {
 	s.M2 += su.Get(11, 0)
 	s.M3 += su.Get(12, 0)
 	s.T = m.T
-	s.M = matrix.Product(matrix.Difference(matrix.Eye(13), matrix.Product(kk, &h)), s.M)
+	s.M = matrix.Product(matrix.Difference(matrix.Eye(13), matrix.Product(kk, h)), s.M)
 }
 
-func (s *State) PredictMeasurement() Measurement {
-	var m Measurement
-
+func (s *State) PredictMeasurement(m *Measurement) {
 	m.W1 = s.V1 +
 		2*s.U1*(s.E1*s.E1+s.E0*s.E0-0.5) +
 		2*s.U2*(s.E1*s.E2+s.E0*s.E3) +
@@ -366,11 +362,9 @@ func (s *State) PredictMeasurement() Measurement {
 	m.M3 =  2*s.M1*(s.E3*s.E1-s.E0*s.E2) +
 		2*s.M2*(s.E3*s.E2+s.E0*s.E1) +
 		2*s.M3*(s.E3*s.E3+s.E0*s.E0-0.5)
-
-	return m
 }
 
-func (s *State) calcJacobianState(c Control) matrix.DenseMatrix {
+func (s *State) calcJacobianState(c *Control) *matrix.DenseMatrix {
 	dt := float64(c.T-s.T) / 1000000000
 	data := make([][]float64, 13)
 	for i := 0; i < 13; i++ {
@@ -426,11 +420,10 @@ func (s *State) calcJacobianState(c Control) matrix.DenseMatrix {
 	data[11][11] = 1                                       // M2/M2
 	data[12][12] = 1                                       // M3/M3
 
-	ff := *matrix.MakeDenseMatrixStacked(data)
-	return ff
+	return matrix.MakeDenseMatrixStacked(data)
 }
 
-func (s *State) calcJacobianMeasurement() matrix.DenseMatrix {
+func (s *State) calcJacobianMeasurement() *matrix.DenseMatrix {
 	data := make([][]float64, 9)
 	for i := 0; i < 9; i++ {
 		data[i] = make([]float64, 13)
@@ -487,6 +480,5 @@ func (s *State) calcJacobianMeasurement() matrix.DenseMatrix {
 	data[8][11] = 2*(s.E3*s.E2 + s.E0*s.E1)                     // M3/M2
 	data[8][12] = 2*(s.E3*s.E3 + s.E0*s.E0 - 0.5)               // M3/M3
 
-	hh := *matrix.MakeDenseMatrixStacked(data)
-	return hh
+	return matrix.MakeDenseMatrixStacked(data)
 }

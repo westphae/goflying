@@ -33,9 +33,10 @@ type Situation struct {
 }
 
 // Interpolate an ahrs.State from a Situation definition at a given time
-func (s *Situation) interpolate(t float64) (ahrs.State, error) {
+func (s *Situation) interpolate(t float64, st *ahrs.State) (error) {
 	if t < s.t[0] || t > s.t[len(s.t)-1] {
-		return ahrs.State{}, errors.New("requested time is outside of scenario")
+		st = new(ahrs.State)
+		return errors.New("requested time is outside of scenario")
 	}
 	ix := 0
 	if t > s.t[0] {
@@ -54,33 +55,33 @@ func (s *Situation) interpolate(t float64) (ahrs.State, error) {
 		f*s.psi0[ix]+(1-f)*s.psi0[ix+1])
 	ff := math.Sqrt(f0*f0 + f1*f1 + f2*f2 + f3*f3)
 
-	return ahrs.State{
-		U1: f*s.u1[ix] + (1-f)*s.u1[ix+1],
-		U2: f*s.u2[ix] + (1-f)*s.u2[ix+1],
-		U3: f*s.u3[ix] + (1-f)*s.u3[ix+1],
-		E0: e0 / ee,
-		E1: e1 / ee,
-		E2: e2 / ee,
-		E3: e3 / ee,
-		F0: f0 / ff,
-		F1: f1 / ff,
-		F2: f2 / ff,
-		F3: f3 / ff,
-		V1: f*s.v1[ix] + (1-f)*s.v1[ix+1],
-		V2: f*s.v2[ix] + (1-f)*s.v2[ix+1],
-		V3: f*s.v3[ix] + (1-f)*s.v3[ix+1],
-		M1: f*s.m1[ix] + (1-f)*s.m1[ix+1],
-		M2: f*s.m2[ix] + (1-f)*s.m2[ix+1],
-		M3: f*s.m3[ix] + (1-f)*s.m3[ix+1],
-		T:  int64(t*1000000000 + 0.5), // easy rounding for uint
-		M:  &matrix.DenseMatrix{},
-	}, nil
+	st.U1 = f*s.u1[ix] + (1-f)*s.u1[ix+1]
+	st.U2 = f*s.u2[ix] + (1-f)*s.u2[ix+1]
+	st.U3 = f*s.u3[ix] + (1-f)*s.u3[ix+1]
+	st.E0 = e0 / ee
+	st.E1 = e1 / ee
+	st.E2 = e2 / ee
+	st.E3 = e3 / ee
+	st.F0 = f0 / ff
+	st.F1 = f1 / ff
+	st.F2 = f2 / ff
+	st.F3 = f3 / ff
+	st.V1 = f*s.v1[ix] + (1-f)*s.v1[ix+1]
+	st.V2 = f*s.v2[ix] + (1-f)*s.v2[ix+1]
+	st.V3 = f*s.v3[ix] + (1-f)*s.v3[ix+1]
+	st.M1 = f*s.m1[ix] + (1-f)*s.m1[ix+1]
+	st.M2 = f*s.m2[ix] + (1-f)*s.m2[ix+1]
+	st.M3 = f*s.m3[ix] + (1-f)*s.m3[ix+1]
+	st.T =  int64(t*1000000000 + 0.5) // easy rounding for uint
+	st.M =  new(matrix.DenseMatrix)
+	return nil
 }
 
 // Determine time derivative of an ahrs.State from a Situation definition at a given time
-func (s *Situation) derivative(t float64) (ahrs.State, error) {
+func (s *Situation) derivative(t float64, st *ahrs.State) (error) {
 	if t < s.t[0] || t > s.t[len(s.t)-1] {
-		return ahrs.State{}, errors.New("requested time is outside of scenario")
+		st = new(ahrs.State)
+		return errors.New("requested time is outside of scenario")
 	}
 
 	var t0, t1, ddt float64
@@ -91,44 +92,47 @@ func (s *Situation) derivative(t float64) (ahrs.State, error) {
 		t0 = t1 - ddt
 	}
 
-	s0, _ := s.interpolate(t0)
-	s1, _ := s.interpolate(t1)
+	var s0, s1 ahrs.State
 
-	return ahrs.State{
-		U1: (s1.U1 - s0.U1) / ddt,
-		U2: (s1.U2 - s0.U2) / ddt,
-		U3: (s1.U3 - s0.U3) / ddt,
-		E0: (s1.E0 - s0.E0) / ddt,
-		E1: (s1.E1 - s0.E1) / ddt,
-		E2: (s1.E2 - s0.E2) / ddt,
-		E3: (s1.E3 - s0.E3) / ddt,
-		F0: (s1.F0 - s0.F0) / ddt,
-		F1: (s1.F1 - s0.F1) / ddt,
-		F2: (s1.F2 - s0.F2) / ddt,
-		F3: (s1.F3 - s0.F3) / ddt,
-		V1: (s1.V1 - s0.V1) / ddt,
-		V2: (s1.V2 - s0.V2) / ddt,
-		V3: (s1.V3 - s0.V3) / ddt,
-		M1: (s1.M1 - s0.M1) / ddt,
-		M2: (s1.M2 - s0.M2) / ddt,
-		M3: (s1.M3 - s0.M3) / ddt,
-		T:  int64(t*1000000000 + 0.5), // easy rounding for uint
-		M:  &matrix.DenseMatrix{},
-	}, nil
+	s.interpolate(t0, &s0)
+	s.interpolate(t1, &s1)
+
+	st.U1 = (s1.U1 - s0.U1) / ddt
+	st.U2 = (s1.U2 - s0.U2) / ddt
+	st.U3 = (s1.U3 - s0.U3) / ddt
+	st.E0 = (s1.E0 - s0.E0) / ddt
+	st.E1 = (s1.E1 - s0.E1) / ddt
+	st.E2 = (s1.E2 - s0.E2) / ddt
+	st.E3 = (s1.E3 - s0.E3) / ddt
+	st.F0 = (s1.F0 - s0.F0) / ddt
+	st.F1 = (s1.F1 - s0.F1) / ddt
+	st.F2 = (s1.F2 - s0.F2) / ddt
+	st.F3 = (s1.F3 - s0.F3) / ddt
+	st.V1 = (s1.V1 - s0.V1) / ddt
+	st.V2 = (s1.V2 - s0.V2) / ddt
+	st.V3 = (s1.V3 - s0.V3) / ddt
+	st.M1 = (s1.M1 - s0.M1) / ddt
+	st.M2 = (s1.M2 - s0.M2) / ddt
+	st.M3 = (s1.M3 - s0.M3) / ddt
+	st.T =  int64(t*1000000000 + 0.5) // easy rounding for uint
+	st.M =  new(matrix.DenseMatrix)
+	return nil
 }
 
 // Determine ahrs.Control variables from a Situation definition at a given time
 // gyro noise (Gaussian stdev) and bias are in deg/s
 // accel noise and bias are in G
 func (s *Situation) control(
-		t float64,
+		t float64, c *ahrs.Control,
 		gn, an float64,
 		gb, ab []float64,
-	) (ahrs.Control, error) {
-	x, erri := s.interpolate(t)
-	dx, errd := s.derivative(t)
+	) (error) {
+	var x, dx ahrs.State
+	erri := s.interpolate(t, &x)
+	 errd := s.derivative(t, &dx)
 	if erri != nil || errd != nil {
-		return ahrs.Control{}, errors.New("requested time is outside of scenario")
+		c = new(ahrs.Control)
+		return errors.New("requested time is outside of scenario")
 	}
 
 	// f fragments to reverse-rotate by f (airplane frame to sensor frame)
@@ -150,16 +154,14 @@ func (s *Situation) control(
 	y2 := -2*(-x.E0*x.E1 + x.E3*x.E2)       + (-dx.U2 + h3*x.U1 - h1*x.U3)/ahrs.G
 	y3 := -2*(+x.E0*x.E0 + x.E3*x.E3 - 0.5) + (-dx.U3 + h1*x.U2 - h2*x.U1)/ahrs.G
 
-	c := ahrs.Control{
-		H1: h1*f11 + h2*f12 + h3*f13 + gb[0] + gn * rand.NormFloat64(),
-		H2: h1*f21 + h2*f22 + h3*f23 + gb[1] + gn * rand.NormFloat64(),
-		H3: h1*f31 + h2*f32 + h3*f33 + gb[2] + gn * rand.NormFloat64(),
-		A1: y1*f11 + y2*f12 + y3*f13 + ab[0] + an * rand.NormFloat64(),
-		A2: y1*f21 + y2*f22 + y3*f23 + ab[1] + an * rand.NormFloat64(),
-		A3: y1*f31 + y2*f32 + y3*f33 + ab[2] + an * rand.NormFloat64(),
-		T:  int64(t*1000000000 + 0.5),
-	}
-	return c, nil
+	c.H1 = h1*f11 + h2*f12 + h3*f13 + gb[0] + gn * rand.NormFloat64()
+	c.H2 = h1*f21 + h2*f22 + h3*f23 + gb[1] + gn * rand.NormFloat64()
+	c.H3 = h1*f31 + h2*f32 + h3*f33 + gb[2] + gn * rand.NormFloat64()
+	c.A1 = y1*f11 + y2*f12 + y3*f13 + ab[0] + an * rand.NormFloat64()
+	c.A2 = y1*f21 + y2*f22 + y3*f23 + ab[1] + an * rand.NormFloat64()
+	c.A3 = y1*f31 + y2*f32 + y3*f33 + ab[2] + an * rand.NormFloat64()
+	c.T =  int64(t*1000000000 + 0.5)
+	return nil
 }
 
 // Determine ahrs.Measurement variables from a Situation definition at a given time
@@ -167,16 +169,18 @@ func (s *Situation) control(
 // airspeed noise and bias are in kt
 // magnetometer noise and bias are in uT
 func (s *Situation) measurement(
-		t float64,
+		t float64, m *ahrs.Measurement,
 		wValid, uValid, mValid bool,
 		wn, un, mn, ab float64, mb []float64,
-	) (ahrs.Measurement, error) {
+	) (error) {
 	if t < s.t[0] || t > s.t[len(s.t)-1] {
-		return ahrs.Measurement{}, errors.New("requested time is outside of scenario")
+		m = new(ahrs.Measurement)
+		return errors.New("requested time is outside of scenario")
 	}
-	x, _ := s.interpolate(t)
 
-	var m = new(ahrs.Measurement)
+	var x ahrs.State
+	s.interpolate(t, &x)
+
 	if wValid {
 		m.WValid = true
 		m.W1 = x.U1 * 2 * (+x.E0 * x.E0 + x.E1 * x.E1 - 0.5) +
@@ -213,7 +217,7 @@ func (s *Situation) measurement(
 			mb[2] + mn * rand.NormFloat64()
 	}
 	m.T = int64(t*1000000000 + 0.5)
-	return *m, nil
+	return nil
 }
 
 // Data to define a piecewise-linear turn, with entry and exit
@@ -267,9 +271,7 @@ type AHRSLogger struct {
 	fmt 	string
 }
 
-func NewAHRSLogger(fn string, h ...string) (AHRSLogger) {
-	var l = new(AHRSLogger)
-
+func NewAHRSLogger(fn string, h ...string) (l AHRSLogger) {
 	l.h = h
 	f, err := os.Create(fn)
 	l.f = f
@@ -280,7 +282,7 @@ func NewAHRSLogger(fn string, h ...string) (AHRSLogger) {
 	fmt.Fprint(l.f, strings.Join(l.h, ","), "\n")
 	s := strings.Repeat("%f,", len(l.h))
 	l.fmt = strings.Join([]string{s[:len(s)-1], "\n"}, "")
-	return *l
+	return
 }
 
 func (l *AHRSLogger) Log(v ...interface{}) {
@@ -291,15 +293,14 @@ func (l *AHRSLogger) Close() {
 	l.f.Close()
 }
 
-func parseFloatArrayString(str string, a *[]float64) error {
-	var err error
+func parseFloatArrayString(str string, a *[]float64) (err error) {
 	for i, s := range strings.Split(str, ",") {
 		(*a)[i], err = strconv.ParseFloat(s, 64)
 		if err != nil {
 			break
 		}
 	}
-	return err
+	return
 }
 
 func main() {
@@ -441,38 +442,38 @@ func main() {
 
 	// This is where it all happens
 	fmt.Println("Running Simulation")
-	var s = ahrs.State{}
-	var t, tNextUpdate float64
-	t = sit.t[0];
-	tNextUpdate = t + udt
+	s0 := new(ahrs.State)
+	s  := new(ahrs.State)
+	c  := new(ahrs.Control)
+	m  := new(ahrs.Measurement)
+	pm := new(ahrs.Measurement)
+	t := sit.t[0];
+	tNextUpdate := t + udt
 	for t < sit.t[len(sit.t)-1] {
 		if t>tNextUpdate-1e-9 {
 			t = tNextUpdate
 		}
 
 		// Peek behind the curtain: the "actual" state, which the algorithm doesn't know
-		s0, err := sit.interpolate(t)
-		if err != nil {
+		if err := sit.interpolate(t, s0); err != nil {
 			fmt.Printf("Error interpolating at time %f: %s", t, err.Error())
-			panic(err)
+			os.Exit(1)
 		}
 		phi, theta, psi := ahrs.FromQuaternion(s0.E0, s0.E1, s0.E2, s0.E3)
 		lActual.Log(float64(s0.T)/1000000000, s0.U1, s0.U2, s0.U3, phi, theta, psi,
 			s0.V1, s0.V2, s0.V3, s0.M1, s0.M2, s0.M3)
 
 		// Take control "measurements"
-		c, err := sit.control(t, gyroNoise, accelNoise, gyroBias, accelBias)
-		if err != nil {
+		if err := sit.control(t, c, gyroNoise, accelNoise, gyroBias, accelBias); err != nil {
 			fmt.Printf("Error calculating control value at time %f: %s", t, err.Error())
-			panic(err)
+			os.Exit(1)
 		}
 		lControl.Log(float64(c.T)/1000000000, -c.H1, c.H2, c.H3, c.A1, c.A2, c.A3)
 
 		// Take sensor measurements
-		m, err := sit.measurement(t, !gpsInop, !asiInop, !magInop, gpsNoise, asiNoise, magNoise, asiBias, magBias)
-		if err != nil {
+		if err := sit.measurement(t, m, !gpsInop, !asiInop, !magInop, gpsNoise, asiNoise, magNoise, asiBias, magBias); err != nil {
 			fmt.Printf("Error calculating measurement value at time %f: %s", t, err.Error())
-			panic(err)
+			os.Exit(1)
 		}
 		lMeas.Log(float64(m.T)/1000000000, m.W1, m.W2, m.W3, m.M1, m.M2, m.M3, m.U1, m.U2, m.U3)
 
@@ -493,7 +494,7 @@ func main() {
 			lPredict.Log(float64(s.T) / 1000000000, s.U1, s.U2, s.U3, phi, theta, psi,
 				s.V1, s.V2, s.V3, s.M1, s.M2, s.M3)
 
-			pm := s.PredictMeasurement()
+			s.PredictMeasurement(pm)
 			lPMeas.Log(float64(m.T) / 1000000000, pm.W1, pm.W2, pm.W3, pm.M1, pm.M2, pm.M3, pm.U1, pm.U2, pm.U3)
 
 			// Update stage of Kalman filter
