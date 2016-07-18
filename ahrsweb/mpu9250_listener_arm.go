@@ -8,6 +8,7 @@ import (
 	"log"
 	"time"
 	"fmt"
+	"os"
 )
 
 type MPU9250Listener struct {
@@ -31,28 +32,38 @@ func (ml *MPU9250Listener) Init() {
 	var err error
 
 	for i:=0; i<MPURETRIES; i++ {
-		mpu, err := mpu9250.NewMPU9250(gyroRange, accelRange, updateFreq, false)
+		mpu, err := mpu9250.NewMPU9250(gyroRange, accelRange, updateFreq, true, false)
 		if err != nil {
 			fmt.Printf("Error initializing MPU9250, attempt %d of %d\n", i, MPURETRIES)
 			time.Sleep(5 * time.Second)
 		} else {
-			ml.mpu = mpu
-			break
+			mpu.CCal <- 2
+			err = <-mpu.CCalResult
+			if err != nil {
+				fmt.Printf("Error calibrating try %d of %d\n", i, MPURETRIES)
+				time.Sleep(100 * time.Millisecond)
+			} else {
+				ml.mpu = mpu
+				break
+			}
 		}
 	}
 
 	if err != nil {
 		fmt.Println("Error: couldn't initialize MPU9250")
-		return
+		os.Exit(1)
 	}
 
-	if err := ml.mpu.CalibrateGyro(1); err != nil {
-		fmt.Println(err.Error())
-		return
+	for i:=0; i<MPURETRIES; i++ {
+	}
+
+	if err != nil {
+		fmt.Println("Error: couldn't calibrate MPU9250")
+		os.Exit(2)
 	}
 
 	ml.data = new(AHRSData)
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(250 * time.Millisecond)
 }
 
 func (ml *MPU9250Listener) Close() {
@@ -64,30 +75,33 @@ func (ml *MPU9250Listener) GetData() *AHRSData {
 }
 
 func (ml *MPU9250Listener) update() {
-	Ts, Gx, Gy, Gz, Ax, Ay, Az, Mx, My, Mz, gaError, magError := ml.mpu.Read()
+	data := <-ml.mpu.CAvg
 
-	if gaError == nil {
-		ml.data.Ts = Ts
-		ml.data.Gx, ml.data.Gy, ml.data.Gz = Gx, Gy, Gz
-		ml.data.Ax, ml.data.Ay, ml.data.Az = Ax, Ay, Az
+	if data.GAError == nil && data.N > 0 {
+		ml.data.Ts = data.T.UnixNano()
+		ml.data.Gx, ml.data.Gy, ml.data.Gz = data.G1, data.G2, data.G3
+		ml.data.Ax, ml.data.Ay, ml.data.Az = data.A1, data.A2, data.A3
 
 		// Quick and dirty calcs
-		ml.data.Pitch += 0.1 * ml.data.Gy
-		ml.data.Roll += 0.1 * ml.data.Gx
-		ml.data.Heading += 0.1 * ml.data.Gz
+		ml.data.Pitch += 0.1 * ml.data.Gx
+		ml.data.Roll += 0.1 * ml.data.Gy
+		ml.data.Heading -= 0.1 * ml.data.Gz
 
 		ml.data.X_accel = ml.data.Ax
 		ml.data.Y_accel = ml.data.Ay
 		ml.data.Z_accel = ml.data.Az
 	}
 
-	if magError == nil {
-		ml.data.Tsm = Ts
-		ml.data.Mx, ml.data.My, ml.data.Mz = Mx, My, Mz
+	if data.MagError == nil && data.NM > 0 {
+		ml.data.Tsm = data.TM.UnixNano()
+		ml.data.Mx, ml.data.My, ml.data.Mz = data.M1, data.M2, data.M3
 
 		ml.data.X_mag = ml.data.Mx
 		ml.data.Y_mag = ml.data.My
 		ml.data.Z_mag = ml.data.Mz
+	}
+	if ml.data.Az < 0.2 {
+		os.Exit(0)
 	}
 }
 
