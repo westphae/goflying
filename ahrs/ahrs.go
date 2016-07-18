@@ -17,7 +17,7 @@ type State struct {
 	V1, V2, V3    	float64             // Vector describing windspeed, latlong axes, earth (inertial) frame
 	M1, M2, M3    	float64             // Vector describing reference magnetometer direction, earth (inertial) frame
 	T             	int64               // Timestamp when last updated
-	M             	matrix.DenseMatrix  // Covariance matrix of state uncertainty, same order as above vars
+	M             	*matrix.DenseMatrix  // Covariance matrix of state uncertainty, same order as above vars
 
 	tLastCal	float64		    // Last time calibration was run
 	cS, cL		Control		    // Short-term and long-term control moving averages, for determining inertiality
@@ -183,7 +183,7 @@ func (s *State) Initialize(m Measurement, c Control) {
 	}
 	s.V1, s.V2, s.V3 = 0, 0, 0	// Best guess at initial windspeed is zero (actually headwind...)
 	s.tLastCal = float64(m.T)/1000000000-3600	// If just initialized, do a fresh calibration
-	s.M = *matrix.Diagonal([]float64{
+	s.M = matrix.Diagonal([]float64{
 		20*20, 1*1, 1*1,
 		0.1*0.1, 0.1*0.1, 0.1*0.1, 0.1*0.1,
 		20*20, 20*20, 2*2,
@@ -259,7 +259,7 @@ func (s *State) Predict(c Control) {
 	s.T = c.T
 
 	tf := dt / (float64(vx.T) / 1000000000)
-	s.M = *matrix.Sum(matrix.Product(&f, matrix.Product(&s.M, f.Transpose())),
+	s.M = matrix.Sum(matrix.Product(&f, matrix.Product(s.M, f.Transpose())),
 		matrix.Diagonal([]float64{
 			vx.U1 * vx.U1 * tf, vx.U2 * vx.U2 * tf, vx.U3 * vx.U3 * tf,
 			vx.E0 * vx.E0 * tf, vx.E1 * vx.E1 * tf, vx.E2 * vx.E2 * tf, vx.E3 * vx.E3 * tf,
@@ -311,13 +311,13 @@ func (s *State) Update(m Measurement) {
 		mnoise[7] = 1e9
 		mnoise[8] = 1e9
 	}
-	ss := *matrix.Sum(matrix.Product(&h, matrix.Product(&s.M, h.Transpose())), matrix.Diagonal(mnoise))
+	ss := *matrix.Sum(matrix.Product(&h, matrix.Product(s.M, h.Transpose())), matrix.Diagonal(mnoise))
 
 	m2, err := ss.Inverse()
 	if err != nil {
 		log.Println("AHRS: Can't invert Kalman gain matrix")
 	}
-	kk := matrix.Product(&s.M, matrix.Product(h.Transpose(), m2))
+	kk := matrix.Product(s.M, matrix.Product(h.Transpose(), m2))
 	su := matrix.Product(kk, matrix.MakeDenseMatrix(y, 9, 1))
 	s.U1 += su.Get(0, 0)
 	s.U2 += su.Get(1, 0)
@@ -334,7 +334,7 @@ func (s *State) Update(m Measurement) {
 	s.M2 += su.Get(11, 0)
 	s.M3 += su.Get(12, 0)
 	s.T = m.T
-	s.M = *matrix.Product(matrix.Difference(matrix.Eye(13), matrix.Product(kk, &h)), &s.M)
+	s.M = matrix.Product(matrix.Difference(matrix.Eye(13), matrix.Product(kk, &h)), s.M)
 }
 
 func (s *State) PredictMeasurement() Measurement {

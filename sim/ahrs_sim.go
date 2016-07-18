@@ -73,7 +73,7 @@ func (s *Situation) interpolate(t float64) (ahrs.State, error) {
 		M2: f*s.m2[ix] + (1-f)*s.m2[ix+1],
 		M3: f*s.m3[ix] + (1-f)*s.m3[ix+1],
 		T:  int64(t*1000000000 + 0.5), // easy rounding for uint
-		M:  matrix.DenseMatrix{},
+		M:  &matrix.DenseMatrix{},
 	}, nil
 }
 
@@ -113,7 +113,7 @@ func (s *Situation) derivative(t float64) (ahrs.State, error) {
 		M2: (s1.M2 - s0.M2) / ddt,
 		M3: (s1.M3 - s0.M3) / ddt,
 		T:  int64(t*1000000000 + 0.5), // easy rounding for uint
-		M:  matrix.DenseMatrix{},
+		M:  &matrix.DenseMatrix{},
 	}, nil
 }
 
