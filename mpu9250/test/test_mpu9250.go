@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 	"github.com/westphae/goflying/mpu9250"
+	"math"
 )
 
 func main() {
@@ -55,7 +56,11 @@ func main() {
 		} else if avg.MagError != nil {
 			fmt.Println(avg.MagError.Error())
 		} else {
-			fmt.Printf("Mag:        % +8.0f % +8.0f % +8.0f\n", avg.M1, avg.M2, avg.M3)
+			hdg := math.Atan2(avg.M2, avg.M1) * 180/math.Pi
+			if hdg < 0 {
+				hdg += 360
+			}
+			fmt.Printf("Mag:        % +8.0f % +8.0f % +8.0f:  %3.f\n", avg.M1, avg.M2, avg.M3, hdg)
 		}
 
 		/*

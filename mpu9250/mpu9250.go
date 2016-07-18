@@ -21,6 +21,7 @@ const (
 	MAXGYROVAR  = 0.1
 	MAXACCELVAR = 0.1
 	BUFSIZE     = 250
+	SCALEMAG    = 9830.0/65536
 )
 
 type MPUData struct {
@@ -40,7 +41,7 @@ type MPU9250 struct {
 	enableMag             bool
 	a01, a02, a03         float64   // Accelerometer bias
 	g01, g02, g03         float64   // Gyro bias
-	mcal1, mcal2, mcal3   int16   // Magnetometer calibration values, uT
+	mcal1, mcal2, mcal3   float64   // Magnetometer calibration values, uT
 	C                     <-chan *MPUData
 	CAvg                  <-chan *MPUData
 	CBuf                  <-chan *MPUData
@@ -296,9 +297,9 @@ func (m *MPU9250) readSensors() {
 			A1: (float64(a1) - m.a01) * m.scaleAccel,
 			A2: (float64(a2) - m.a02) * m.scaleAccel,
 			A3: (float64(a3) - m.a03) * m.scaleAccel,
-			M1: float64(int32(m1) * int32(m.mcal1) >> 8),
-			M2: float64(int32(m2) * int32(m.mcal2) >> 8),
-			M3: float64(int32(m3) * int32(m.mcal3) >> 8),
+			M1: float64(m1) * m.mcal1,
+			M2: float64(m2) * m.mcal2,
+			M3: float64(m3) * m.mcal3,
 			GAError: gaError, MagError: magError,
 			N: 1, NM: 1,
 			T: t, TM: tm,
@@ -327,9 +328,9 @@ func (m *MPU9250) readSensors() {
 			d.GAError = errors.New("MPU9250 Error: No new accel/gyro values")
 		}
 		if nm > 0 {
-			d.M1 = float64(int64(avm1) * int64(m.mcal1) >> 8)/nm
-			d.M2 = float64(int64(avm2) * int64(m.mcal2) >> 8)/nm
-			d.M3 = float64(int64(avm3) * int64(m.mcal3) >> 8)/nm
+			d.M1 = float64(avm1) * m.mcal1 / nm
+			d.M2 = float64(avm2) * m.mcal2 / nm
+			d.M3 = float64(avm3) * m.mcal3 / nm
 			d.NM = int(nm+0.5); d.TM = tm; d.DTM = t.Sub(t0m)
 		} else {
 			d.MagError = errors.New("MPU9250 Error: No new magnetometer values")
@@ -396,6 +397,8 @@ func (m *MPU9250) readSensors() {
 					log.Printf("MPU9250 Accel Calibration: %6f, %6f, %6f\n", m.a01*m.scaleAccel, m.a02*m.scaleAccel, m.a03*m.scaleAccel)
 					cCalResult <- nil
 				}
+				g11, g12, g13, g21, g22, g23 = 0, 0, 0, 0, 0, 0
+				a11, a12, a13, a21, a22, a23 = 0, 0, 0, 0, 0, 0
 				nc = 0
 			}
 		case tm = <-clockMag.C: // Read magnetometer data:
@@ -425,13 +428,13 @@ func (m *MPU9250) readSensors() {
 				if (byte(m1 & 0xFF) & AKM_DATA_READY) == 0x00 && (byte(m1 & 0xFF) & AKM_DATA_OVERRUN) != 0x00 {
 					log.Println("MPU9250 Mag data not ready or overflow")
 					log.Printf("MPU9250 m1 LSB: %X\n", byte(m1 & 0xFF))
-					return // Don't update the accumulated values
+					continue // Don't update the accumulated values
 				}
 
 				if (byte((m4 >> 8) & 0xFF) & AKM_OVERFLOW) != 0x00 {
 					log.Println("MPU9250 Mag data overflow")
 					log.Printf("MPU9250 m4 MSB: %X\n", byte((m1 >> 8) & 0xFF))
-					return // Don't update the accumulated values
+					continue // Don't update the accumulated values
 				}
 
 				// Update values and increment count of magnetometer readings
@@ -701,9 +704,9 @@ func (mpu *MPU9250) ReadMagCalibration() error {
 		return errors.New("ReadMagCalibration error reading chip")
 	}
 
-	mpu.mcal1 = int16(mcal1) + 128
-	mpu.mcal2 = int16(mcal2) + 128
-	mpu.mcal3 = int16(mcal3) + 128
+	mpu.mcal1 = float64((int32(mcal1) + 128) >> 8) * SCALEMAG
+	mpu.mcal2 = float64((int32(mcal2) + 128) >> 8) * SCALEMAG
+	mpu.mcal3 = float64((int32(mcal3) + 128) >> 8) * SCALEMAG
 
 	// Clean up from getting sensitivity data from AK8963
 	// Fuse AK8963 ROM access
@@ -726,7 +729,7 @@ func (mpu *MPU9250) ReadMagCalibration() error {
 	}
 	time.Sleep(3 * time.Millisecond)
 
-	log.Printf("MPU9250 Mag bias: %d %d %d\n", mpu.mcal1, mpu.mcal2, mpu.mcal3)
+	log.Printf("MPU9250 Mag bias: %f %f %f\n", mpu.mcal1, mpu.mcal2, mpu.mcal3)
 	return nil
 }
 
