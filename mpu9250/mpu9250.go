@@ -438,6 +438,7 @@ func (m *MPU9250) readSensors() {
 				}
 
 				// Update values and increment count of magnetometer readings
+				log.Printf("Raw mag values: %d %d %d\n", m1, m2, m3)
 				avm1 += int32(m1)
 				avm2 += int32(m2)
 				avm3 += int32(m3)
@@ -704,9 +705,10 @@ func (mpu *MPU9250) ReadMagCalibration() error {
 		return errors.New("ReadMagCalibration error reading chip")
 	}
 
-	mpu.mcal1 = float64((int32(mcal1) + 128) >> 8) * SCALEMAG
-	mpu.mcal2 = float64((int32(mcal2) + 128) >> 8) * SCALEMAG
-	mpu.mcal3 = float64((int32(mcal3) + 128) >> 8) * SCALEMAG
+	log.Printf("Raw mag calibrations: %d %d %d\n", mcal1, mcal2, mcal3)
+	mpu.mcal1 = float64(int16(mcal1) + 128) / 256 * SCALEMAG
+	mpu.mcal2 = float64(int16(mcal2) + 128) / 256 * SCALEMAG
+	mpu.mcal3 = float64(int16(mcal3) + 128) / 256 * SCALEMAG
 
 	// Clean up from getting sensitivity data from AK8963
 	// Fuse AK8963 ROM access

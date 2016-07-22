@@ -128,9 +128,9 @@ func (s *State) IsInertial(c *Control, m *Measurement) (inertial bool) {
 		// Tests for inertial frame:
 		//TODO westphae: this needs to be tuned!
 		// 1. Gyro rates are nearly zero
-		inertial = math.Abs(s.cS.H1 - 0) < 0.1 && math.Abs(s.cS.H2 - 0) < 0.1 && math.Abs(s.cS.H3 - 0) < 0.1 &&
+		inertial = math.Abs(s.cS.H1 - 0) < 0.25 && math.Abs(s.cS.H2 - 0) < 0.25 && math.Abs(s.cS.H3 - 0) < 0.25 &&
 		// 2. Acceleration has magnitude nearly G in nearly steady direction
-			math.Abs(s.cL.A1 - s.cS.A1) < 0.05 && math.Abs(s.cL.A2 - s.cS.A2) < 0.05 && math.Abs(s.cL.A3 - s.cS.A3) < 0.05 &&
+			math.Abs(s.cL.A1 - s.cS.A1) < 0.01 && math.Abs(s.cL.A2 - s.cS.A2) < 0.01 && math.Abs(s.cL.A3 - s.cS.A3) < 0.01 &&
 		// 3. If valid, GPS speed and track are nearly steady
 			(!m.WValid || (math.Abs(s.mL.W1 - s.mS.W1) < 0.1 && math.Abs(s.mL.W2 - s.mS.W2) < 0.1 && math.Abs(s.mL.W3 - s.mS.W3) < 0.05)) &&
 		// 4. If valid, airspeed is nearly steady
@@ -155,13 +155,13 @@ func (s *State) IsInertial(c *Control, m *Measurement) (inertial bool) {
 func (s *State) Initialize(m *Measurement, c *Control) {
 	// for now just treat the case !m.UValid
 	if m.WValid {
-		s.U1 = math.Sqrt(m.W1 * m.W1 + m.W2 * m.W2) // Best guess at initial airspeed is initial groundspeed
+		s.U1 = math.Hypot(m.W1, m.W2) // Best guess at initial airspeed is initial groundspeed
 	} else {
 		s.U1 = 0
 	}
 	s.U2, s.U3 = 0, 0
 	s.E1, s.E2 = 0, 0
-	if m.WValid && s.U1 > 0 {
+	if m.WValid && s.U1 > 3 {
 		// Best guess at initial heading is initial track
 		// Simplified half-angle formulae
 		s.E0, s.E3 = math.Sqrt((s.U1 + m.W1) / (2 * s.U1)), math.Sqrt((s.U1 - m.W1) / (2 * s.U1))
