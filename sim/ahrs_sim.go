@@ -449,6 +449,10 @@ func main() {
 	pm := new(ahrs.Measurement)
 	t := sit.t[0];
 	tNextUpdate := t + udt
+
+	// Try to initialize
+	s.Initialize(m, c)
+
 	for t < sit.t[len(sit.t)-1] {
 		if t>tNextUpdate-1e-9 {
 			t = tNextUpdate
@@ -477,17 +481,13 @@ func main() {
 		}
 		lMeas.Log(float64(m.T)/1000000000, m.W1, m.W2, m.W3, m.M1, m.M2, m.M3, m.U1, m.U2, m.U3)
 
-		// Try to initialize
-		if !s.Initialized {
-			s.Initialize(m, c)
-		}
 		// If aircraft frame is inertial, then check calibration
-		if s.Initialized {
+		if s.IsInertial(c, m) {
 			s.Calibrate(c, m)
 		}
 
 		// If we have calibration and the Kalman filter is initialized, then run the filter
-		if s.Initialized && s.Calibrated {
+		if s.Calibrated {
 			// Predict stage of Kalman filter
 			s.Predict(c)
 			phi, theta, psi = ahrs.FromQuaternion(s.E0, s.E1, s.E2, s.E3)

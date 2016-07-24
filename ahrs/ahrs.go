@@ -17,7 +17,7 @@ const (
 // State holds the complete information describing the state of the aircraft
 // Order within State also defines order in the matrices below
 type State struct {
-	Initialized, Calibrated    bool     // Is the state valid (initialized, sensible)
+	Calibrated    bool     // Is the state valid (initialized, sensible)
 	U1, U2, U3    	float64             // Vector for airspeed, aircraft (accelerated) frame
 	E0, E1, E2, E3	float64             // Quaternion rotating aircraft to earth frame
 	V1, V2, V3    	float64             // Vector describing windspeed, latlong axes, earth (inertial) frame
@@ -139,7 +139,7 @@ func (s *State) IsInertial(c *Control, m *Measurement) (inertial bool) {
 		//	(!m.MValid || (math.Abs(s.mL.M1-s.mS.M1) < 0.1 && math.Abs(s.mL.M2-s.mS.M2) < 0.05 && math.Abs(s.mL.M3-s.mS.M3) < 0.05))
 		log.Printf("\nTime: %f\n", t)
 		log.Printf("%f %f\n", s.mS.W2, s.mL.W2)
-		log.Printf("Initialized: %t, Calibrated: %t, Inertial: %t\n", s.Initialized, s.Calibrated, inertial)
+		log.Printf("Calibrated: %t, Inertial: %t\n", s.Calibrated, inertial)
 		log.Printf("Gyro:  %f %f %f\n", s.cS.H1, s.cS.H2, s.cS.H3)
 		log.Printf("Accel: %f %f %f\n", s.cL.A1-s.cS.A1, s.cL.A2-s.cS.A2, s.cL.A3-s.cS.A3)
 		log.Printf("GPS:   %f %f %f\n", s.mL.W1-s.mS.W1, s.mL.W2-s.mS.W2, s.mL.W3-s.mS.W3)
@@ -168,15 +168,9 @@ func (s *State) Initialize(m *Measurement, c *Control) {
 		if m.W2 > 0 {
 			s.E3 *= -1
 		}
-		s.Initialized = true
-	} else if !m.WValid {	// If no groundspeed available then no idea which direction we're pointing
+	} else {	// If no groundspeed available then no idea which direction we're pointing
 		// assume north
 		s.E0, s.E3 = math.Sqrt2/2, -math.Sqrt2/2
-		s.Initialized = true
-	} else {	// We're just stationary; wait until we start moving to initialize
-		//TODO westphae: could use magnetometer to initially point north
-		s.Initialized = false
-		return
 	}
 	s.V1, s.V2, s.V3 = 0, 0, 0	// Best guess at initial windspeed is zero (actually headwind...)
 	s.tLastCal = float64(m.T)/1000000000-3600	// If just initialized, do a fresh calibration
