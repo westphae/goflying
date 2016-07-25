@@ -14,7 +14,6 @@ import (
 
 	"github.com/westphae/goflying/ahrs"
 	"strconv"
-	"os"
 )
 
 func parseFloatArrayString(str string, a *[]float64) (err error) {
@@ -162,7 +161,11 @@ func main() {
 	case "turn":
 		sit = sitTurnDef
 	default:
-		sit = sitTurnDef
+		log.Printf("Loading data from %s\n", scenario)
+		sit, err = NewSituationFromFile(scenario)
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
 	}
 
 	// This is where it all happens
