@@ -83,7 +83,6 @@ func NewSituationFromFile (fn string) (sit *SituationFromFile, err error) {
 			}
 			switch fields[i] {
 			case "T":
-				//log.Printf("Read data for time %s\n", k)
 				sit.t = expandAppend(&sit.t, v)
 			case "TS":
 				sit.ts = expandAppend(&sit.ts, v)
@@ -122,7 +121,6 @@ func NewSituationFromFile (fn string) (sit *SituationFromFile, err error) {
 			}
 		}
 	}
-	log.Printf("Last time: %f, A3: %f\n", sit.BeginTime(), sit.a3[len(sit.a3)-1])
 	err = nil
 	return
 }
@@ -158,12 +156,15 @@ func (s *SituationFromFile) Control(t float64, c *ahrs.Control, gyroNoise, accel
 
 	f := (s.t[ix+1] - t) / (s.t[ix+1] - s.t[ix])
 
-	c.A1 = f*s.a1[ix] + (1-f)*s.a1[ix+1]
-	c.A2 = f*s.a2[ix] + (1-f)*s.a2[ix+1]
-	c.A3 = f*s.a3[ix] + (1-f)*s.a3[ix+1]
-	c.H1 = f*s.h1[ix] + (1-f)*s.h1[ix+1]
-	c.H2 = f*s.h2[ix] + (1-f)*s.h2[ix+1]
-	c.H3 = f*s.h3[ix] + (1-f)*s.h3[ix+1]
+	// Accel comes from the accerometer in G's, which is what we want, but it's backwards
+	c.A1 = -(f*s.a1[ix] + (1-f)*s.a1[ix+1])
+	c.A2 = -(f*s.a2[ix] + (1-f)*s.a2[ix+1])
+	c.A3 = -(f*s.a3[ix] + (1-f)*s.a3[ix+1])
+	// Gyro rates come as deg/s; we need rad/s
+	c.H1 = (f*s.h1[ix] + (1-f)*s.h1[ix+1])*pi/180
+	c.H2 = (f*s.h2[ix] + (1-f)*s.h2[ix+1])*pi/180
+	c.H3 = (f*s.h3[ix] + (1-f)*s.h3[ix+1])*pi/180
+	// Time is recorded in s; we need ns
 	c.T  = int64(t*1e9)
 	return nil
 }

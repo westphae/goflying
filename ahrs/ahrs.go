@@ -137,6 +137,7 @@ func (s *State) IsInertial(c *Control, m *Measurement) (inertial bool) {
 			(!m.UValid || (math.Abs(s.mL.U1 - s.mS.U1) < 1))
 		// 5. If valid, magnetometer is nearly steady
 		//	(!m.MValid || (math.Abs(s.mL.M1-s.mS.M1) < 0.1 && math.Abs(s.mL.M2-s.mS.M2) < 0.05 && math.Abs(s.mL.M3-s.mS.M3) < 0.05))
+		/*
 		log.Printf("\nTime: %f\n", t)
 		log.Printf("%f %f\n", s.mS.W2, s.mL.W2)
 		log.Printf("Calibrated: %t, Inertial: %t\n", s.Calibrated, inertial)
@@ -146,6 +147,7 @@ func (s *State) IsInertial(c *Control, m *Measurement) (inertial bool) {
 		log.Printf("ASI:   %f\n", s.mL.U1-s.mS.U1)
 		log.Printf("Mag:   %f %f %f\n", s.mL.M1-s.mS.M1, s.mL.M2-s.mS.M2, s.mL.M3-s.mS.M3)
 		log.Printf("Frame is inertial: %t\n", inertial)
+		*/
 	}
 	return
 }

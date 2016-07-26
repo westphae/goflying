@@ -144,12 +144,12 @@ func (s *SituationSim) Control(t float64, c *ahrs.Control, gn, an float64, gb, a
 	y2 := -2*(-x.E0*x.E1 + x.E3*x.E2)       + (-dx.U2 + h3*x.U1 - h1*x.U3)/ahrs.G
 	y3 := -2*(+x.E0*x.E0 + x.E3*x.E3 - 0.5) + (-dx.U3 + h1*x.U2 - h2*x.U1)/ahrs.G
 
-	c.H1 = h1*f11 + h2*f12 + h3*f13 + gb[0] + gn * rand.NormFloat64()
-	c.H2 = h1*f21 + h2*f22 + h3*f23 + gb[1] + gn * rand.NormFloat64()
-	c.H3 = h1*f31 + h2*f32 + h3*f33 + gb[2] + gn * rand.NormFloat64()
-	c.A1 = y1*f11 + y2*f12 + y3*f13 + ab[0] + an * rand.NormFloat64()
-	c.A2 = y1*f21 + y2*f22 + y3*f23 + ab[1] + an * rand.NormFloat64()
-	c.A3 = y1*f31 + y2*f32 + y3*f33 + ab[2] + an * rand.NormFloat64()
+	c.H1 = h1*f11 + h2*f12 + h3*f13 + (gb[0] + gn * rand.NormFloat64())*pi/180
+	c.H2 = h1*f21 + h2*f22 + h3*f23 + (gb[1] + gn * rand.NormFloat64())*pi/180
+	c.H3 = h1*f31 + h2*f32 + h3*f33 + (gb[2] + gn * rand.NormFloat64())*pi/180
+	c.A1 = y1*f11 + y2*f12 + y3*f13 +  ab[0] + an * rand.NormFloat64()
+	c.A2 = y1*f21 + y2*f22 + y3*f23 +  ab[1] + an * rand.NormFloat64()
+	c.A3 = y1*f31 + y2*f32 + y3*f33 +  ab[2] + an * rand.NormFloat64()
 	c.T =  int64(t*1000000000 + 0.5)
 	return nil
 }
