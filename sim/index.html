@@ -9,11 +9,13 @@
             font: 10px sans-serif;
         }
 
+        svg {
+            shape-rendering: crispEdges;
+        }
         .axis path,
         .axis line {
             fill: none;
             stroke: #000;
-            shape-rendering: crispEdges;
         }
 
         .x.axis path {
@@ -22,13 +24,15 @@
 
         .line {
             fill: none;
-            stroke-width: 1.5px;
+            stroke-width: 1px;
+            vector-effect: non-scaling-stroke;
         }
 
         .pline {
             fill: none;
-            stroke-width: 1.5px;
+            stroke-width: 1px;
             stroke-dasharray: "5,20";
+            vector-effect: non-scaling-stroke;
         }
 
         .area {
@@ -48,6 +52,13 @@
     var margin = {top: 5, right: 35, bottom: 20, left: 40},
             width = 450 - margin.left - margin.right,
             height = 250 - margin.top - margin.bottom;
+
+    var x = d3.scale.linear()
+            .range([0, width]);
+
+    var xAxis = d3.svg.axis()
+            .scale(x)
+            .orient("bottom");
 
     function MakeStateChart(v) {
         var color = d3.scale.category20()
@@ -70,12 +81,6 @@
             };
         });
 
-        var x = d3.scale.linear()
-                .range([0, width])
-                .domain(d3.extent(data, function (d) {
-                    return +d.T;
-                }));
-
         var y = d3.scale.linear()
                 .range([height, 0])
                 .domain([
@@ -86,10 +91,6 @@
                             return d3.max([v.upper, v.actual]);
                     })
                 ]);
-
-        var xAxis = d3.svg.axis()
-                .scale(x)
-                .orient("bottom");
 
         var yAxis = d3.svg.axis()
                 .scale(y)
@@ -194,12 +195,6 @@
             return r;
         });
 
-        var x = d3.scale.linear()
-                .range([0, width])
-                .domain(d3.extent(data, function (d) {
-                    return +d.T;
-                }));
-
         var y = d3.scale.linear()
                 .range([height, 0])
                 .domain([
@@ -210,10 +205,6 @@
                         return d3.max([+d.y, +d.py]);
                     })]
                 );
-
-        var xAxis = d3.svg.axis()
-                .scale(x)
-                .orient("bottom");
 
         var yAxis = d3.svg.axis()
                 .scale(y)
@@ -324,6 +315,10 @@
     });
 
     function makeAll() {
+        x.domain(d3.extent(actual, function(d) {
+            return +d.T;
+        }));
+
         MakeStateChart("Ux");
         MakeStateChart("Uy");
         MakeStateChart("Uz");
