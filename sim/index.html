@@ -12,6 +12,11 @@
         svg {
             shape-rendering: crispEdges;
         }
+
+        rect {
+            fill: white;
+        }
+
         .axis path,
         .axis line {
             fill: none;
@@ -44,226 +49,8 @@
 <body>
 <script src="http://d3js.org/d3.v3.min.js"></script>
 <script>
-
-    var DEG = 57.295780,
-            actual, predict, kalman, variance, control, measure, pmeasure,
+    var actual, predict, kalman, variance, control, measure, pmeasure,
             remaining = 7;
-
-    var margin = {top: 5, right: 35, bottom: 20, left: 40},
-            width = 450 - margin.left - margin.right,
-            height = 250 - margin.top - margin.bottom;
-
-    var x = d3.scale.linear()
-            .range([0, width]);
-
-    var xAxis = d3.svg.axis()
-            .scale(x)
-            .orient("bottom");
-
-    function MakeStateChart(v) {
-        var color = d3.scale.category20()
-                .domain(d3.keys(actual[0]).filter(function (key) {
-                    return key !== "T";
-                }));
-
-        var data = actual.map(function(d, i) {
-            if (["Phi", "Theta", "Psi"].indexOf(v) > -1) {
-                k = DEG;
-            } else {
-                k = 1;
-            }
-            return {T: +d.T,
-                actual: k*d[v],
-                predict: k*predict[i][v],
-                kalman: k*kalman[i][v],
-                lower: k*kalman[i][v]-k*variance[i][v],
-                upper: k*kalman[i][v]+k*variance[i][v]
-            };
-        });
-
-        var y = d3.scale.linear()
-                .range([height, 0])
-                .domain([
-                    d3.min(data.slice(5, data.length-1), function(v) {
-                            return d3.min([v.lower, v.actual]);
-                        }),
-                    d3.max(data.slice(5, data.length-1), function (v) {
-                            return d3.max([v.upper, v.actual]);
-                    })
-                ]);
-
-        var yAxis = d3.svg.axis()
-                .scale(y)
-                .orient("left");
-
-        function line(z) {
-            return d3.svg.line()
-                    .interpolate("basis")
-                    .x(function (d) { return x(d.T); })
-                    .y(function (d) { return y(d[z]); });
-        }
-
-        var area = d3.svg.area()
-                .interpolate("basis")
-                .x(function(d) { return x(d.T); })
-                .y0(function(d) { return y(d.lower); })
-                .y1(function(d) { return y(d.upper); });
-
-        var chart = d3.select("body").append("svg")
-                .attr("width", width + margin.left + margin.right)
-                .attr("height", height + margin.top + margin.bottom)
-                .append("g")
-                .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
-
-        chart.append("g")
-                .attr("class", "x axis")
-                .attr("transform", "translate(0," + height + ")")
-                .call(xAxis);
-
-        chart.append("g")
-                .attr("class", "y axis")
-                .call(yAxis)
-                .append("text")
-                .attr("transform", "rotate(-90)")
-                .attr("y", 6)
-                .attr("dy", ".71em")
-                .style("text-anchor", "end");
-
-        var lines = chart.selectAll(".lines")
-                .data([data])
-                .enter().append("g")
-                .attr("class", "lines");
-
-        lines.append("path")
-                .attr("class", "area")
-                .attr("d", area)
-                .style("fill", color(v));
-
-        lines.append("path")
-                .attr("class", "line")
-                .attr("d", line("actual"))
-                .style("stroke", "Black");
-
-        lines.append("path")
-                .attr("class", "line")
-                .attr("d", line("predict"))
-                .style("stroke", color(v))
-                .style("stroke-dasharray", "5,10");
-
-        lines.append("path")
-                .attr("class", "line")
-                .attr("d", line("kalman"))
-                .style("stroke", color(v));
-
-        chart.append("text")
-                .attr("x", width/2)
-                .attr("y", margin.top)
-                .attr("text-anchor", "middle")
-                .attr("alignment-baseline", "hanging")
-                .style("font-size", "12px")
-                .text(v);
-    }
-
-    function MakeCMChart(v) {
-        var color = d3.scale.category10()
-                .domain( d3.keys(measure[0]).filter(function (key) {
-                    return key !== "T";
-                }).concat( d3.keys(control[0]).filter(function (key) {
-                    return key !== "T";
-                })
-                ));
-
-        if (d3.keys(measure[0]).indexOf(v)>-1) {
-            dat = measure;
-        } else {
-            dat = control;
-        }
-
-        var data = dat.map(function(d, i) {
-            if (["P", "Q", "R"].indexOf(v) > -1) {
-                k = DEG;
-            } else {
-                k = 1;
-            }
-            var r = {T: +d.T,
-                y: k*d[v],
-                py: k*d[v]
-            };
-            if (dat === measure) {
-                r['py'] = +pmeasure[i][v];
-            }
-            return r;
-        });
-
-        var y = d3.scale.linear()
-                .range([height, 0])
-                .domain([
-                    d3.min(data, function(d) {
-                        return d3.min([+d.y, +d.py]);
-                }),
-                    d3.max(data, function(d) {
-                        return d3.max([+d.y, +d.py]);
-                    })]
-                );
-
-        var yAxis = d3.svg.axis()
-                .scale(y)
-                .orient("left");
-
-        var line = d3.svg.line()
-                    .interpolate("basis")
-                    .x(function (d) { return x(d.T); })
-                    .y(function (d) { return y(d.y); });
-
-        var pline = d3.svg.line()
-                .interpolate("basis")
-                .x(function (d) { return x(d.T); })
-                .y(function (d) { return y(d.py); });
-
-        var chart = d3.select("body").append("svg")
-                .attr("width", width + margin.left + margin.right)
-                .attr("height", height + margin.top + margin.bottom)
-                .append("g")
-                .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
-
-        chart.append("g")
-                .attr("class", "x axis")
-                .attr("transform", "translate(0," + height + ")")
-                .call(xAxis);
-
-        chart.append("g")
-                .attr("class", "y axis")
-                .call(yAxis)
-                .append("text")
-                .attr("transform", "rotate(-90)")
-                .attr("y", 6)
-                .attr("dy", ".71em")
-                .style("text-anchor", "end");
-
-        var lines = chart.selectAll(".lines")
-                .data([data])
-                .enter().append("g")
-                .attr("class", "lines");
-
-        lines.append("path")
-                .attr("class", "line")
-                .attr("d", line)
-                .style("stroke", color(v));
-
-        lines.append("path")
-                .attr("class", "pline")
-                .attr("d", pline)
-                .style("stroke", color(v))
-                .style("stroke-dasharray", "5,10");
-
-        chart.append("text")
-                .attr("x", width/2)
-                .attr("y", margin.top)
-                .attr("text-anchor", "middle")
-                .attr("alignment-baseline", "hanging")
-                .style("font-size", "12px")
-                .text(v);
-    }
 
     d3.csv("k_state.csv", function (error, data) {
         if (error) throw error;
@@ -315,37 +102,292 @@
     });
 
     function makeAll() {
-        x.domain(d3.extent(actual, function(d) {
-            return +d.T;
-        }));
+        var margin = {top: 5, right: 35, bottom: 20, left: 40},
+                width = 450 - margin.left - margin.right,
+                height = 250 - margin.top - margin.bottom;
 
-        MakeStateChart("Ux");
-        MakeStateChart("Uy");
-        MakeStateChart("Uz");
-        MakeStateChart("Phi");
-        MakeStateChart("Theta");
-        MakeStateChart("Psi");
-        MakeStateChart("Vx");
-        MakeStateChart("Vy");
-        MakeStateChart("Vz");
-        MakeStateChart("Mx");
-        MakeStateChart("My");
-        MakeStateChart("Mz");
-        MakeCMChart("P");
-        MakeCMChart("Q");
-        MakeCMChart("R");
-        MakeCMChart("Ax");
-        MakeCMChart("Ay");
-        MakeCMChart("Az");
-        MakeCMChart("Wx");
-        MakeCMChart("Wy");
-        MakeCMChart("Wz");
-        MakeCMChart("Mx");
-        MakeCMChart("My");
-        MakeCMChart("Mz");
-        MakeCMChart("Ux");
-        MakeCMChart("Uy");
-        MakeCMChart("Uz");
+        var DEG = 57.295780,
+                charts = [];
+
+        // Common x-scaling and x-axis for all graphs
+        var x = d3.scale.linear()
+                .domain(d3.extent(actual, function(d) {
+                    return +d.T;
+                }))
+                .range([0, width]);
+
+        var xAxis = d3.svg.axis()
+                .scale(x)
+                .orient("bottom");
+
+        var zoom = d3.behavior.zoom()
+                .x(x)
+                .scaleExtent([1, Infinity])
+                .on("zoom", zoomed);
+
+        function zoomed() {
+            charts.map(function(c) {
+                c.container.attr("transform", "translate(" +
+                        d3.event.translate[0] + ",0)scale(" + d3.event.scale + ",1)");
+                c.svg.select(".x.axis").call(xAxis);
+            })
+        };
+
+        function MakeStateChart(v) {
+
+            var chart = {};
+            chart.color = d3.scale.category20()
+                    .domain(d3.keys(actual[0]).filter(function (key) {
+                        return key !== "T";
+                    }));
+
+            chart.data = actual.map(function(d, i) {
+                if (["Phi", "Theta", "Psi"].indexOf(v) > -1) {
+                    k = DEG;
+                } else {
+                    k = 1;
+                }
+                return {T: +d.T,
+                    actual: k*d[v],
+                    predict: k*predict[i][v],
+                    kalman: k*kalman[i][v],
+                    lower: k*kalman[i][v]-k*variance[i][v],
+                    upper: k*kalman[i][v]+k*variance[i][v]
+                };
+            });
+
+            chart.y = d3.scale.linear()
+                    .range([height, 0])
+                    .domain([
+                        d3.min(chart.data.slice(5, chart.data.length-1), function(v) {
+                            return d3.min([v.lower, v.actual]);
+                        }),
+                        d3.max(chart.data.slice(5, chart.data.length-1), function (v) {
+                            return d3.max([v.upper, v.actual]);
+                        })
+                    ]);
+
+            chart.yAxis = d3.svg.axis()
+                    .scale(chart.y)
+                    .orient("left");
+
+            function line(z) {
+                return d3.svg.line()
+                        .interpolate("basis")
+                        .x(function (d) { return x(d.T); })
+                        .y(function (d) { return chart.y(d[z]); });
+            }
+
+            chart.area = d3.svg.area()
+                    .interpolate("basis")
+                    .x(function(d) { return x(d.T); })
+                    .y0(function(d) { return chart.y(d.lower); })
+                    .y1(function(d) { return chart.y(d.upper); });
+
+            chart.svg = d3.select("body").append("svg")
+                    .attr("width", width + margin.left + margin.right)
+                    .attr("height", height + margin.top + margin.bottom)
+                    .append("g")
+                    .attr("transform", "translate(" + margin.left + "," + margin.top + ")")
+                    .call(zoom);
+
+            chart.svg.append("rect")
+                    .attr("width", width)
+                    .attr("height", height);
+
+            chart.container = chart.svg.append("g");
+
+            chart.lines = chart.container.selectAll(".lines")
+                    .data([chart.data])
+                    .enter().append("g")
+                    .attr("class", "lines");
+
+            chart.lines.append("path")
+                    .attr("class", "area")
+                    .attr("d", chart.area)
+                    .style("fill", chart.color(v));
+
+            chart.lines.append("path")
+                    .attr("class", "line")
+                    .attr("d", line("actual"))
+                    .style("stroke", "Black");
+
+            chart.lines.append("path")
+                    .attr("class", "line")
+                    .attr("d", line("predict"))
+                    .style("stroke", chart.color(v))
+                    .style("stroke-dasharray", "5,10");
+
+            chart.lines.append("path")
+                    .attr("class", "line")
+                    .attr("d", line("kalman"))
+                    .style("stroke", chart.color(v));
+
+            chart.svg.append("g")
+                    .attr("class", "x axis")
+                    .attr("transform", "translate(0," + height + ")")
+                    .call(xAxis);
+
+            chart.svg.append("g")
+                    .attr("class", "y axis")
+                    .call(chart.yAxis)
+                    .append("text")
+                    .attr("transform", "rotate(-90)")
+                    .attr("y", 6)
+                    .attr("dy", ".71em")
+                    .style("text-anchor", "end");
+
+            chart.svg.append("text")
+                    .attr("x", width/2)
+                    .attr("y", margin.top)
+                    .attr("text-anchor", "middle")
+                    .attr("alignment-baseline", "hanging")
+                    .style("font-size", "12px")
+                    .text(v);
+
+            return chart
+        }
+
+        function MakeCMChart(v) {
+            var chart = {}
+
+            chart.color = d3.scale.category10()
+                    .domain( d3.keys(measure[0]).filter(function (key) {
+                        return key !== "T";
+                    }).concat( d3.keys(control[0]).filter(function (key) {
+                                return key !== "T";
+                            })
+                    ));
+
+            if (d3.keys(measure[0]).indexOf(v)>-1) {
+                dat = measure;
+            } else {
+                dat = control;
+            }
+
+            chart.data = dat.map(function(d, i) {
+                if (["P", "Q", "R"].indexOf(v) > -1) {
+                    k = DEG;
+                } else {
+                    k = 1;
+                }
+                var r = {T: +d.T,
+                    y: k*d[v],
+                    py: k*d[v]
+                };
+                if (dat === measure) {
+                    r['py'] = +pmeasure[i][v];
+                }
+                return r;
+            });
+
+            chart.y = d3.scale.linear()
+                    .range([height, 0])
+                    .domain([
+                        d3.min(chart.data, function(d) {
+                            return d3.min([+d.y, +d.py]);
+                        }),
+                        d3.max(chart.data, function(d) {
+                            return d3.max([+d.y, +d.py]);
+                        })]
+                    );
+
+            chart.yAxis = d3.svg.axis()
+                    .scale(chart.y)
+                    .orient("left");
+
+            var line = d3.svg.line()
+                    .interpolate("basis")
+                    .x(function (d) { return x(d.T); })
+                    .y(function (d) { return chart.y(d.y); });
+
+            var pline = d3.svg.line()
+                    .interpolate("basis")
+                    .x(function (d) { return x(d.T); })
+                    .y(function (d) { return chart.y(d.py); });
+
+            chart.svg = d3.select("body").append("svg")
+                    .attr("width", width + margin.left + margin.right)
+                    .attr("height", height + margin.top + margin.bottom)
+                    .append("g")
+                    .attr("transform", "translate(" + margin.left + "," + margin.top + ")")
+                    .call(zoom);
+
+            chart.svg.append("rect")
+                    .attr("width", width)
+                    .attr("height", height);
+
+            chart.container = chart.svg.append("g");
+
+            chart.lines = chart.container.selectAll(".lines")
+                    .data([chart.data])
+                    .enter().append("g")
+                    .attr("class", "lines");
+
+            chart.lines.append("path")
+                    .attr("class", "line")
+                    .attr("d", line)
+                    .style("stroke", chart.color(v));
+
+            chart.lines.append("path")
+                    .attr("class", "pline")
+                    .attr("d", pline)
+                    .style("stroke", chart.color(v))
+                    .style("stroke-dasharray", "5,10");
+
+
+            chart.svg.append("g")
+                    .attr("class", "x axis")
+                    .attr("transform", "translate(0," + height + ")")
+                    .call(xAxis);
+
+            chart.svg.append("g")
+                    .attr("class", "y axis")
+                    .call(chart.yAxis)
+                    .append("text")
+                    .attr("transform", "rotate(-90)")
+                    .attr("y", 6)
+                    .attr("dy", ".71em")
+                    .style("text-anchor", "end");
+
+            chart.svg.append("text")
+                    .attr("x", width/2)
+                    .attr("y", margin.top)
+                    .attr("text-anchor", "middle")
+                    .attr("alignment-baseline", "hanging")
+                    .style("font-size", "12px")
+                    .text(v);
+
+            return chart
+        }
+
+        charts.push(MakeStateChart("Ux"));
+        charts.push(MakeStateChart("Uy"));
+        charts.push(MakeStateChart("Uz"));
+        charts.push(MakeStateChart("Phi"));
+        charts.push(MakeStateChart("Theta"));
+        charts.push(MakeStateChart("Psi"));
+        charts.push(MakeStateChart("Vx"));
+        charts.push(MakeStateChart("Vy"));
+        charts.push(MakeStateChart("Vz"));
+        charts.push(MakeStateChart("Mx"));
+        charts.push(MakeStateChart("My"));
+        charts.push(MakeStateChart("Mz"));
+        charts.push(MakeCMChart("P"));
+        charts.push(MakeCMChart("Q"));
+        charts.push(MakeCMChart("R"));
+        charts.push(MakeCMChart("Ax"));
+        charts.push(MakeCMChart("Ay"));
+        charts.push(MakeCMChart("Az"));
+        charts.push(MakeCMChart("Wx"));
+        charts.push(MakeCMChart("Wy"));
+        charts.push(MakeCMChart("Wz"));
+        charts.push(MakeCMChart("Mx"));
+        charts.push(MakeCMChart("My"));
+        charts.push(MakeCMChart("Mz"));
+        charts.push(MakeCMChart("Ux"));
+        charts.push(MakeCMChart("Uy"));
+        charts.push(MakeCMChart("Uz"));
     }
 
 </script>
