@@ -33,23 +33,23 @@
             vector-effect: non-scaling-stroke;
         }
 
-        .line.actual {
+        .actual {
             stroke: black;
         }
 
-        .line.predict {
-            stroke-dasharray: "5,10";
+        .predict {
+            stroke-dasharray: 3;
+        }
+
+        .area {
+            fill-opacity: 0.3;
         }
 
         .pline {
             fill: none;
             stroke-width: 1px;
-            stroke-dasharray: "5,20";
+            stroke-dasharray: 3;
             vector-effect: non-scaling-stroke;
-        }
-
-        .area {
-            fill-opacity: 0.3;
         }
 
         .brush {
@@ -412,8 +412,7 @@
             chart.lines.append("path")
                     .attr("class", "pline")
                     .attr("d", chart.pline)
-                    .style("stroke", chart.color(v))
-                    .style("stroke-dasharray", "5,10");
+                    .style("stroke", chart.color(v));
 
             chart.brush = chart.svg.append("g")
                     .attr("class", "brush")
