@@ -13,11 +13,6 @@
             shape-rendering: crispEdges;
         }
 
-        .overlay {
-            fill: none;
-            pointer-events: all;
-        }
-
         .cursor {
             stroke: steelblue;
         }
@@ -62,6 +57,7 @@
             fill: #bbb;
             fill-opacity: 0.5;
             shape-rendering: crispEdges;
+            pointer-events: all;
         }
 
     </style>
@@ -150,6 +146,7 @@
             var xs = brush.empty() ? [0, 0] : brush.extent();
             charts.map(function(c) {
                 c.svg.select(".brush").call(brush);
+                c.cursor.style("display", "none");
             });
         }
 
@@ -325,11 +322,6 @@
                     .call(brush)
                     .selectAll("rect")
                     .attr("y", 0)
-                    .attr("height", height);
-
-            chart.overlay = chart.svg.append("rect")
-                    .attr("class", "overlay")
-                    .attr("width", width)
                     .attr("height", height)
                     .on("mouseover", mousein)
                     .on("mouseout", mouseout)
@@ -441,14 +433,6 @@
                     .attr("y1", 0)
                     .attr("y2", height);
 
-            chart.overlay = chart.svg.append("rect")
-                    .attr("class", "overlay")
-                    .attr("width", width)
-                    .attr("height", height)
-                    .on("mouseover", mousein)
-                    .on("mouseout", mouseout)
-                    .on("mousemove", mousemove);
-
             chart.lines = chart.svg.selectAll(".lines")
                     .data([chart.data])
                     .enter().append("g")
@@ -469,7 +453,10 @@
                     .call(brush)
                     .selectAll("rect")
                     .attr("y", 0)
-                    .attr("height", height);
+                    .attr("height", height)
+                    .on("mouseover", mousein)
+                    .on("mouseout", mouseout)
+                    .on("mousemove", mousemove);
 
             chart.svg.append("g")
                     .attr("class", "x axis")
