@@ -13,8 +13,13 @@
             shape-rendering: crispEdges;
         }
 
-        rect {
-            fill: white;
+        .overlay {
+            fill: none;
+            pointer-events: all;
+        }
+
+        .cursor {
+            stroke: steelblue;
         }
 
         .axis path,
@@ -54,7 +59,7 @@
 
         .brush {
             stroke: #bbb;
-            fill: #888;
+            fill: #bbb;
             fill-opacity: 0.5;
             shape-rendering: crispEdges;
         }
@@ -194,6 +199,26 @@
                 });
         }
 
+        function mousein() {
+            charts.map(function(c) {
+                c.cursor.style("display", null);
+            })
+        }
+
+        function mouseout() {
+            charts.map(function(c) {
+                c.cursor.style("display", "none");
+            });
+        }
+
+        function mousemove() {
+            var xc = d3.mouse(this)[0];
+            console.log("move", xc);
+            charts.map(function(c) {
+                c.cursor.attr("transform", "translate(" + xc + ",0)");
+            });
+        }
+
         function MakeStateChart(v) {
 
             var chart = {
@@ -265,10 +290,12 @@
                     .append("g")
                     .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
 
-            chart.svg.append("rect")
-                    .attr("width", width)
-                    .attr("height", height);
-
+            chart.cursor = chart.svg.append("line")
+                    .attr("class", "cursor")
+                    .attr("x1", 0)
+                    .attr("x2", 0)
+                    .attr("y1", 0)
+                    .attr("y2", height);
             chart.lines = chart.svg.selectAll(".lines")
                     .data([chart.data])
                     .enter().append("g")
@@ -299,6 +326,14 @@
                     .selectAll("rect")
                     .attr("y", 0)
                     .attr("height", height);
+
+            chart.overlay = chart.svg.append("rect")
+                    .attr("class", "overlay")
+                    .attr("width", width)
+                    .attr("height", height)
+                    .on("mouseover", mousein)
+                    .on("mouseout", mouseout)
+                    .on("mousemove", mousemove);
 
             chart.svg.append("g")
                     .attr("class", "x axis")
@@ -398,6 +433,21 @@
                     .attr("height", height + margin.top + margin.bottom)
                     .append("g")
                     .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+            chart.cursor = chart.svg.append("line")
+                    .attr("class", "cursor")
+                    .attr("x1", 0)
+                    .attr("x2", 0)
+                    .attr("y1", 0)
+                    .attr("y2", height);
+
+            chart.overlay = chart.svg.append("rect")
+                    .attr("class", "overlay")
+                    .attr("width", width)
+                    .attr("height", height)
+                    .on("mouseover", mousein)
+                    .on("mouseout", mouseout)
+                    .on("mousemove", mousemove);
 
             chart.lines = chart.svg.selectAll(".lines")
                     .data([chart.data])
