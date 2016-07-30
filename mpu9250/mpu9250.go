@@ -283,6 +283,7 @@ func (m *MPU9250) readSensors() {
 	defer close(m.cClose)
 
 	clock := time.NewTicker(time.Duration(int(1000.0/float32(m.sampleRate)+0.5)) * time.Millisecond)
+	//TODO westphae: use the clock to record actual time instead of a timer
 	defer clock.Stop()
 
 	clockMag := time.NewTicker(time.Duration(int(1000.0/float32(magSampleRate)+0.5)) * time.Millisecond)
@@ -359,6 +360,7 @@ func (m *MPU9250) readSensors() {
 				g21 += float64(g1) * float64(g1)
 				g22 += float64(g2) * float64(g2)
 				g23 += float64(g3) * float64(g3)
+				//TODO westphae: don't calibrate accel!
 				a11 += float64(a1)
 				a12 += float64(a2)
 				a13 += float64(a3) - 1/m.scaleAccel

@@ -126,7 +126,6 @@ func (s *State) IsInertial(c *Control, m *Measurement) (inertial bool) {
 
 	if t-float64(s.mL.T/1000000000)>tL/2 {
 		// Tests for inertial frame:
-		//TODO westphae: this needs to be tuned!
 		// 1. Gyro rates are nearly zero
 		inertial = math.Abs(s.cS.H1 - 0) < 0.25 && math.Abs(s.cS.H2 - 0) < 0.25 && math.Abs(s.cS.H3 - 0) < 0.25 &&
 		// 2. Acceleration has magnitude nearly G in nearly steady direction
