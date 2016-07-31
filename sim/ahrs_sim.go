@@ -140,20 +140,25 @@ func main() {
 	gyroBias[2] *= math.Pi/180
 
 	// Files to save data to for analysis
+	// U, Z, E, H, N,
+	// V, C, F, D, L
 	lActual := NewAHRSLogger("k_state.csv",
-		"T", "Ux", "Uy", "Uz", "Phi", "Theta", "Psi", "Vx", "Vy", "Vz", "Mx", "My", "Mz")
+		"T", "U1", "U2", "U3", "Z1", "Z2", "Z3", "Phi", "Theta", "Psi", "H1", "H2", "H3", "N1", "N2", "N3",
+		"V1", "V2", "V3", "C1", "C2", "C3", "Phi0", "Theta0", "Psi0", "D1", "D2", "D3", "L1", "L2", "L3")
 	lKalman := NewAHRSLogger("k_kalman.csv",
-		"T", "Ux", "Uy", "Uz", "Phi", "Theta", "Psi", "Vx", "Vy", "Vz", "Mx", "My", "Mz")
+		"T", "U1", "U2", "U3", "Z1", "Z2", "Z3", "Phi", "Theta", "Psi", "H1", "H2", "H3", "N1", "N2", "N3",
+		"V1", "V2", "V3", "C1", "C2", "C3", "Phi0", "Theta0", "Psi0", "D1", "D2", "D3", "L1", "L2", "L3")
 	lPredict := NewAHRSLogger("k_predict.csv",
-		"T", "Ux", "Uy", "Uz", "Phi", "Theta", "Psi", "Vx", "Vy", "Vz", "Mx", "My", "Mz")
+		"T", "U1", "U2", "U3", "Z1", "Z2", "Z3", "Phi", "Theta", "Psi", "H1", "H2", "H3", "N1", "N2", "N3",
+		"V1", "V2", "V3", "C1", "C2", "C3", "Phi0", "Theta0", "Psi0", "D1", "D2", "D3", "L1", "L2", "L3")
 	lVar := NewAHRSLogger("k_var.csv",
-		"T", "Ux", "Uy", "Uz", "Phi", "Theta", "Psi", "Vx", "Vy", "Vz", "Mx", "My", "Mz")
-	lControl := NewAHRSLogger("k_control.csv",
-		"T", "P", "Q", "R", "Ax", "Ay", "Az")
+		"T", "U1", "U2", "U3", "Z1", "Z2", "Z3", "Phi", "Theta", "Psi", "H1", "H2", "H3", "N1", "N2", "N3",
+		"V1", "V2", "V3", "C1", "C2", "C3", "Phi0", "Theta0", "Psi0", "D1", "D2", "D3", "L1", "L2", "L3")
+	// U, W, A, B, M
 	lMeas := NewAHRSLogger("k_meas.csv",
-		"T", "Wx", "Wy", "Wz", "Mx", "My", "Mz", "Ux", "Uy", "Uz")
+		"T", "U1", "U2", "U3", "W1", "W2", "W3", "A1", "A2", "A3", "B1", "B2", "B3", "M1", "M2", "M3")
 	lPMeas := NewAHRSLogger("k_predmeas.csv",
-		"T", "Wx", "Wy", "Wz", "Mx", "My", "Mz", "Ux", "Uy", "Uz")
+		"T", "U1", "U2", "U3", "W1", "W2", "W3", "A1", "A2", "A3", "B1", "B2", "B3", "M1", "M2", "M3")
 
 	switch scenario {
 	case "takeoff":
@@ -170,16 +175,14 @@ func main() {
 
 	// This is where it all happens
 	fmt.Println("Running Simulation")
-	s0 := new(ahrs.State)
-	s  := new(ahrs.State)
-	c  := new(ahrs.Control)
+	s0 := new(ahrs.State)       // Actual state from simulation, for comparison
 	m  := new(ahrs.Measurement)
 	pm := new(ahrs.Measurement)
 	t := sit.BeginTime()
 	tNextUpdate := t + udt
 
 	// Try to initialize
-	s.Initialize(m, c)
+	s := ahrs.Initialize(m)
 
 	for {
 		if t>tNextUpdate-1e-9 {
@@ -191,67 +194,96 @@ func main() {
 			break
 		}
 		phi, theta, psi := ahrs.FromQuaternion(s0.E0, s0.E1, s0.E2, s0.E3)
-		lActual.Log(float64(s0.T)/1000000000, s0.U1, s0.U2, s0.U3, phi, theta, psi,
-			s0.V1, s0.V2, s0.V3, s0.M1, s0.M2, s0.M3)
-
-		// Take control "measurements"
-		if err := sit.Control(t, c, gyroNoise, accelNoise, gyroBias, accelBias); err != nil {
-			break
-		}
-		lControl.Log(float64(c.T)/1000000000, -c.H1, c.H2, c.H3, c.A1, c.A2, c.A3)
+		phi0, theta0, psi0 := ahrs.FromQuaternion(s0.F0, s0.F1, s0.F2, s0.F3)
+		lActual.Log(s0.T,
+			s0.U1, s0.U2, s0.U3,
+			s0.Z1, s0.Z2, s0.Z3,
+			phi, theta, psi,
+			s0.H1, s0.H2, s0.H3,
+			s0.N1, s0.N2, s0.N3,
+			s0.V1, s0.V2, s0.V3,
+			s0.C1, s0.C2, s0.C3,
+			phi0, theta0, psi0,
+			s0.D1, s0.D2, s0.D3,
+			s0.L1, s0.L2, s0.L3,
+		)
 
 		// Take sensor measurements
+		// U, W, A, B, M
 		if err := sit.Measurement(t, m, !gpsInop, !asiInop, !magInop, gpsNoise, asiNoise, magNoise, asiBias, magBias); err != nil {
 			break
 		}
-		lMeas.Log(float64(m.T)/1000000000, m.W1, m.W2, m.W3, m.M1, m.M2, m.M3, m.U1, m.U2, m.U3)
+		lMeas.Log(m.T,
+			m.U1, m.U2, m.U3,
+			m.W1, m.W2, m.W3,
+			m.A1, m.A2, m.A3,
+			m.B1, m.B2, m.B3,
+			m.M1, m.M2, m.M3,
+		)
 
-		// If aircraft frame is inertial, then check calibration
-		if s.IsInertial(c, m) {
-			s.Calibrate(c, m)
+		// Predict stage of Kalman filter
+		s.Predict(t)
+		phi, theta, psi = ahrs.FromQuaternion(s.E0, s.E1, s.E2, s.E3)
+		phi0, theta0, psi0 = ahrs.FromQuaternion(s.F0, s.F1, s.F2, s.F3)
+		lPredict.Log(s.T,
+			s.U1, s.U2, s.U3,
+			s.Z1, s.Z2, s.Z3,
+			phi, theta, psi,
+			s.H1, s.H2, s.H3,
+			s.N1, s.N2, s.N3,
+			s.V1, s.V2, s.V3,
+			s.C1, s.C2, s.C3,
+			phi0, theta0, psi0,
+			s.D1, s.D2, s.D3,
+			s.L1, s.L2, s.L3,
+		)
+
+		pm = s.PredictMeasurement()
+		lPMeas.Log(
+			pm.U1, pm.U2, pm.U3,
+			pm.W1, pm.W2, pm.W3,
+			pm.A1, pm.A2, pm.A3,
+			pm.B1, pm.B2, pm.B3,
+			pm.M1, pm.M2, pm.M3,
+		)
+
+		// Update stage of Kalman filter
+		if t > tNextUpdate - 1e-9 {
+			tNextUpdate += udt
+			s.Update(m)
 		}
-
-		// If we have calibration and the Kalman filter is initialized, then run the filter
-		if s.Calibrated {
-			// Predict stage of Kalman filter
-			s.Predict(c)
-			phi, theta, psi = ahrs.FromQuaternion(s.E0, s.E1, s.E2, s.E3)
-			lPredict.Log(float64(s.T) / 1000000000, s.U1, s.U2, s.U3, phi, theta, psi,
-				s.V1, s.V2, s.V3, s.M1, s.M2, s.M3)
-
-			s.PredictMeasurement(pm)
-			lPMeas.Log(float64(m.T) / 1000000000, pm.W1, pm.W2, pm.W3, pm.M1, pm.M2, pm.M3, pm.U1, pm.U2, pm.U3)
-
-			// Update stage of Kalman filter
-			if t > tNextUpdate - 1e-9 {
-				tNextUpdate += udt
-				s.Update(m)
-			}
-			phi, theta, psi = ahrs.FromQuaternion(s.E0, s.E1, s.E2, s.E3)
-			dphi, dtheta, dpsi := ahrs.VarFromQuaternion(s.E0, s.E1, s.E2, s.E3,
-				math.Sqrt(s.M.Get(3, 3)), math.Sqrt(s.M.Get(4, 4)),
-				math.Sqrt(s.M.Get(5, 5)), math.Sqrt(s.M.Get(6, 6)))
-			lKalman.Log(float64(s.T) / 1000000000, s.U1, s.U2, s.U3, phi, theta, psi,
-				s.V1, s.V2, s.V3, s.M1, s.M2, s.M3)
-			lVar.Log(float64(s.T) / 1000000000,
-				math.Sqrt(s.M.Get(0, 0)), math.Sqrt(s.M.Get(1, 1)), math.Sqrt(s.M.Get(2, 2)),
-				dphi, dtheta, dpsi,
-				math.Sqrt(s.M.Get(7, 7)), math.Sqrt(s.M.Get(8, 8)), math.Sqrt(s.M.Get(9, 9)),
-				math.Sqrt(s.M.Get(10, 10)), math.Sqrt(s.M.Get(11, 11)), math.Sqrt(s.M.Get(12, 12)),
-			)
-		} else {
-			lPredict.Log(t, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-			lPMeas.Log(t, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-			lKalman.Log(t, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-			lVar.Log(t, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-			tNextUpdate += pdt
-		}
-
-		// Apply some heuristics
-		if s.U1 < 0 {
-			s.U1 = -s.U1
-			s.V1 = -s.V1
-		}
+		phi, theta, psi = ahrs.FromQuaternion(s.E0, s.E1, s.E2, s.E3)
+		phi0, theta0, psi0 = ahrs.FromQuaternion(s.F0, s.F1, s.F2, s.F3)
+		dphi, dtheta, dpsi := ahrs.VarFromQuaternion(s.E0, s.E1, s.E2, s.E3,
+			math.Sqrt(s.M.Get(6, 6)), math.Sqrt(s.M.Get(7, 7)),
+			math.Sqrt(s.M.Get(8, 8)), math.Sqrt(s.M.Get(9, 9)))
+		dphi0, dtheta0, dpsi0 := ahrs.VarFromQuaternion(s.F0, s.F1, s.F2, s.F3,
+			math.Sqrt(s.M.Get(22, 22)), math.Sqrt(s.M.Get(23, 23)),
+			math.Sqrt(s.M.Get(24, 24)), math.Sqrt(s.M.Get(25, 25)))
+		lKalman.Log(s.T,
+			s.U1, s.U2, s.U3,
+			s.Z1, s.Z2, s.Z3,
+			phi, theta, psi,
+			s.H1, s.H2, s.H3,
+			s.N1, s.N2, s.N3,
+			s.V1, s.V2, s.V3,
+			s.C1, s.C2, s.C3,
+			phi0, theta0, psi0,
+			s.D1, s.D2, s.D3,
+			s.L1, s.L2, s.L3,
+		)
+		lVar.Log(float64(s.T) / 1000000000,
+			math.Sqrt(s.M.Get(0, 0)), math.Sqrt(s.M.Get(1, 1)), math.Sqrt(s.M.Get(2, 2)),
+			math.Sqrt(s.M.Get(3, 3)), math.Sqrt(s.M.Get(4, 4)), math.Sqrt(s.M.Get(5, 5)),
+			dphi, dtheta, dpsi,
+			math.Sqrt(s.M.Get(10, 10)), math.Sqrt(s.M.Get(11, 11)), math.Sqrt(s.M.Get(12, 12)),
+			math.Sqrt(s.M.Get(13, 13)), math.Sqrt(s.M.Get(14, 14)), math.Sqrt(s.M.Get(15, 15)),
+			math.Sqrt(s.M.Get(16, 16)), math.Sqrt(s.M.Get(17, 17)), math.Sqrt(s.M.Get(18, 18)),
+			math.Sqrt(s.M.Get(19, 19)), math.Sqrt(s.M.Get(20, 20)), math.Sqrt(s.M.Get(21, 21)),
+			dphi0, dtheta0, dpsi0,
+			math.Sqrt(s.M.Get(26, 26)), math.Sqrt(s.M.Get(27, 27)), math.Sqrt(s.M.Get(28, 28)),
+			math.Sqrt(s.M.Get(29, 29)), math.Sqrt(s.M.Get(30, 30)), math.Sqrt(s.M.Get(31, 31)),
+		)
 
 		t += pdt
 	}
@@ -260,7 +292,7 @@ func main() {
 	lActual.Close()
 	lKalman.Close()
 	lPredict.Close()
-	lControl.Close()
+	lPMeas.Close()
 	lVar.Close()
 	lMeas.Close()
 

@@ -27,7 +27,7 @@ func (s *SituationSim) BeginTime() (float64) {
 }
 
 // Interpolate an ahrs.State from a Situation definition at a given time
-func (s *SituationSim) Interpolate(t float64, st *ahrs.State) (error) {
+func (s *SituationSim) Interpolate(t float64, st *ahrs.State, aBias, bBias, mBias []float64) (error) {
 	if t < s.t[0] || t > s.t[len(s.t)-1] {
 		st = new(ahrs.State)
 		return errors.New("requested time is outside of scenario")
@@ -37,7 +37,8 @@ func (s *SituationSim) Interpolate(t float64, st *ahrs.State) (error) {
 		ix = sort.SearchFloat64s(s.t, t) - 1
 	}
 
-	f := (s.t[ix+1] - t) / (s.t[ix+1] - s.t[ix])
+	ddt := (s.t[ix+1] - s.t[ix])
+	f := (s.t[ix+1] - t) / ddt
 	e0, e1, e2, e3 := ahrs.ToQuaternion(
 		f*s.phi[ix]+(1-f)*s.phi[ix+1],
 		f*s.theta[ix]+(1-f)*s.theta[ix+1],
@@ -49,23 +50,40 @@ func (s *SituationSim) Interpolate(t float64, st *ahrs.State) (error) {
 		f*s.psi0[ix]+(1-f)*s.psi0[ix+1])
 	ff := math.Sqrt(f0*f0 + f1*f1 + f2*f2 + f3*f3)
 
+	// U, Z, E, H, N,
+	// V, C, F, D, L
 	st.U1 = f*s.u1[ix] + (1-f)*s.u1[ix+1]
 	st.U2 = f*s.u2[ix] + (1-f)*s.u2[ix+1]
 	st.U3 = f*s.u3[ix] + (1-f)*s.u3[ix+1]
+	st.Z1 = (s.u1[ix+1] - s.u1[ix]) / ddt
+	st.Z2 = (s.u2[ix+1] - s.u2[ix]) / ddt
+	st.Z3 = (s.u3[ix+1] - s.u3[ix]) / ddt
 	st.E0 = e0 / ee
 	st.E1 = e1 / ee
 	st.E2 = e2 / ee
 	st.E3 = e3 / ee
+	st.H1 = 0 //TODO westphae: calc these
+	st.H2 = 0
+	st.H3 = 0
+	st.N1 = f*s.m1[ix] + (1-f)*s.m1[ix+1]
+	st.N2 = f*s.m2[ix] + (1-f)*s.m2[ix+1]
+	st.N3 = f*s.m3[ix] + (1-f)*s.m3[ix+1]
+	st.V1 = f*s.v1[ix] + (1-f)*s.v1[ix+1]
+	st.V2 = f*s.v2[ix] + (1-f)*s.v2[ix+1]
+	st.V3 = f*s.v3[ix] + (1-f)*s.v3[ix+1]
+	st.C1 = aBias[0]
+	st.C2 = aBias[1]
+	st.C3 = aBias[2]
 	st.F0 = f0 / ff
 	st.F1 = f1 / ff
 	st.F2 = f2 / ff
 	st.F3 = f3 / ff
-	st.V1 = f*s.v1[ix] + (1-f)*s.v1[ix+1]
-	st.V2 = f*s.v2[ix] + (1-f)*s.v2[ix+1]
-	st.V3 = f*s.v3[ix] + (1-f)*s.v3[ix+1]
-	st.M1 = f*s.m1[ix] + (1-f)*s.m1[ix+1]
-	st.M2 = f*s.m2[ix] + (1-f)*s.m2[ix+1]
-	st.M3 = f*s.m3[ix] + (1-f)*s.m3[ix+1]
+	st.D1 = bBias[0]
+	st.D2 = bBias[1]
+	st.D3 = bBias[2]
+	st.L1 = mBias[0]
+	st.L2 = mBias[1]
+	st.L3 = mBias[2]
 	st.T =  int64(t*1000000000 + 0.5) // easy rounding for uint
 	st.M =  new(matrix.DenseMatrix)
 	return nil

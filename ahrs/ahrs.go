@@ -102,8 +102,6 @@ func (s *State) normalize() {
 func Initialize(m *Measurement) (s *State) {
 	s = new(State)
 
-	// U, Z, E, H, N,
-	// V, C, F, D, L
 	s.M = matrix.Diagonal([]float64{
 		50, 5, 5,           // U*3
 		5, 2, 2,            // Z*3
@@ -190,8 +188,6 @@ func (s *State) Predict(t float64) {
 	s.T = t
 
 	s.M = matrix.Sum(matrix.Product(f, matrix.Product(s.M, f.Transpose())), matrix.Scaled(s.N, dt))
-	// U, Z, E, H, N,
-	// V, C, F, D, L
 }
 
 // Update applies the Kalman filter corrections given the measurements
@@ -275,19 +271,38 @@ func (s *State) Update(m *Measurement) {
 	s.U1 += su.Get(0, 0)
 	s.U2 += su.Get(1, 0)
 	s.U3 += su.Get(2, 0)
-	s.E0 += su.Get(3, 0)
-	s.E1 += su.Get(4, 0)
-	s.E2 += su.Get(5, 0)
-	s.E3 += su.Get(6, 0)
-	s.normalize()
-	s.V1 += su.Get(7, 0)
-	s.V2 += su.Get(8, 0)
-	s.V3 += su.Get(9, 0)
-	s.N1 += su.Get(10, 0)
-	s.N2 += su.Get(11, 0)
-	s.N3 += su.Get(12, 0)
+	s.Z1 += su.Get(3, 0)
+	s.Z2 += su.Get(4, 0)
+	s.Z3 += su.Get(5, 0)
+	s.E0 += su.Get(6, 0)
+	s.E1 += su.Get(7, 0)
+	s.E2 += su.Get(8, 0)
+	s.E3 += su.Get(9, 0)
+	s.H1 += su.Get(10, 0)
+	s.H2 += su.Get(11, 0)
+	s.H3 += su.Get(12, 0)
+	s.N1 += su.Get(13, 0)
+	s.N2 += su.Get(14, 0)
+	s.N3 += su.Get(15, 0)
+	s.V1 += su.Get(16, 0)
+	s.V2 += su.Get(17, 0)
+	s.V3 += su.Get(18, 0)
+	s.C1 += su.Get(19, 0)
+	s.C2 += su.Get(20, 0)
+	s.C3 += su.Get(21, 0)
+	s.F0 += su.Get(22, 0)
+	s.F1 += su.Get(23, 0)
+	s.F2 += su.Get(24, 0)
+	s.F3 += su.Get(25, 0)
+	s.D1 += su.Get(26, 0)
+	s.D2 += su.Get(27, 0)
+	s.D3 += su.Get(28, 0)
+	s.L1 += su.Get(29, 0)
+	s.L2 += su.Get(30, 0)
+	s.L3 += su.Get(31, 0)
 	s.T = m.T
 	s.M = matrix.Product(matrix.Difference(matrix.Eye(13), matrix.Product(kk, h)), s.M)
+	s.normalize()
 }
 
 func (s *State) PredictMeasurement() (m *Measurement) {
