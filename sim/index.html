@@ -66,7 +66,7 @@
 <script src="http://d3js.org/d3.v3.min.js"></script>
 <script>
     var actual, predict, kalman, variance, control, measure, pmeasure,
-            remaining = 7;
+            remaining = 6;
 
     d3.csv("k_state.csv", function (error, data) {
         if (error) throw error;
@@ -96,13 +96,6 @@
         if (!--remaining) makeAll();
     });
 
-    d3.csv("k_control.csv", function (error, data) {
-        if (error) throw error;
-
-        control = data;
-        if (!--remaining) makeAll();
-    });
-
     d3.csv("k_meas.csv", function (error, data) {
         if (error) throw error;
 
@@ -122,8 +115,7 @@
                 width = 450 - margin.left - margin.right,
                 height = 250 - margin.top - margin.bottom;
 
-        var DEG = 57.295780,
-                charts = [];
+        var charts = [];
 
         // Common x-scaling and x-axis for all graphs
         var x0 = d3.extent(actual, function(d) {
@@ -228,17 +220,12 @@
                     }));
 
             chart.data = actual.map(function(d, i) {
-                if (["Phi", "Theta", "Psi"].indexOf(v) > -1) {
-                    k = DEG;
-                } else {
-                    k = 1;
-                }
                 return {T: +d.T,
-                    actual: k*d[v],
-                    predict: k*predict[i][v],
-                    kalman: k*kalman[i][v],
-                    lower: k*kalman[i][v]-k*variance[i][v],
-                    upper: k*kalman[i][v]+k*variance[i][v]
+                    actual: +d[v],
+                    predict: +predict[i][v],
+                    kalman: +kalman[i][v],
+                    lower: +kalman[i][v]-variance[i][v],
+                    upper: +kalman[i][v]+variance[i][v]
                 };
             });
 
@@ -366,30 +353,14 @@
             chart.color = d3.scale.category10()
                     .domain( d3.keys(measure[0]).filter(function (key) {
                         return key !== "T";
-                    }).concat( d3.keys(control[0]).filter(function (key) {
-                                return key !== "T";
-                            })
-                    ));
+                    }));
 
-            if (d3.keys(measure[0]).indexOf(v)>-1) {
-                dat = measure;
-            } else {
-                dat = control;
-            }
-
-            chart.data = dat.map(function(d, i) {
-                if (["P", "Q", "R"].indexOf(v) > -1) {
-                    k = DEG;
-                } else {
-                    k = 1;
-                }
+            chart.data = measure.map(function(d, i) {
                 var r = {T: +d.T,
-                    y: k*d[v],
-                    py: k*d[v]
+                    y: +d[v],
+                    py: +d[v]
                 };
-                if (dat === measure) {
-                    r['py'] = +pmeasure[i][v];
-                }
+                r['py'] = +pmeasure[i][v];
                 return r;
             });
 
@@ -499,33 +470,51 @@
             return chart
         }
 
-        charts.push(MakeStateChart("Ux"));
-        charts.push(MakeStateChart("Uy"));
-        charts.push(MakeStateChart("Uz"));
+        charts.push(MakeStateChart("U1"));
+        charts.push(MakeStateChart("U2"));
+        charts.push(MakeStateChart("U3"));
+        charts.push(MakeStateChart("Z1"));
+        charts.push(MakeStateChart("Z2"));
+        charts.push(MakeStateChart("Z3"));
         charts.push(MakeStateChart("Phi"));
         charts.push(MakeStateChart("Theta"));
         charts.push(MakeStateChart("Psi"));
-        charts.push(MakeStateChart("Vx"));
-        charts.push(MakeStateChart("Vy"));
-        charts.push(MakeStateChart("Vz"));
-        charts.push(MakeStateChart("Mx"));
-        charts.push(MakeStateChart("My"));
-        charts.push(MakeStateChart("Mz"));
-        charts.push(MakeCMChart("P"));
-        charts.push(MakeCMChart("Q"));
-        charts.push(MakeCMChart("R"));
-        charts.push(MakeCMChart("Ax"));
-        charts.push(MakeCMChart("Ay"));
-        charts.push(MakeCMChart("Az"));
-        charts.push(MakeCMChart("Wx"));
-        charts.push(MakeCMChart("Wy"));
-        charts.push(MakeCMChart("Wz"));
-        charts.push(MakeCMChart("Mx"));
-        charts.push(MakeCMChart("My"));
-        charts.push(MakeCMChart("Mz"));
-        charts.push(MakeCMChart("Ux"));
-        charts.push(MakeCMChart("Uy"));
-        charts.push(MakeCMChart("Uz"));
+        charts.push(MakeStateChart("H1"));
+        charts.push(MakeStateChart("H2"));
+        charts.push(MakeStateChart("H3"));
+        charts.push(MakeStateChart("N1"));
+        charts.push(MakeStateChart("N2"));
+        charts.push(MakeStateChart("N3"));
+        charts.push(MakeStateChart("V1"));
+        charts.push(MakeStateChart("V2"));
+        charts.push(MakeStateChart("V3"));
+        charts.push(MakeStateChart("C1"));
+        charts.push(MakeStateChart("C2"));
+        charts.push(MakeStateChart("C3"));
+        charts.push(MakeStateChart("Phi0"));
+        charts.push(MakeStateChart("Theta0"));
+        charts.push(MakeStateChart("Psi0"));
+        charts.push(MakeStateChart("D1"));
+        charts.push(MakeStateChart("D2"));
+        charts.push(MakeStateChart("D3"));
+        charts.push(MakeStateChart("L1"));
+        charts.push(MakeStateChart("L2"));
+        charts.push(MakeStateChart("L3"));
+        charts.push(MakeCMChart("U1"));
+        charts.push(MakeCMChart("U2"));
+        charts.push(MakeCMChart("U3"));
+        charts.push(MakeCMChart("W1"));
+        charts.push(MakeCMChart("W2"));
+        charts.push(MakeCMChart("W3"));
+        charts.push(MakeCMChart("A1"));
+        charts.push(MakeCMChart("A2"));
+        charts.push(MakeCMChart("A3"));
+        charts.push(MakeCMChart("B1"));
+        charts.push(MakeCMChart("B2"));
+        charts.push(MakeCMChart("B3"));
+        charts.push(MakeCMChart("M1"));
+        charts.push(MakeCMChart("M2"));
+        charts.push(MakeCMChart("M3"));
     }
 
 </script>

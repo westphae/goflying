@@ -193,13 +193,24 @@ func (s *State) Predict(t float64) {
 // Update applies the Kalman filter corrections given the measurements
 func (s *State) Update(m *Measurement) {
 	z := s.PredictMeasurement()
-	y := matrix.MakeDenseMatrix([]float64{
-		m.U1 - z.U1, m.U2 - z.U2, m.U3 - z.U3,
-		m.W1 - z.W1, m.W2 - z.W2, m.W3 - z.W3,
-		m.A1 - z.A1, m.A2 - z.A2, m.A3 - z.A3,
-		m.B1 - z.B1, m.B2 - z.B2, m.B3 - z.B3,
-		m.M1 - z.M1, m.M2 - z.M2, m.M3 - z.M3,
-	}, 15, 1)
+
+	y := matrix.Zeros(15, 1)
+	y.Set(0, 0, m.U1 - z.U1)
+	y.Set(1, 0, m.U2 - z.U2)
+	y.Set(2, 0, m.U3 - z.U3)
+	y.Set(3, 0, m.W1 - z.W1)
+	y.Set(4, 0, m.W2 - z.W2)
+	y.Set(5, 0, m.W3 - z.W3)
+	y.Set(6, 0, m.A1 - z.A1)
+	y.Set(7, 0, m.A2 - z.A2)
+	y.Set(8, 0, m.A3 - z.A3)
+	y.Set(9, 0, m.B1 - z.B1)
+	y.Set(10, 0, m.B2 - z.B2)
+	y.Set(11, 0, m.B3 - z.B3)
+	y.Set(12, 0, m.M1 - z.M1)
+	y.Set(13, 0, m.M2 - z.M2)
+	y.Set(14, 0, m.M3 - z.M3)
+
 	h := s.calcJacobianMeasurement()
 
 	// U, W, A, B, M
@@ -376,7 +387,7 @@ func (s *State) calcJacobianState(t float64) (jac *matrix.DenseMatrix) {
 
 func (s *State) calcJacobianMeasurement() (jac *matrix.DenseMatrix) {
 
-	jac = new(matrix.DenseMatrix, 15, 32)
+	jac = matrix.Zeros(15, 32)
 	// U*3, Z*3, E*4, H*3, N*3,
 	// V*3, C*3, F*4, D*3, L*3
 	// U*3, W*3, A*3, B*3, M*3

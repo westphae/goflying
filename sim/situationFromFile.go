@@ -138,34 +138,8 @@ func (s *SituationFromFile) Interpolate(t float64, st *ahrs.State) (error) {
 	}
 	st.E0 = 1
 	st.F0 = 1
-	st.T = int64(t*1e9)
+	st.T = t
 
-	return nil
-}
-
-// Return the control values, interpolated from the nearest sensor readings
-func (s *SituationFromFile) Control(t float64, c *ahrs.Control, gyroNoise, accelNoise float64, gyroBias, accelBias []float64 ) (error) {
-	if t < s.t[0] || t > s.t[len(s.t)-1] {
-		c = new(ahrs.Control)
-		return errors.New("sim: requested time is outside of recorded data")
-	}
-	ix := 0
-	if t > s.t[0] {
-		ix = sort.SearchFloat64s(s.t, t) - 1
-	}
-
-	f := (s.t[ix+1] - t) / (s.t[ix+1] - s.t[ix])
-
-	// Accel comes from the accerometer in G's, which is what we want, but it's backwards
-	c.A1 = -(f*s.a1[ix] + (1-f)*s.a1[ix+1])
-	c.A2 = -(f*s.a2[ix] + (1-f)*s.a2[ix+1])
-	c.A3 = -(f*s.a3[ix] + (1-f)*s.a3[ix+1])
-	// Gyro rates come as deg/s; we need rad/s
-	c.H1 = (f*s.h1[ix] + (1-f)*s.h1[ix+1])*pi/180
-	c.H2 = (f*s.h2[ix] + (1-f)*s.h2[ix+1])*pi/180
-	c.H3 = (f*s.h3[ix] + (1-f)*s.h3[ix+1])*pi/180
-	// Time is recorded in s; we need ns
-	c.T  = int64(t*1e9)
 	return nil
 }
 
@@ -181,18 +155,24 @@ func (s *SituationFromFile) Measurement(t float64, m *ahrs.Measurement, wValid, 
 
 	f := (s.t[ix+1] - t) / (s.t[ix+1] - s.t[ix])
 
-	m.WValid = s.tw[ix] - s.ts[ix] < 5 // Arbitrary: allow up to 5 sec lag for GPS data (5s seems typical)
-	m.W1 = f*s.w1[ix] + (1-f)*s.w1[ix+1]
-	m.W2 = f*s.w2[ix] + (1-f)*s.w2[ix+1]
-	m.W3 = f*s.w3[ix] + (1-f)*s.w3[ix+1]
 	m.UValid = false
 	m.U1 = 0
 	m.U2 = 0
 	m.U3 = 0
+	m.WValid = s.tw[ix] - s.ts[ix] < 5 // Arbitrary: allow up to 5 sec lag for GPS data (5s seems typical)
+	m.W1 = f*s.w1[ix] + (1-f)*s.w1[ix+1]
+	m.W2 = f*s.w2[ix] + (1-f)*s.w2[ix+1]
+	m.W3 = f*s.w3[ix] + (1-f)*s.w3[ix+1]
+	m.A1 = -(f*s.a1[ix] + (1-f)*s.a1[ix+1])
+	m.A2 = -(f*s.a2[ix] + (1-f)*s.a2[ix+1])
+	m.A3 = -(f*s.a3[ix] + (1-f)*s.a3[ix+1])
+	m.B1 = (f*s.h1[ix] + (1-f)*s.h1[ix+1])
+	m.B2 = (f*s.h2[ix] + (1-f)*s.h2[ix+1])
+	m.B3 = (f*s.h3[ix] + (1-f)*s.h3[ix+1])
 	m.MValid = false // For now, just invalidate it, can add back after magnetometer data is understood
 	m.M1 = f*s.m1[ix] + (1-f)*s.m1[ix+1]
 	m.M2 = f*s.m2[ix] + (1-f)*s.m2[ix+1]
 	m.M3 = f*s.m3[ix] + (1-f)*s.m3[ix+1]
-	m.T  = int64(t*1e9)
+	m.T  = t
 	return nil
 }
