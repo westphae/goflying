@@ -134,10 +134,7 @@ func main() {
 	fmt.Printf("\tNoise: %f G\n", magNoise)
 	fmt.Printf("\tBias: %f,%f,%f\n", magBias[0], magBias[1], magBias[2])
 
-	gyroNoise *= math.Pi/180
-	gyroBias[0] *= math.Pi/180
-	gyroBias[1] *= math.Pi/180
-	gyroBias[2] *= math.Pi/180
+	uBias := []float64{asiBias, 0, 0}
 
 	// Files to save data to for analysis
 	// U, Z, E, H, N,
@@ -180,17 +177,54 @@ func main() {
 	pm := new(ahrs.Measurement)
 	t := sit.BeginTime()
 	tNextUpdate := t + udt
-
-	// Try to initialize
+	sit.Measurement(t, m, !asiInop, !gpsInop, true, !magInop,
+		asiNoise, gpsNoise, accelNoise, gyroNoise, magNoise,
+		uBias, accelBias, gyroBias, magBias)
 	s := ahrs.Initialize(m)
-
+	// These next few just for testing with a correct starting state
+	sit.Interpolate(t, s0, accelBias, gyroBias, magBias)
+	// U, Z, E, H, N,
+	// V, C, F, D, L
+	s.U1 = s0.U1
+	s.U2 = s0.U2
+	s.U3 = s0.U3
+	s.Z1 = s0.Z1
+	s.Z2 = s0.Z2
+	s.Z3 = s0.Z3
+	s.E0 = s0.E0
+	s.E1 = s0.E1
+	s.E2 = s0.E2
+	s.E3 = s0.E3
+	s.H1 = s0.H1
+	s.H2 = s0.H2
+	s.H3 = s0.H3
+	s.N1 = s0.N1
+	s.N2 = s0.N2
+	s.N3 = s0.N3
+	s.V1 = s0.V1
+	s.V2 = s0.V2
+	s.V3 = s0.V3
+	s.C1 = s0.C1
+	s.C2 = s0.C2
+	s.C3 = s0.C3
+	s.F0 = s0.F0
+	s.F1 = s0.F1
+	s.F2 = s0.F2
+	s.F3 = s0.F3
+	s.D1 = s0.D1
+	s.D2 = s0.D2
+	s.D3 = s0.D3
+	s.L1 = s0.L1
+	s.L2 = s0.L2
+	s.L3 = s0.L3
+	// Done for testing
 	for {
 		if t>tNextUpdate-1e-9 {
 			t = tNextUpdate
 		}
 
 		// Peek behind the curtain: the "actual" state, which the algorithm doesn't know
-		if err := sit.Interpolate(t, s0); err != nil {
+		if err := sit.Interpolate(t, s0, accelBias, gyroBias, magBias); err != nil {
 			break
 		}
 		phi, theta, psi := ahrs.FromQuaternion(s0.E0, s0.E1, s0.E2, s0.E3)
@@ -198,19 +232,20 @@ func main() {
 		lActual.Log(s0.T,
 			s0.U1, s0.U2, s0.U3,
 			s0.Z1, s0.Z2, s0.Z3,
-			phi, theta, psi,
+			phi / Deg, theta / Deg, psi / Deg,
 			s0.H1, s0.H2, s0.H3,
 			s0.N1, s0.N2, s0.N3,
 			s0.V1, s0.V2, s0.V3,
 			s0.C1, s0.C2, s0.C3,
-			phi0, theta0, psi0,
+			phi0 / Deg, theta0 / Deg, psi0 / Deg,
 			s0.D1, s0.D2, s0.D3,
 			s0.L1, s0.L2, s0.L3,
 		)
 
 		// Take sensor measurements
-		// U, W, A, B, M
-		if err := sit.Measurement(t, m, !gpsInop, !asiInop, !magInop, gpsNoise, asiNoise, magNoise, asiBias, magBias); err != nil {
+		if err := sit.Measurement(t, m, !asiInop, !gpsInop, true, !magInop,
+			asiNoise, gpsNoise, accelNoise, gyroNoise, magNoise,
+			uBias, accelBias, gyroBias, magBias); err != nil {
 			break
 		}
 		lMeas.Log(m.T,
@@ -228,18 +263,18 @@ func main() {
 		lPredict.Log(s.T,
 			s.U1, s.U2, s.U3,
 			s.Z1, s.Z2, s.Z3,
-			phi, theta, psi,
+			phi / Deg, theta / Deg, psi / Deg,
 			s.H1, s.H2, s.H3,
 			s.N1, s.N2, s.N3,
 			s.V1, s.V2, s.V3,
 			s.C1, s.C2, s.C3,
-			phi0, theta0, psi0,
+			phi0 / Deg, theta0 / Deg, psi0 / Deg,
 			s.D1, s.D2, s.D3,
 			s.L1, s.L2, s.L3,
 		)
 
-		pm = s.PredictMeasurement()
-		lPMeas.Log(
+		pm = s0.PredictMeasurement()
+		lPMeas.Log(pm.T,
 			pm.U1, pm.U2, pm.U3,
 			pm.W1, pm.W2, pm.W3,
 			pm.A1, pm.A2, pm.A3,
@@ -263,24 +298,24 @@ func main() {
 		lKalman.Log(s.T,
 			s.U1, s.U2, s.U3,
 			s.Z1, s.Z2, s.Z3,
-			phi, theta, psi,
+			phi / Deg, theta / Deg, psi / Deg,
 			s.H1, s.H2, s.H3,
 			s.N1, s.N2, s.N3,
 			s.V1, s.V2, s.V3,
 			s.C1, s.C2, s.C3,
-			phi0, theta0, psi0,
+			phi0 / Deg, theta0 / Deg, psi0 / Deg,
 			s.D1, s.D2, s.D3,
 			s.L1, s.L2, s.L3,
 		)
 		lVar.Log(float64(s.T) / 1000000000,
 			math.Sqrt(s.M.Get(0, 0)), math.Sqrt(s.M.Get(1, 1)), math.Sqrt(s.M.Get(2, 2)),
 			math.Sqrt(s.M.Get(3, 3)), math.Sqrt(s.M.Get(4, 4)), math.Sqrt(s.M.Get(5, 5)),
-			dphi, dtheta, dpsi,
+			dphi / Deg, dtheta / Deg, dpsi / Deg,
 			math.Sqrt(s.M.Get(10, 10)), math.Sqrt(s.M.Get(11, 11)), math.Sqrt(s.M.Get(12, 12)),
 			math.Sqrt(s.M.Get(13, 13)), math.Sqrt(s.M.Get(14, 14)), math.Sqrt(s.M.Get(15, 15)),
 			math.Sqrt(s.M.Get(16, 16)), math.Sqrt(s.M.Get(17, 17)), math.Sqrt(s.M.Get(18, 18)),
 			math.Sqrt(s.M.Get(19, 19)), math.Sqrt(s.M.Get(20, 20)), math.Sqrt(s.M.Get(21, 21)),
-			dphi0, dtheta0, dpsi0,
+			dphi0 / Deg, dtheta0 / Deg, dpsi0 / Deg,
 			math.Sqrt(s.M.Get(26, 26)), math.Sqrt(s.M.Get(27, 27)), math.Sqrt(s.M.Get(28, 28)),
 			math.Sqrt(s.M.Get(29, 29)), math.Sqrt(s.M.Get(30, 30)), math.Sqrt(s.M.Get(31, 31)),
 		)

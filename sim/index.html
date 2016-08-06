@@ -65,8 +65,9 @@
 <body>
 <script src="http://d3js.org/d3.v3.min.js"></script>
 <script>
-    var actual, predict, kalman, variance, control, measure, pmeasure,
-            remaining = 6;
+    var actual, predict, kalman, variance, measure, pmeasure,
+            remaining = 6,
+            charts = [];
 
     d3.csv("k_state.csv", function (error, data) {
         if (error) throw error;
@@ -115,8 +116,6 @@
                 width = 450 - margin.left - margin.right,
                 height = 250 - margin.top - margin.bottom;
 
-        var charts = [];
-
         // Common x-scaling and x-axis for all graphs
         var x0 = d3.extent(actual, function(d) {
                     return +d.T;
@@ -156,7 +155,7 @@
                         y0 = d3.min(c.data, function (v) {
                             if (+v.T >= xs[0] & +v.T <= xs[1]) {
                                 if (c.type == 'state') {
-                                    return d3.min([v.lower, v.actual]);
+                                    return d3.min([+v.lower, +v.actual]);
                                 } else {
                                     return d3.min([+v.y, +v.py]);
                                 }
@@ -165,7 +164,7 @@
                         y1 = d3.max(c.data, function (v) {
                             if (+v.T > xs[0] & +v.T < xs[1]) {
                                 if (c.type == 'state') {
-                                    return d3.max([v.upper, v.actual]);
+                                    return d3.max([+v.upper, +v.actual]);
                                 } else {
                                     return d3.max([+v.y, +v.py]);
                                 }
@@ -220,12 +219,12 @@
                     }));
 
             chart.data = actual.map(function(d, i) {
-                return {T: +d.T,
-                    actual: +d[v],
-                    predict: +predict[i][v],
-                    kalman: +kalman[i][v],
-                    lower: +kalman[i][v]-variance[i][v],
-                    upper: +kalman[i][v]+variance[i][v]
+                return {T: parseFloat(d.T),
+                    actual: parseFloat(d[v]),
+                    predict: parseFloat(predict[i][v]),
+                    kalman: parseFloat(kalman[i][v]),
+                    lower: parseFloat(kalman[i][v])-parseFloat(variance[i][v]),
+                    upper: parseFloat(kalman[i][v])+parseFloat(variance[i][v])
                 };
             });
 
@@ -236,7 +235,7 @@
             });
             chart.y1 = d3.max(chart.data.slice(5, chart.data.length-1), function (v) {
                 if (x(+v.T)>0 & x(+v.T)<width) {
-                    return d3.max([v.upper, v.actual]);
+                    return d3.max([+v.upper, +v.actual]);
                 }
             });
 
@@ -276,8 +275,10 @@
             chart.svg.append("clipPath")
                     .attr("id", "clip-path-state-" + v)
                     .append("rect")
-                    .attr("width", width )
-                    .attr("height", height);
+                    .attr("x", -1)
+                    .attr("y", -1)
+                    .attr("width", width+2 )
+                    .attr("height", height+2);
 
             chart.cursor = chart.svg.append("line")
                     .attr("class", "cursor")
@@ -408,8 +409,10 @@
             chart.svg.append("clipPath")
                     .attr("id", "clip-path-cm-" + v)
                     .append("rect")
-                    .attr("width", width )
-                    .attr("height", height);
+                    .attr("x", -1)
+                    .attr("y", -1)
+                    .attr("width", width+2)
+                    .attr("height", height+2);
 
             chart.cursor = chart.svg.append("line")
                     .attr("class", "cursor")

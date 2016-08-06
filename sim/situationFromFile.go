@@ -131,7 +131,7 @@ func (s *SituationFromFile) BeginTime() (float64) {
 }
 
 // Interpolate is only filler for reading from a sensor file: we don't know the "actual" situation since it was reality!
-func (s *SituationFromFile) Interpolate(t float64, st *ahrs.State) (error) {
+func (s *SituationFromFile) Interpolate(t float64, st *ahrs.State, aBias, bBias, mBias []float64) (error) {
 	if t < s.t[0] || t > s.t[len(s.t)-1] {
 		st = new(ahrs.State)
 		return errors.New("sim: requested time is outside of recorded data")
@@ -143,7 +143,11 @@ func (s *SituationFromFile) Interpolate(t float64, st *ahrs.State) (error) {
 	return nil
 }
 
-func (s *SituationFromFile) Measurement(t float64, m *ahrs.Measurement, wValid, uValid, mValid bool, wn, un, mn, ab float64, mb []float64) (error) {
+func (s *SituationFromFile) Measurement(t float64, m *ahrs.Measurement,
+		uValid, wValid, sValid, mValid bool,
+		uNoise, wNoise, aNoise, bNoise, mNoise float64,
+		uBias, aBias, bBias, mBias []float64,
+	) (error) {
 	if t < s.t[0] || t > s.t[len(s.t)-1] {
 		m = new(ahrs.Measurement)
 		return errors.New("sim: requested time is outside of recorded data")
