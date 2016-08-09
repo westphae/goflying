@@ -307,7 +307,7 @@ func main() {
 			s.D1, s.D2, s.D3,
 			s.L1, s.L2, s.L3,
 		)
-		lVar.Log(float64(s.T) / 1000000000,
+		lVar.Log(s.T,
 			math.Sqrt(s.M.Get(0, 0)), math.Sqrt(s.M.Get(1, 1)), math.Sqrt(s.M.Get(2, 2)),
 			math.Sqrt(s.M.Get(3, 3)), math.Sqrt(s.M.Get(4, 4)), math.Sqrt(s.M.Get(5, 5)),
 			dphi / Deg, dtheta / Deg, dpsi / Deg,

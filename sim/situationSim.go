@@ -15,6 +15,8 @@ const (
 	Small = 1e-6
 )
 
+var TimeError = errors.New("requested time is outside of scenario")
+
 // Situation defines a scenario by piecewise-linear interpolation
 type SituationSim struct {
 	t                  []float64 // times for situation, s
@@ -34,7 +36,7 @@ func (s *SituationSim) BeginTime() (float64) {
 func (s *SituationSim) Interpolate(t float64, st *ahrs.State, aBias, bBias, mBias []float64) (error) {
 	if t < s.t[0] || t > s.t[len(s.t)-1] {
 		st = new(ahrs.State)
-		return errors.New("requested time is outside of scenario")
+		return TimeError
 	}
 	ix := 0
 	if t > s.t[0] {
@@ -125,7 +127,7 @@ func (s *SituationSim) Measurement(t float64, m *ahrs.Measurement,
 	) (error) {
 	if t < s.t[0] || t > s.t[len(s.t)-1] {
 		m = new(ahrs.Measurement)
-		return errors.New("requested time is outside of scenario")
+		return TimeError
 	}
 
 	var x, z ahrs.State
@@ -133,35 +135,35 @@ func (s *SituationSim) Measurement(t float64, m *ahrs.Measurement,
 	s.Interpolate(t, &x, aBias, bBias, mBias)
 	s.Interpolate(t+tz, &z, aBias, bBias, mBias)
 
-	dU1 := (z.U1-x.U1)/tz
-	dU2 := (z.U2-x.U2)/tz
-	dU3 := (z.U3-x.U3)/tz
-	dE0 := (z.E0-x.E0)/tz
+	dU1 :=  (z.U1-x.U1)/tz
+	dU2 :=  (z.U2-x.U2)/tz
+	dU3 :=  (z.U3-x.U3)/tz
+	dE0 :=  (z.E0-x.E0)/tz
 	dE1 := -(z.E1-x.E1)/tz
 	dE2 := -(z.E2-x.E2)/tz
 	dE3 := -(z.E3-x.E3)/tz
 
-	// eij rotates earth frame i component into aircraft frame j component
-	e11 := 2 * (+x.E0 * x.E0 + x.E1 * x.E1 - 0.5)
-	e12 := 2 * (+x.E0 * x.E3 + x.E1 * x.E2)
-	e13 := 2 * (-x.E0 * x.E2 + x.E1 * x.E3)
-	e21 := 2 * (-x.E0 * x.E3 + x.E2 * x.E1)
-	e22 := 2 * (+x.E0 * x.E0 + x.E2 * x.E2 - 0.5)
-	e23 := 2 * (+x.E0 * x.E1 + x.E2 * x.E3)
-	e31 := 2 * (+x.E0 * x.E2 + x.E3 * x.E1)
-	e32 := 2 * (-x.E0 * x.E1 + x.E3 * x.E2)
-	e33 := 2 * (+x.E0 * x.E0 + x.E3 * x.E3 - 0.5)
+	// eij rotates between earth frame i component and aircraft frame j component
+	e11 := (+x.E0 * x.E0 + x.E1 * x.E1 - x.E2 * x.E2 - x.E3 * x.E3)
+	e12 := 2*(-x.E0 * x.E3 + x.E1 * x.E2)
+	e13 := 2*(+x.E0 * x.E2 + x.E1 * x.E3)
+	e21 := 2*(+x.E0 * x.E3 + x.E2 * x.E1)
+	e22 := (+x.E0 * x.E0 - x.E1 * x.E1 + x.E2 * x.E2 - x.E3 * x.E3)
+	e23 := 2*(-x.E0 * x.E1 + x.E2 * x.E3)
+	e31 := 2*(-x.E0 * x.E2 + x.E3 * x.E1)
+	e32 := 2*(+x.E0 * x.E1 + x.E3 * x.E2)
+	e33 := (+x.E0 * x.E0 - x.E1 * x.E1 - x.E2 * x.E2 + x.E3 * x.E3)
 
-	// fij rotates sensor frame i component into aircraft frame j component
-	f11 := 2 * (+x.F0 * x.F0 + x.F1 * x.F1 - 0.5)
-	f12 := 2 * (+x.F0 * x.F3 + x.F1 * x.F2)
-	f13 := 2 * (-x.F0 * x.F2 + x.F1 * x.F3)
-	f21 := 2 * (-x.F0 * x.F3 + x.F2 * x.F1)
-	f22 := 2 * (+x.F0 * x.F0 + x.F2 * x.F2 - 0.5)
-	f23 := 2 * (+x.F0 * x.F1 + x.F2 * x.F3)
-	f31 := 2 * (+x.F0 * x.F2 + x.F3 * x.F1)
-	f32 := 2 * (-x.F0 * x.F1 + x.F3 * x.F2)
-	f33 := 2 * (+x.F0 * x.F0 + x.F3 * x.F3 - 0.5)
+	// fij rotates between sensor frame i component and aircraft frame j component
+	f11 := (+x.F0 * x.F0 + x.F1 * x.F1 - x.F2 * x.F2 - x.F3 * x.F3)
+	f12 := 2*(-x.F0 * x.F3 + x.F1 * x.F2)
+	f13 := 2*(+x.F0 * x.F2 + x.F1 * x.F3)
+	f21 := 2*(+x.F0 * x.F3 + x.F2 * x.F1)
+	f22 := (+x.F0 * x.F0 - x.F1 * x.F1 + x.F2 * x.F2 - x.F3 * x.F3)
+	f23 := 2*(-x.F0 * x.F1 + x.F2 * x.F3)
+	f31 := 2*(-x.F0 * x.F2 + x.F3 * x.F1)
+	f32 := 2*(+x.F0 * x.F1 + x.F3 * x.F2)
+	f33 := (+x.F0 * x.F0 - x.F1 * x.F1 - x.F2 * x.F2 + x.F3 * x.F3)
 
 	if uValid { // ASI doesn't read U2 or U3
 		m.UValid = true
@@ -177,14 +179,16 @@ func (s *SituationSim) Measurement(t float64, m *ahrs.Measurement,
 
 	if sValid {
 		m.SValid = true
+		// These are in aircraft frame
 		h1 := -2*(dE1*x.E0 + dE0*x.E1 - dE3*x.E2 + dE2*x.E3)
 		h2 := -2*(dE2*x.E0 + dE3*x.E1 + dE0*x.E2 - dE1*x.E3)
 		h3 := -2*(dE3*x.E0 - dE2*x.E1 + dE1*x.E2 + dE0*x.E3)
 
-		y1 := -e31 + (-dU1 + h2*x.U3 - h3*x.U2)/ahrs.G
-		y2 := -e32 + (-dU2 + h3*x.U1 - h1*x.U3)/ahrs.G
-		y3 := -e33 + (-dU3 + h1*x.U2 - h2*x.U1)/ahrs.G
+		y1 := (-dU1 - h2*x.U3 + h3*x.U2)/ahrs.G - e31
+		y2 := (-dU2 - h3*x.U1 + h1*x.U3)/ahrs.G - e32
+		y3 := (-dU3 - h1*x.U2 + h2*x.U1)/ahrs.G - e33
 
+		// Rotate into sensor frame
 		m.A1 = f11*y1 + f12*y2 + f13*y3 + aBias[0] + aNoise*rand.NormFloat64()
 		m.A2 = f21*y1 + f22*y2 + f23*y3 + aBias[1] + aNoise*rand.NormFloat64()
 		m.A3 = f31*y1 + f32*y2 + f33*y3 + aBias[2] + aNoise*rand.NormFloat64()
