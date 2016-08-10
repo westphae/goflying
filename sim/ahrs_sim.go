@@ -273,7 +273,7 @@ func main() {
 			s.L1, s.L2, s.L3,
 		)
 
-		pm = s0.PredictMeasurement()
+		pm = s.PredictMeasurement()
 		lPMeas.Log(pm.T,
 			pm.U1, pm.U2, pm.U3,
 			pm.W1, pm.W2, pm.W3,

@@ -127,10 +127,10 @@ func Initialize(m *Measurement) (s *State) {
 
 	// Diagonal matrix of state process uncertainties per s, will be squared into covariance below
 	s.N = matrix.Diagonal([]float64{
-		1, 0.1, 0.1,                            // U*3
+		0.1, 0.1, 0.1,                            // U*3
 		0.2, 0.2, 0.2,                          // Z*3
-		0.05, 0.05, 0.05, 0.05,                 // E*4
-		1, 1, 1,                                // H*3
+		0.01, 0.01, 0.01, 0.01,                 // E*4
+		2, 2, 2,                                // H*3
 		0.01, 0.01, 0.01,                       // N*3
 		0.1, 0.1, 0.05,                         // V*3
 		0.01/60, 0.01/60, 0.01/60,              // C*3
@@ -180,7 +180,7 @@ func Initialize(m *Measurement) (s *State) {
 
 // Predict performs the prediction phase of the Kalman filter
 func (s *State) Predict(t float64) {
-	f := s.CalcJacobianState(t)
+	f := s.calcJacobianState(t)
 	dt := t - s.T
 
 	s.U1 += dt*s.Z1*G
@@ -221,7 +221,7 @@ func (s *State) Update(m *Measurement) {
 	y.Set(13, 0, m.M2 - z.M2)
 	y.Set(14, 0, m.M3 - z.M3)
 
-	h := s.CalcJacobianMeasurement()
+	h := s.calcJacobianMeasurement()
 
 	// U, W, A, B, M
 	if m.UValid {
@@ -371,7 +371,7 @@ func (s *State) PredictMeasurement() (m *Measurement) {
 	return
 }
 
-func (s *State) CalcJacobianState(t float64) (jac *matrix.DenseMatrix) {
+func (s *State) calcJacobianState(t float64) (jac *matrix.DenseMatrix) {
 	dt := t-s.T
 
 	jac = matrix.Eye(32)
@@ -393,7 +393,7 @@ func (s *State) CalcJacobianState(t float64) (jac *matrix.DenseMatrix) {
 	jac.Set(6, 11, -0.5*dt*s.E2*Deg)  // E0/H2
 	jac.Set(6, 12, -0.5*dt*s.E3*Deg)  // E0/H3
 
-	//s.E1 += 0.5 * dt * (+s.H1*s.E0 + s.H2*s.E3 - s.H3*s.E2)*Deg
+	//s.E1 += 0.5*dt*(+s.H1*s.E0 + s.H2*s.E3 - s.H3*s.E2)*Deg
 	jac.Set(7,  6, +0.5*dt*s.H1*Deg)  // E1/E0
 	jac.Set(7,  8, -0.5*dt*s.H3*Deg)  // E1/E2
 	jac.Set(7,  9, +0.5*dt*s.H2*Deg)  // E1/E3
@@ -401,7 +401,7 @@ func (s *State) CalcJacobianState(t float64) (jac *matrix.DenseMatrix) {
 	jac.Set(7, 11, +0.5*dt*s.E3*Deg)  // E1/H2
 	jac.Set(7, 12, -0.5*dt*s.E2*Deg)  // E1/H3
 
-	//s.E2 += 0.5 * dt * (-s.H1*s.E3 + s.H2*s.E0 + s.H3*s.E1)*Deg
+	//s.E2 += 0.5*dt*(-s.H1*s.E3 + s.H2*s.E0 + s.H3*s.E1)*Deg
 	jac.Set(8,  6, +0.5*dt*s.H2*Deg)  // E2/E0
 	jac.Set(8,  7, +0.5*dt*s.H3*Deg)  // E2/E1
 	jac.Set(8,  9, -0.5*dt*s.H1*Deg)  // E2/E3
@@ -409,7 +409,7 @@ func (s *State) CalcJacobianState(t float64) (jac *matrix.DenseMatrix) {
 	jac.Set(8, 11, +0.5*dt*s.E0*Deg)  // E2/H2
 	jac.Set(8, 12, +0.5*dt*s.E1*Deg)  // E2/H3
 
-	//s.E3 += 0.5 * dt * (+s.H1*s.E2 - s.H2*s.E1 + s.H3*s.E0)*Deg
+	//s.E3 += 0.5*dt*(+s.H1*s.E2 - s.H2*s.E1 + s.H3*s.E0)*Deg
 	jac.Set(9,  6, +0.5*dt*s.H3*Deg)  // E3/E0
 	jac.Set(9,  7, -0.5*dt*s.H2*Deg)  // E3/E1
 	jac.Set(9,  8, +0.5*dt*s.H1*Deg)  // E3/E2
@@ -420,7 +420,7 @@ func (s *State) CalcJacobianState(t float64) (jac *matrix.DenseMatrix) {
 	return
 }
 
-func (s *State) CalcJacobianMeasurement() (jac *matrix.DenseMatrix) {
+func (s *State) calcJacobianMeasurement() (jac *matrix.DenseMatrix) {
 
 	jac = matrix.Zeros(15, 32)
 	// U*3, Z*3, E*4, H*3, N*3,
