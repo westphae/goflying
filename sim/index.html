@@ -52,6 +52,13 @@
             vector-effect: non-scaling-stroke;
         }
 
+        .kline {
+            fill: none;
+            stroke-width: 1px;
+            stroke-dasharray: 5;
+            vector-effect: non-scaling-stroke;
+        }
+
         .brush {
             stroke: #bbb;
             fill: #bbb;
@@ -65,8 +72,8 @@
 <body>
 <script src="http://d3js.org/d3.v3.min.js"></script>
 <script>
-    var actual, predict, kalman, variance, measure, pmeasure,
-            remaining = 6,
+    var actual, predict, kalman, variance, measure, pmeasure, kmeasure,
+            remaining = 7,
             charts = [];
 
     d3.csv("k_state.csv", function (error, data) {
@@ -108,6 +115,13 @@
         if (error) throw error;
 
         pmeasure = data;
+        if (!--remaining) makeAll();
+    });
+
+    d3.csv("k_kalmeas.csv", function (error, data) {
+        if (error) throw error;
+
+        kmeasure = data;
         if (!--remaining) makeAll();
     });
 
@@ -157,7 +171,7 @@
                                 if (c.type == 'state') {
                                     return d3.min([+v.lower, +v.actual]);
                                 } else {
-                                    return d3.min([+v.y, +v.py]);
+                                    return d3.min([+v.y, +v.py, +v.ky]);
                                 }
                             }
                         });
@@ -166,7 +180,7 @@
                                 if (c.type == 'state') {
                                     return d3.max([+v.upper, +v.actual]);
                                 } else {
-                                    return d3.max([+v.y, +v.py]);
+                                    return d3.max([+v.y, +v.py, +v.ky]);
                                 }
                             }
                         });
@@ -182,6 +196,7 @@
                     } else {
                         c.svg.select(".line").attr("d", c.line);
                         c.svg.select(".pline").attr("d", c.pline);
+                        c.svg.select(".kline").attr("d", c.kline);
                     }
                     c.svg.select(".brush").call(brush);
                 });
@@ -228,14 +243,14 @@
                 };
             });
 
-            chart.y0 = d3.min(chart.data.slice(5, chart.data.length-1), function(v) {
+            chart.y0 = d3.min(chart.data, function(v) {
                 if (x(+v.T)>0 & x(+v.T)<width) {
-                    return d3.min([v.lower, v.actual]);
+                    return d3.min([v.lower, v.actual, v.predict, v.kalman]);
                 }
             });
-            chart.y1 = d3.max(chart.data.slice(5, chart.data.length-1), function (v) {
+            chart.y1 = d3.max(chart.data, function (v) {
                 if (x(+v.T)>0 & x(+v.T)<width) {
-                    return d3.max([+v.upper, +v.actual]);
+                    return d3.max([+v.upper, +v.actual, v.predict, v.kalman]);
                 }
             });
 
@@ -359,21 +374,21 @@
             chart.data = measure.map(function(d, i) {
                 var r = {T: +d.T,
                     y: +d[v],
-                    py: +d[v]
                 };
                 r['py'] = +pmeasure[i][v];
+                r['ky'] = +kmeasure[i][v];
                 return r;
             });
 
             chart.y0 = d3.min(chart.data, function(d) {
                 if (x(+d.T)>0 & x(+d.T)<width) {
-                    return d3.min([+d.y, +d.py]);
+                    return d3.min([+d.y, +d.py, +d.ky]);
                 }
             });
 
             chart.y1 = d3.max(chart.data, function(d) {
                 if (x(+d.T)>0 & x(+d.T)<width) {
-                    return d3.max([+d.y, +d.py]);
+                    return d3.max([+d.y, +d.py, +d.ky]);
                 }
             });
 
@@ -399,6 +414,11 @@
                     .interpolate("basis")
                     .x(function (d) { return x(d.T); })
                     .y(function (d) { return chart.y(d.py); });
+
+            chart.kline = d3.svg.line()
+                    .interpolate("basis")
+                    .x(function (d) { return x(d.T); })
+                    .y(function (d) { return chart.y(d.ky); });
 
             chart.svg = d3.select("body").append("svg")
                     .attr("width", width + margin.left + margin.right)
@@ -436,6 +456,11 @@
             chart.lines.append("path")
                     .attr("class", "pline")
                     .attr("d", chart.pline)
+                    .style("stroke", chart.color(v));
+
+            chart.lines.append("path")
+                    .attr("class", "kline")
+                    .attr("d", chart.kline)
                     .style("stroke", chart.color(v));
 
             chart.brush = chart.svg.append("g")

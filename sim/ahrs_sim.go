@@ -156,6 +156,8 @@ func main() {
 		"T", "U1", "U2", "U3", "W1", "W2", "W3", "A1", "A2", "A3", "B1", "B2", "B3", "M1", "M2", "M3")
 	lPMeas := NewAHRSLogger("k_predmeas.csv",
 		"T", "U1", "U2", "U3", "W1", "W2", "W3", "A1", "A2", "A3", "B1", "B2", "B3", "M1", "M2", "M3")
+	lKMeas := NewAHRSLogger("k_kalmeas.csv",
+		"T", "U1", "U2", "U3", "W1", "W2", "W3", "A1", "A2", "A3", "B1", "B2", "B3", "M1", "M2", "M3")
 
 	switch scenario {
 	case "takeoff":
@@ -182,6 +184,7 @@ func main() {
 		uBias, accelBias, gyroBias, magBias)
 	s := ahrs.Initialize(m)
 	// These next few just for testing with a correct starting state
+	//TODO testing
 	sit.Interpolate(t, s0, accelBias, gyroBias, magBias)
 	// U, Z, E, H, N,
 	// V, C, F, D, L
@@ -287,6 +290,16 @@ func main() {
 			tNextUpdate += udt
 			s.Update(m)
 		}
+
+		pm = s.PredictMeasurement()
+		lKMeas.Log(pm.T,
+			pm.U1, pm.U2, pm.U3,
+			pm.W1, pm.W2, pm.W3,
+			pm.A1, pm.A2, pm.A3,
+			pm.B1, pm.B2, pm.B3,
+			pm.M1, pm.M2, pm.M3,
+		)
+
 		phi, theta, psi = ahrs.FromQuaternion(s.E0, s.E1, s.E2, s.E3)
 		phi0, theta0, psi0 = ahrs.FromQuaternion(s.F0, s.F1, s.F2, s.F3)
 		dphi, dtheta, dpsi := ahrs.VarFromQuaternion(s.E0, s.E1, s.E2, s.E3,
