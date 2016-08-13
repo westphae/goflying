@@ -103,7 +103,6 @@ func (s *State) calcRotationMatrices() {
 	s.f31 = 2*(-s.F0 * s.F2 + s.F3 * s.F1)
 	s.f32 = 2*(+s.F0 * s.F1 + s.F3 * s.F2)
 	s.f33 = (+s.F0 * s.F0 - s.F1 * s.F1 - s.F2 * s.F2 + s.F3 * s.F3)
-
 }
 
 // Initialize the state at the start of the Kalman filter, based on current measurements
@@ -127,10 +126,10 @@ func Initialize(m *Measurement) (s *State) {
 
 	// Diagonal matrix of state process uncertainties per s, will be squared into covariance below
 	s.N = matrix.Diagonal([]float64{
-		0.1, 0.1, 0.1,                            // U*3
+		0.1, 0.1, 0.1,                          // U*3
 		0.2, 0.2, 0.2,                          // Z*3
 		0.01, 0.01, 0.01, 0.01,                 // E*4
-		2, 2, 2,                                // H*3
+		1, 1, 1,                                // H*3
 		0.01, 0.01, 0.01,                       // N*3
 		0.1, 0.1, 0.05,                         // V*3
 		0.01/60, 0.01/60, 0.01/60,              // C*3
@@ -224,6 +223,7 @@ func (s *State) Update(m *Measurement) {
 	h := s.calcJacobianMeasurement()
 
 	// U, W, A, B, M
+	// The m.M will be squared below, so enter stdev here, not variance
 	if m.UValid {
 		m.M.Set(0, 0, 2)
 	} else {
@@ -282,6 +282,8 @@ func (s *State) Update(m *Measurement) {
 		m.M.Set(13, 13, Big)
 		m.M.Set(14, 14, Big)
 	}
+	m.M = matrix.Product(m.M, m.M)
+
 	ss := matrix.Sum(matrix.Product(h, matrix.Product(s.M, h.Transpose())), m.M)
 
 	m2, err := ss.Inverse()
