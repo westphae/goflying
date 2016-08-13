@@ -436,43 +436,67 @@ func (s *State) calcJacobianMeasurement() (jac *matrix.DenseMatrix) {
 	//m.U3 = s.U3
 	jac.Set(2, 2, 1)                                              // U3/U3
 
-	//m.W1 = s.e11*s.U1 + s.e12*s.U2 + s.e13*s.U3 + s.V1
+	w1 := s.e11*s.U1 + s.e12*s.U2 + s.e13*s.U3
 	//s.e11 = 2*(+s.E0 * s.E0 + s.E1 * s.E1 - 0.5)
 	//s.e12 = 2*(-s.E0 * s.E3 + s.E1 * s.E2)
 	//s.e13 = 2*(+s.E0 * s.E2 + s.E1 * s.E3)
 	jac.Set(3, 0, s.e11)                                          // W1/U1
 	jac.Set(3, 1, s.e12)                                          // W1/U2
 	jac.Set(3, 2, s.e13)                                          // W1/U3
-	jac.Set(3, 6, 2*(+s.E0*s.U1 - s.E3*s.U2 + s.E2*s.U3))         // W1/E0
-	jac.Set(3, 7, 2*(+s.E1*s.U1 + s.E2*s.U2 + s.E3*s.U3))         // W1/E1
-	jac.Set(3, 8, 2*(-s.E2*s.U1 + s.E1*s.U2 + s.E0*s.U3))         // W1/E2
-	jac.Set(3, 9, 2*(-s.E3*s.U1 - s.E0*s.U2 + s.E1*s.U3))         // W1/E3
+	jac.Set(3, 6,                                                 // W1/E0
+		2*(+s.E0*s.U1 - s.E3*s.U2 + s.E2*s.U3) -
+		2*w1*s.E0)
+	jac.Set(3, 7,                                                 // W1/E1
+		2*(+s.E1*s.U1 + s.E2*s.U2 + s.E3*s.U3) -
+		2*w1*s.E1)
+	jac.Set(3, 8,                                                 // W1/E2
+		2*(-s.E2*s.U1 + s.E1*s.U2 + s.E0*s.U3) -
+		2*w1*s.E2)
+	jac.Set(3, 9,                                                 // W1/E3
+		2*(-s.E3*s.U1 - s.E0*s.U2 + s.E1*s.U3) -
+		2*w1*s.E3)
 	jac.Set(3, 16, 1)                                             // W1/V1
 
-	//m.W2 = s.e21*s.U1 + s.e22*s.U2 + s.e23*s.U3 + s.V2
+	w2 := s.e21*s.U1 + s.e22*s.U2 + s.e23*s.U3
 	//s.e21 = 2*(+s.E0 * s.E3 + s.E2 * s.E1)
 	//s.e22 = 2*(+s.E0 * s.E0 + s.E2 * s.E2 - 0.5)
 	//s.e23 = 2*(-s.E0 * s.E1 + s.E2 * s.E3)
 	jac.Set(4, 0, s.e21)                                          // W2/U1
 	jac.Set(4, 1, s.e22)                                          // W2/U2
 	jac.Set(4, 2, s.e23)                                          // W2/U3
-	jac.Set(4, 6, 2*(+s.E3*s.U1 + s.E0*s.U2 - s.E1*s.U3))         // W2/E0
-	jac.Set(4, 7, 2*(+s.E2*s.U1 - s.E1*s.U2 - s.E0*s.U3))         // W2/E1
-	jac.Set(4, 8, 2*(+s.E1*s.U1 + s.E2*s.U2 + s.E3*s.U3))         // W2/E2
-	jac.Set(4, 9, 2*(+s.E0*s.U1 - s.E3*s.U2 + s.E2*s.U3))         // W2/E3
+	jac.Set(4, 6,                                                 // W2/E0
+		2*(+s.E3*s.U1 + s.E0*s.U2 - s.E1*s.U3) -
+		2*w2*s.E0)
+	jac.Set(4, 7,                                                 // W2/E1
+		2*(+s.E2*s.U1 - s.E1*s.U2 - s.E0*s.U3) -
+		2*w2*s.E1)
+	jac.Set(4, 8,                                                 // W2/E2
+		2*(+s.E1*s.U1 + s.E2*s.U2 + s.E3*s.U3) -
+		2*w2*s.E2)
+	jac.Set(4, 9,                                                 // W2/E3
+		2*(+s.E0*s.U1 - s.E3*s.U2 + s.E2*s.U3) -
+		2*w2*s.E3)
 	jac.Set(4, 17, 1)                                             // W2/V2
 
-	//m.W3 = s.e31*s.U1 + s.e32*s.U2 + s.e33*s.U3 + s.V3
+	w3 := s.e31*s.U1 + s.e32*s.U2 + s.e33*s.U3
 	//s.e31 = 2*(-s.E0 * s.E2 + s.E3 * s.E1)
 	//s.e32 = 2*(+s.E0 * s.E1 + s.E3 * s.E2)
 	//s.e33 = 2*(+s.E0 * s.E0 + s.E3 * s.E3 - 0.5)
 	jac.Set(5, 0, s.e31)                                          // W3/U1
 	jac.Set(5, 1, s.e32)                                          // W3/U2
 	jac.Set(5, 2, s.e33)                                          // W3/U3
-	jac.Set(5, 6, 2*(-s.E2*s.U1 + s.E1*s.U2 + s.E0*s.U3))         // W3/E0
-	jac.Set(5, 7, 2*(+s.E3*s.U1 + s.E0*s.U2 - s.E1*s.U3))         // W3/E1
-	jac.Set(5, 8, 2*(-s.E0*s.U1 + s.E3*s.U2 - s.E2*s.U3))         // W3/E2
-	jac.Set(5, 9, 2*(+s.E1*s.U1 + s.E2*s.U2 + s.E3*s.U3))         // W3/E3
+	jac.Set(5, 6,                                                 // W3/E0
+		2*(-s.E2*s.U1 + s.E1*s.U2 + s.E0*s.U3) -
+		2*w3*s.E0)
+	jac.Set(5, 7,                                                 // W3/E1
+		2*(+s.E3*s.U1 + s.E0*s.U2 - s.E1*s.U3) -
+		2*w3*s.E1)
+	jac.Set(5, 8,                                                 // W3/E2
+		2*(-s.E0*s.U1 + s.E3*s.U2 - s.E2*s.U3) -
+		2*w3*s.E2)
+	jac.Set(5, 9,                                                 // W3/E3
+		2*(+s.E1*s.U1 + s.E2*s.U2 + s.E3*s.U3) -
+		2*w3*s.E3)
 	jac.Set(5, 18, 1)                                             // W3/V3
 
 	h1 := s.H1*s.e11 + s.H2*s.e21 + s.H3*s.e31
@@ -482,7 +506,8 @@ func (s *State) calcJacobianMeasurement() (jac *matrix.DenseMatrix) {
 	a2 := -s.Z2 + (h1*s.U3 - h3*s.U1)*Deg/G - s.e32
 	a3 := -s.Z3 + (h2*s.U1 - h1*s.U2)*Deg/G - s.e33
 
-	//m.A1 = s.f11*a1 + s.f12*a2 + s.f13*a3 + s.C1
+	ae1 := s.f11*(a1+s.Z1) + s.f12*(a2+s.Z2) + s.f13*(a3+s.Z3)
+	af1 := s.f11*a1 + s.f12*a2 + s.f13*a3
 	jac.Set(6, 0, (s.f13*h2 - s.f12*h3)*Deg/G)                    // A1/U1
 	jac.Set(6, 1, (s.f11*h3 - s.f13*h1)*Deg/G)                    // A1/U2
 	jac.Set(6, 2, (s.f12*h1 - s.f11*h2)*Deg/G)                    // A1/U3
@@ -493,21 +518,25 @@ func (s *State) calcJacobianMeasurement() (jac *matrix.DenseMatrix) {
 		s.f11*(s.H1*( s.E2*s.U2 + s.E3*s.U3) + s.H2*(-s.E1*s.U2 - s.E0*s.U3) + s.H3*( s.E0*s.U2 - s.E1*s.U3)) +
 		s.f12*(s.H1*( s.E0*s.U3 - s.E2*s.U1) + s.H2*( s.E3*s.U3 + s.E1*s.U1) + s.H3*(-s.E2*s.U3 - s.E0*s.U1)) +
 		s.f13*(s.H1*(-s.E3*s.U1 - s.E0*s.U2) + s.H2*( s.E0*s.U1 - s.E3*s.U2) + s.H3*( s.E1*s.U1 + s.E2*s.U2)) ) -
+		2* ae1 *s.E0 -
 		2*(s.f11*(-s.E2) + s.f12*( s.E1) + s.f13*( s.E0)) )
 	jac.Set(6, 7, 2*Deg/G*(                                       // A1/E1
 		s.f11*(s.H1*( s.E3*s.U2 - s.E2*s.U3) + s.H2*(-s.E0*s.U2 + s.E1*s.U3) + s.H3*(-s.E1*s.U2 - s.E0*s.U3)) +
 		s.f12*(s.H1*( s.E1*s.U3 - s.E3*s.U1) + s.H2*( s.E2*s.U3 + s.E0*s.U1) + s.H3*( s.E3*s.U3 + s.E1*s.U1)) +
 		s.f13*(s.H1*( s.E2*s.U1 - s.E1*s.U2) + s.H2*(-s.E1*s.U1 - s.E2*s.U2) + s.H3*( s.E0*s.U1 - s.E3*s.U2)) ) -
+		2* ae1 *s.E1 -
 		2*(s.f11*( s.E3) + s.f12*( s.E0) + s.f13*(-s.E1)) )
 	jac.Set(6, 8, 2*Deg/G*(                                       // A1/E2
 		s.f11*(s.H1*( s.E0*s.U2 - s.E1*s.U3) + s.H2*( s.E3*s.U2 - s.E2*s.U3) + s.H3*(-s.E2*s.U2 - s.E3*s.U3)) +
 		s.f12*(s.H1*(-s.E2*s.U3 - s.E0*s.U1) + s.H2*( s.E1*s.U3 - s.E3*s.U1) + s.H3*(-s.E0*s.U3 + s.E2*s.U1)) +
 		s.f13*(s.H1*( s.E1*s.U1 + s.E2*s.U2) + s.H2*( s.E2*s.U1 - s.E1*s.U2) + s.H3*( s.E3*s.U1 + s.E0*s.U2)) ) -
+		2* ae1 *s.E2 -
 		2*(s.f11*(-s.E0) + s.f12*( s.E3) + s.f13*(-s.E2)) )
 	jac.Set(6, 9, 2*Deg/G*(                                       // A1/E3
 		s.f11*(s.H1*( s.E1*s.U2 + s.E0*s.U3) + s.H2*( s.E2*s.U2 + s.E3*s.U3) + s.H3*( s.E3*s.U2 - s.E2*s.U3)) +
 		s.f12*(s.H1*(-s.E3*s.U3 - s.E1*s.U1) + s.H2*( s.E0*s.U3 - s.E2*s.U1) + s.H3*( s.E1*s.U3 - s.E3*s.U1)) +
 		s.f13*(s.H1*(-s.E0*s.U1 + s.E3*s.U2) + s.H2*(-s.E3*s.U1 - s.E0*s.U2) + s.H3*( s.E2*s.U1 - s.E1*s.U2)) ) -
+		2* ae1 *s.E3 -
 		2*(s.f11*( s.E1) + s.f12*( s.E2) + s.f13*( s.E3)) )
 	jac.Set(6, 10, Deg/G*(                                      // A1/H1
 		s.f11*(s.U2*s.e13 - s.U3*s.e12) +
@@ -522,12 +551,21 @@ func (s *State) calcJacobianMeasurement() (jac *matrix.DenseMatrix) {
 		s.f12*(s.U3*s.e31 - s.U1*s.e33) +
 		s.f13*(s.U1*s.e32 - s.U2*s.e31) ))
 	jac.Set(6, 19, 1)                                             // A1/C1
-	jac.Set(6, 22, 2*(+s.F0*a1 - s.F3*a2 + s.F2*a3))              // A1/F0
-	jac.Set(6, 23, 2*(+s.F1*a1 + s.F2*a2 + s.F3*a3))              // A1/F1
-	jac.Set(6, 24, 2*(-s.F2*a1 + s.F1*a2 + s.F0*a3))              // A1/F2
-	jac.Set(6, 25, 2*(-s.F3*a1 - s.F0*a2 + s.F1*a3))              // A1/F3
+	jac.Set(6, 22,                                                // A1/F0
+		2*(+s.F0*a1 - s.F3*a2 + s.F2*a3) -
+		2*af1*s.F0)
+	jac.Set(6, 23,                                                // A1/F1
+		2*(+s.F1*a1 + s.F2*a2 + s.F3*a3) -
+		2*af1*s.F1)
+	jac.Set(6, 24,                                                // A1/F2
+		2*(-s.F2*a1 + s.F1*a2 + s.F0*a3) -
+		2*af1*s.F2)
+	jac.Set(6, 25,                                                // A1/F3
+		2*(-s.F3*a1 - s.F0*a2 + s.F1*a3) -
+		2*af1*s.F3)
 
-	//m.A2 = s.f21*a1 + s.f22*a2 + s.f23*a3 + s.C2
+	aa2 := s.f21*(a1+s.Z1) + s.f22*(a2+s.Z2) + s.f23*(a3+s.Z3)
+	af2 := s.f21*a1 + s.f22*a2 + s.f23*a3
 	jac.Set(7, 0, (h2*s.f23 - h3*s.f22)*Deg/G)                    // A2/U1
 	jac.Set(7, 1, (h3*s.f21 - h1*s.f23)*Deg/G)                    // A2/U2
 	jac.Set(7, 2, (h1*s.f22 - h2*s.f21)*Deg/G)                    // A2/U3
@@ -538,21 +576,25 @@ func (s *State) calcJacobianMeasurement() (jac *matrix.DenseMatrix) {
 		s.f21*(s.H1*( s.E2*s.U2 + s.E3*s.U3) + s.H2*(-s.E1*s.U2 - s.E0*s.U3) + s.H3*( s.E0*s.U2 - s.E1*s.U3)) +
 		s.f22*(s.H1*( s.E0*s.U3 - s.E2*s.U1) + s.H2*( s.E3*s.U3 + s.E1*s.U1) + s.H3*(-s.E2*s.U3 - s.E0*s.U1)) +
 		s.f23*(s.H1*(-s.E3*s.U1 - s.E0*s.U2) + s.H2*( s.E0*s.U1 - s.E3*s.U2) + s.H3*( s.E1*s.U1 + s.E2*s.U2)) ) -
+		2*aa2*s.E0 -
 		2*(s.f21*(-s.E2) + s.f22*( s.E1) + s.f23*( s.E0)) )
 	jac.Set(7, 7, 2*Deg/G*(                                       // A2/E1
 		s.f21*(s.H1*( s.E3*s.U2 - s.E2*s.U3) + s.H2*(-s.E0*s.U2 + s.E1*s.U3) + s.H3*(-s.E1*s.U2 - s.E0*s.U3)) +
 		s.f22*(s.H1*( s.E1*s.U3 - s.E3*s.U1) + s.H2*( s.E2*s.U3 + s.E0*s.U1) + s.H3*( s.E3*s.U3 + s.E1*s.U1)) +
 		s.f23*(s.H1*( s.E2*s.U1 - s.E1*s.U2) + s.H2*(-s.E1*s.U1 - s.E2*s.U2) + s.H3*( s.E0*s.U1 - s.E3*s.U2)) ) -
+		2*aa2*s.E1 -
 		2*(s.f21*( s.E3) + s.f22*( s.E0) + s.f23*(-s.E1)) )
 	jac.Set(7, 8, 2*Deg/G*(                                       // A2/E2
 		s.f21*(s.H1*( s.E0*s.U2 - s.E1*s.U3) + s.H2*( s.E3*s.U2 - s.E2*s.U3) + s.H3*(-s.E2*s.U2 - s.E3*s.U3)) +
 		s.f22*(s.H1*(-s.E2*s.U3 - s.E0*s.U1) + s.H2*( s.E1*s.U3 - s.E3*s.U1) + s.H3*(-s.E0*s.U3 + s.E2*s.U1)) +
 		s.f23*(s.H1*( s.E1*s.U1 + s.E2*s.U2) + s.H2*( s.E2*s.U1 - s.E1*s.U2) + s.H3*( s.E3*s.U1 + s.E0*s.U2)) ) -
+		2*aa2*s.E2 -
 		2*(s.f21*(-s.E0) + s.f22*( s.E3) + s.f23*(-s.E2)) )
 	jac.Set(7, 9, 2*Deg/G*(                                       // A2/E3
 		s.f21*(s.H1*( s.E1*s.U2 + s.E0*s.U3) + s.H2*( s.E2*s.U2 + s.E3*s.U3) + s.H3*( s.E3*s.U2 - s.E2*s.U3)) +
 		s.f22*(s.H1*(-s.E3*s.U3 - s.E1*s.U1) + s.H2*( s.E0*s.U3 - s.E2*s.U1) + s.H3*( s.E1*s.U3 - s.E3*s.U1)) +
 		s.f23*(s.H1*(-s.E0*s.U1 + s.E3*s.U2) + s.H2*(-s.E3*s.U1 - s.E0*s.U2) + s.H3*( s.E2*s.U1 - s.E1*s.U2)) ) -
+		2*aa2*s.E3 -
 		2*(s.f21*( s.E1) + s.f22*( s.E2) + s.f23*( s.E3)) )
 	jac.Set(7, 10, Deg/G*(                                      // A2/H1
 		s.f21*(s.U2*s.e13 - s.U3*s.e12) +
@@ -567,12 +609,21 @@ func (s *State) calcJacobianMeasurement() (jac *matrix.DenseMatrix) {
 		s.f22*(s.U3*s.e31 - s.U1*s.e33) +
 		s.f23*(s.U1*s.e32 - s.U2*s.e31) ))
 	jac.Set(7, 20, 1)                                             // A2/C2
-	jac.Set(7, 22, 2*(+s.F3*a1 + s.F0*a2 - s.F1*a3))              // A2/F0
-	jac.Set(7, 23, 2*(+s.F2*a1 - s.F1*a2 - s.F0*a3))              // A2/F1
-	jac.Set(7, 24, 2*(+s.F1*a1 + s.F2*a2 + s.F3*a3))              // A2/F2
-	jac.Set(7, 25, 2*(+s.F0*a1 - s.F3*a2 + s.F2*a3))              // A2/F3
+	jac.Set(7, 22,                                                // A2/F0
+		2*(+s.F3*a1 + s.F0*a2 - s.F1*a3) -
+		2*af2*s.F0)
+	jac.Set(7, 23,                                                // A2/F1
+		2*(+s.F2*a1 - s.F1*a2 - s.F0*a3) -
+		2*af2*s.F1)
+	jac.Set(7, 24,                                                // A2/F2
+		2*(+s.F1*a1 + s.F2*a2 + s.F3*a3) -
+		2*af2*s.F2)
+	jac.Set(7, 25,                                                // A2/F3
+		2*(+s.F0*a1 - s.F3*a2 + s.F2*a3) -
+		2*af2*s.F3)
 
-	//m.A3 = s.f31*a1 + s.f32*a2 + s.f33*a3 + s.C3
+	aa3 := s.f31*(a1+s.Z1) + s.f32*(a2+s.Z2) + s.f33*(a3+s.Z3)
+	af3 := s.f31*a1 + s.f32*a2 + s.f33*a3
 	jac.Set(8, 0, (h2*s.f33 - h3*s.f32)*Deg/G)                    // A3/U1
 	jac.Set(8, 1, (h3*s.f31 - h1*s.f33)*Deg/G)                    // A3/U2
 	jac.Set(8, 2, (h1*s.f32 - h2*s.f31)*Deg/G)                    // A3/U3
@@ -583,21 +634,25 @@ func (s *State) calcJacobianMeasurement() (jac *matrix.DenseMatrix) {
 		s.f31*(s.H1*( s.E2*s.U2 + s.E3*s.U3) + s.H2*(-s.E1*s.U2 - s.E0*s.U3) + s.H3*( s.E0*s.U2 - s.E1*s.U3)) +
 		s.f32*(s.H1*( s.E0*s.U3 - s.E2*s.U1) + s.H2*( s.E3*s.U3 + s.E1*s.U1) + s.H3*(-s.E2*s.U3 - s.E0*s.U1)) +
 		s.f33*(s.H1*(-s.E3*s.U1 - s.E0*s.U2) + s.H2*( s.E0*s.U1 - s.E3*s.U2) + s.H3*( s.E1*s.U1 + s.E2*s.U2)) ) -
+		2*aa3*s.E0 -
 		2*(s.f31*(-s.E2) + s.f32*( s.E1) + s.f33*( s.E0)) )
 	jac.Set(8, 7, 2*Deg/G*(                                       // A3/E1
 		s.f31*(s.H1*( s.E3*s.U2 - s.E2*s.U3) + s.H2*(-s.E0*s.U2 + s.E1*s.U3) + s.H3*(-s.E1*s.U2 - s.E0*s.U3)) +
 		s.f32*(s.H1*( s.E1*s.U3 - s.E3*s.U1) + s.H2*( s.E2*s.U3 + s.E0*s.U1) + s.H3*( s.E3*s.U3 + s.E1*s.U1)) +
 		s.f33*(s.H1*( s.E2*s.U1 - s.E1*s.U2) + s.H2*(-s.E1*s.U1 - s.E2*s.U2) + s.H3*( s.E0*s.U1 - s.E3*s.U2)) ) -
+		2*aa3*s.E1 -
 		2*(s.f31*( s.E3) + s.f32*( s.E0) + s.f33*(-s.E1)) )
 	jac.Set(8, 8, 2*Deg/G*(                                       // A3/E2
 		s.f31*(s.H1*( s.E0*s.U2 - s.E1*s.U3) + s.H2*( s.E3*s.U2 - s.E2*s.U3) + s.H3*(-s.E2*s.U2 - s.E3*s.U3)) +
 		s.f32*(s.H1*(-s.E2*s.U3 - s.E0*s.U1) + s.H2*( s.E1*s.U3 - s.E3*s.U1) + s.H3*(-s.E0*s.U3 + s.E2*s.U1)) +
 		s.f33*(s.H1*( s.E1*s.U1 + s.E2*s.U2) + s.H2*( s.E2*s.U1 - s.E1*s.U2) + s.H3*( s.E3*s.U1 + s.E0*s.U2)) ) -
+		2*aa3*s.E2 -
 		2*(s.f31*(-s.E0) + s.f32*( s.E3) + s.f33*(-s.E2)) )
 	jac.Set(8, 9, 2*Deg/G*(                                       // A3/E3
 		s.f31*(s.H1*( s.E1*s.U2 + s.E0*s.U3) + s.H2*( s.E2*s.U2 + s.E3*s.U3) + s.H3*( s.E3*s.U2 - s.E2*s.U3)) +
 		s.f32*(s.H1*(-s.E3*s.U3 - s.E1*s.U1) + s.H2*( s.E0*s.U3 - s.E2*s.U1) + s.H3*( s.E1*s.U3 - s.E3*s.U1)) +
 		s.f33*(s.H1*(-s.E0*s.U1 + s.E3*s.U2) + s.H2*(-s.E3*s.U1 - s.E0*s.U2) + s.H3*( s.E2*s.U1 - s.E1*s.U2)) ) -
+		2*aa3*s.E3 -
 		2*(s.f31*( s.E1) + s.f32*( s.E2) + s.f33*( s.E3)) )
 	jac.Set(8, 10, Deg/G*(                                      // A3/H1
 		s.f31*(s.U2*s.e13 - s.U3*s.e12) +
@@ -612,87 +667,122 @@ func (s *State) calcJacobianMeasurement() (jac *matrix.DenseMatrix) {
 		s.f32*(s.U3*s.e31 - s.U1*s.e33) +
 		s.f33*(s.U1*s.e32 - s.U2*s.e31) ))
 	jac.Set(8, 21, 1)                                             // A3/C3
-	jac.Set(8, 22, 2*(-s.F2*a1 + s.F1*a2 + s.F0*a3))              // A3/F0
-	jac.Set(8, 23, 2*(+s.F3*a1 + s.F0*a2 - s.F1*a3))              // A3/F1
-	jac.Set(8, 24, 2*(-s.F0*a1 + s.F3*a2 - s.F2*a3))              // A3/F2
-	jac.Set(8, 25, 2*(+s.F1*a1 + s.F2*a2 + s.F3*a3))              // A3/F3
+	jac.Set(8, 22,                                                // A3/F0
+		2*(-s.F2*a1 + s.F1*a2 + s.F0*a3) -
+		2*af3*s.F0)
+	jac.Set(8, 23,                                                // A3/F1
+		2*(+s.F3*a1 + s.F0*a2 - s.F1*a3) -
+		2*af3*s.F1)
+	jac.Set(8, 24,                                                // A3/F2
+		2*(-s.F0*a1 + s.F3*a2 - s.F2*a3) -
+		2*af3*s.F2)
+	jac.Set(8, 25,                                                // A3/F3
+		2*(+s.F1*a1 + s.F2*a2 + s.F3*a3) -
+		2*af3*s.F3)
 
-	//m.B1 = s.f11*h1 + s.f12*h2 + s.f13*h3 + s.D1
+	b1 := s.f11*h1 + s.f12*h2 + s.f13*h3
+	bf1 := b1 + s.D1
 	jac.Set(9, 6,                                                 // B1/E0
 		2*( s.E0*s.H1 + s.E3*s.H2 - s.E2*s.H3)*s.f11 +
 		2*(-s.E3*s.H1 + s.E0*s.H2 + s.E1*s.H3)*s.f12 +
-		2*( s.E2*s.H1 - s.E1*s.H2 + s.E0*s.H3)*s.f13 )
+		2*( s.E2*s.H1 - s.E1*s.H2 + s.E0*s.H3)*s.f13 -
+		2*b1*s.E0)
 	jac.Set(9, 7,                                                 // B1/E1
 		2*( s.E1*s.H1 + s.E2*s.H2 + s.E3*s.H3)*s.f11 +
 		2*( s.E2*s.H1 - s.E1*s.H2 + s.E0*s.H3)*s.f12 +
-		2*( s.E3*s.H1 - s.E0*s.H2 - s.E1*s.H3)*s.f13 )
+		2*( s.E3*s.H1 - s.E0*s.H2 - s.E1*s.H3)*s.f13 -
+		2*b1*s.E1)
 	jac.Set(9, 8,                                                 // B1/E2
 		2*(-s.E2*s.H1 + s.E1*s.H2 - s.E0*s.H3)*s.f11 +
 		2*( s.E1*s.H1 + s.E2*s.H2 + s.E3*s.H3)*s.f12 +
-		2*( s.E0*s.H1 + s.E3*s.H2 - s.E2*s.H3)*s.f13 )
+		2*( s.E0*s.H1 + s.E3*s.H2 - s.E2*s.H3)*s.f13 -
+		2*b1*s.E2)
 	jac.Set(9, 9,                                                 // B1/E3
 		2*(-s.E3*s.H1 + s.E0*s.H2 + s.E1*s.H3)*s.f11 +
 		2*(-s.E0*s.H1 - s.E3*s.H2 + s.E2*s.H3)*s.f12 +
-		2*( s.E1*s.H1 + s.E2*s.H2 + s.E3*s.H3)*s.f13 )
-	jac.Set(9, 10, s.e11*s.f11 + s.e12*s.f12 + s.e13*s.f13 )         // B1/H1
-	jac.Set(9, 11, s.e21*s.f11 + s.e22*s.f12 + s.e23*s.f13 )         // B1/H2
-	jac.Set(9, 12, s.e31*s.f11 + s.e32*s.f12 + s.e33*s.f13 )         // B1/H3
-	jac.Set(9, 22, 2*( h1*s.F0 - h2*s.F3 + h3*s.F2) )             // B1/F0
-	jac.Set(9, 23, 2*( h1*s.F1 + h2*s.F2 + h3*s.F3) )             // B1/F1
-	jac.Set(9, 24, 2*(-h1*s.F2 + h2*s.F1 + h3*s.F0) )             // B1/F2
-	jac.Set(9, 25, 2*(-h1*s.F3 - h2*s.F0 + h3*s.F1) )             // B1/F3
+		2*( s.E1*s.H1 + s.E2*s.H2 + s.E3*s.H3)*s.f13 -
+		2*b1*s.E3)
+	jac.Set(9, 10, s.e11*s.f11 + s.e12*s.f12 + s.e13*s.f13 )      // B1/H1
+	jac.Set(9, 11, s.e21*s.f11 + s.e22*s.f12 + s.e23*s.f13 )      // B1/H2
+	jac.Set(9, 12, s.e31*s.f11 + s.e32*s.f12 + s.e33*s.f13 )      // B1/H3
+	jac.Set(9, 22, 2*( h1*s.F0 - h2*s.F3 + h3*s.F2) -             // B1/F0
+		2*bf1*s.F0)
+	jac.Set(9, 23, 2*( h1*s.F1 + h2*s.F2 + h3*s.F3) -             // B1/F1
+		2*bf1*s.F1)
+	jac.Set(9, 24, 2*(-h1*s.F2 + h2*s.F1 + h3*s.F0) -             // B1/F2
+		2*bf1*s.F2)
+	jac.Set(9, 25, 2*(-h1*s.F3 - h2*s.F0 + h3*s.F1) -             // B1/F3
+		2*bf1*s.F3)
 	jac.Set(9, 26, 1)                                             // B1/D1
 
-	//m.B2 = s.f21*h1 + s.f22*h2 + s.f23*h3 + s.D2
+	b2 := s.f21*h1 + s.f22*h2 + s.f23*h3
+	bf2 := b2 + s.D2
 	jac.Set(10, 6,                                                // B2/E0
 		2*( s.E0*s.H1 + s.E3*s.H2 - s.E2*s.H3)*s.f21 +
 		2*(-s.E3*s.H1 + s.E0*s.H2 + s.E1*s.H3)*s.f22 +
-		2*( s.E2*s.H1 - s.E1*s.H2 + s.E0*s.H3)*s.f23 )
+		2*( s.E2*s.H1 - s.E1*s.H2 + s.E0*s.H3)*s.f23 -
+		2*b2*s.E0)
 	jac.Set(10, 7,                                                // B2/E1
 		2*( s.E1*s.H1 + s.E2*s.H2 + s.E3*s.H3)*s.f21 +
 		2*( s.E2*s.H1 - s.E1*s.H2 + s.E0*s.H3)*s.f22 +
-		2*( s.E3*s.H1 - s.E0*s.H2 - s.E1*s.H3)*s.f23 )
+		2*( s.E3*s.H1 - s.E0*s.H2 - s.E1*s.H3)*s.f23 -
+		2*b2*s.E1)
 	jac.Set(10, 8,                                                // B2/E2
 		2*(-s.E2*s.H1 + s.E1*s.H2 - s.E0*s.H3)*s.f21 +
 		2*( s.E1*s.H1 + s.E2*s.H2 + s.E3*s.H3)*s.f22 +
-		2*( s.E0*s.H1 + s.E3*s.H2 - s.E2*s.H3)*s.f23 )
-	jac.Set(10, 9,                                                // B2/E2
+		2*( s.E0*s.H1 + s.E3*s.H2 - s.E2*s.H3)*s.f23 -
+		2*b2*s.E2)
+	jac.Set(10, 9,                                                // B2/E3
 		2*(-s.E3*s.H1 + s.E0*s.H2 + s.E1*s.H3)*s.f21 +
 		2*(-s.E0*s.H1 - s.E3*s.H2 + s.E2*s.H3)*s.f22 +
-		2*( s.E1*s.H1 + s.E2*s.H2 + s.E3*s.H3)*s.f23 )
-	jac.Set(10, 10, s.e11*s.f21 + s.e12*s.f22 + s.e13*s.f23 )        // B2/H1
-	jac.Set(10, 11, s.e21*s.f21 + s.e22*s.f22 + s.e23*s.f23 )        // B2/H2
-	jac.Set(10, 12, s.e31*s.f21 + s.e32*s.f22 + s.e33*s.f23 )        // B2/H3
-	jac.Set(10, 22, 2*( h1*s.F3 + h2*s.F0 - h3*s.F1) )            // B2/F0
-	jac.Set(10, 23, 2*( h1*s.F2 - h2*s.F1 - h3*s.F0) )            // B2/F1
-	jac.Set(10, 24, 2*( h1*s.F1 + h2*s.F2 + h3*s.F3) )            // B2/F2
-	jac.Set(10, 25, 2*( h1*s.F0 - h2*s.F3 + h3*s.F2) )            // B2/F3
+		2*( s.E1*s.H1 + s.E2*s.H2 + s.E3*s.H3)*s.f23 -
+		2*b2*s.E3)
+	jac.Set(10, 10, s.e11*s.f21 + s.e12*s.f22 + s.e13*s.f23 )     // B2/H1
+	jac.Set(10, 11, s.e21*s.f21 + s.e22*s.f22 + s.e23*s.f23 )     // B2/H2
+	jac.Set(10, 12, s.e31*s.f21 + s.e32*s.f22 + s.e33*s.f23 )     // B2/H3
+	jac.Set(10, 22, 2*( h1*s.F3 + h2*s.F0 - h3*s.F1) -            // B2/F0
+		2*bf2*s.F0)
+	jac.Set(10, 23, 2*( h1*s.F2 - h2*s.F1 - h3*s.F0) -            // B2/F1
+		2*bf2*s.F1)
+	jac.Set(10, 24, 2*( h1*s.F1 + h2*s.F2 + h3*s.F3) -            // B2/F2
+		2*bf2*s.F2)
+	jac.Set(10, 25, 2*( h1*s.F0 - h2*s.F3 + h3*s.F2) -            // B2/F3
+		2*bf2*s.F3)
 	jac.Set(10, 27, 1)                                            // B2/D2
 
-	//m.B3 = s.f31*h1 + s.f32*h2 + s.f33*h3 + s.D3
+	b3 := s.f31*h1 + s.f32*h2 + s.f33*h3
+	bf3 := b3 + s.D3
 	jac.Set(11, 6,                                                // B3/E0
 		2*( s.E0*s.H1 + s.E3*s.H2 - s.E2*s.H3)*s.f31 +
 		2*(-s.E3*s.H1 + s.E0*s.H2 + s.E1*s.H3)*s.f32 +
-		2*( s.E2*s.H1 - s.E1*s.H2 + s.E0*s.H3)*s.f33 )
+		2*( s.E2*s.H1 - s.E1*s.H2 + s.E0*s.H3)*s.f33 -
+		2*b3*s.E0)
 	jac.Set(11, 7,                                                // B3/E1
 		2*( s.E1*s.H1 + s.E2*s.H2 + s.E3*s.H3)*s.f31 +
 		2*( s.E2*s.H1 - s.E1*s.H2 + s.E0*s.H3)*s.f32 +
-		2*( s.E3*s.H1 - s.E0*s.H2 - s.E1*s.H3)*s.f33 )
+		2*( s.E3*s.H1 - s.E0*s.H2 - s.E1*s.H3)*s.f33 -
+		2*b3*s.E1)
 	jac.Set(11, 8,                                                // B3/E2
 		2*(-s.E2*s.H1 + s.E1*s.H2 - s.E0*s.H3)*s.f31 +
 		2*( s.E1*s.H1 + s.E2*s.H2 + s.E3*s.H3)*s.f32 +
-		2*( s.E0*s.H1 + s.E3*s.H2 - s.E2*s.H3)*s.f33 )
+		2*( s.E0*s.H1 + s.E3*s.H2 - s.E2*s.H3)*s.f33 -
+		2*b3*s.E2)
 	jac.Set(11, 9,                                                // B3/E2
 		2*(-s.E3*s.H1 + s.E0*s.H2 + s.E1*s.H3)*s.f31 +
 		2*(-s.E0*s.H1 - s.E3*s.H2 + s.E2*s.H3)*s.f32 +
-		2*( s.E1*s.H1 + s.E2*s.H2 + s.E3*s.H3)*s.f33 )
-	jac.Set(11, 10, s.e11*s.f31 + s.e12*s.f32 + s.e13*s.f33 )        // B3/H1
-	jac.Set(11, 11, s.e21*s.f31 + s.e22*s.f32 + s.e23*s.f33 )        // B3/H2
-	jac.Set(11, 12, s.e31*s.f31 + s.e32*s.f32 + s.e33*s.f33 )        // B3/H3
-	jac.Set(11, 22, 2*(-h1*s.F2 + h2*s.F1 + h3*s.F0) )            // B3/F0
-	jac.Set(11, 23, 2*( h1*s.F3 + h2*s.F0 - h3*s.F1) )            // B3/F1
-	jac.Set(11, 24, 2*(-h1*s.F0 + h2*s.F3 - h3*s.F2) )            // B3/F2
-	jac.Set(11, 25, 2*( h1*s.F1 + h2*s.F2 + h3*s.F3) )            // B3/F3
+		2*( s.E1*s.H1 + s.E2*s.H2 + s.E3*s.H3)*s.f33 -
+		2*b3*s.E3)
+	jac.Set(11, 10, s.e11*s.f31 + s.e12*s.f32 + s.e13*s.f33 )     // B3/H1
+	jac.Set(11, 11, s.e21*s.f31 + s.e22*s.f32 + s.e23*s.f33 )     // B3/H2
+	jac.Set(11, 12, s.e31*s.f31 + s.e32*s.f32 + s.e33*s.f33 )     // B3/H3
+	jac.Set(11, 22, 2*(-h1*s.F2 + h2*s.F1 + h3*s.F0) -            // B3/F0
+		2*bf3*s.F0)
+	jac.Set(11, 23, 2*( h1*s.F3 + h2*s.F0 - h3*s.F1) -            // B3/F1
+		2*bf3*s.F1)
+	jac.Set(11, 24, 2*(-h1*s.F0 + h2*s.F3 - h3*s.F2) -            // B3/F2
+		2*bf3*s.F2)
+	jac.Set(11, 25, 2*( h1*s.F1 + h2*s.F2 + h3*s.F3) -            // B3/F3
+		2*bf3*s.F3)
 	jac.Set(11, 28, 1)                                            // B3/D3
 
 	//TODO westphae: fix these
