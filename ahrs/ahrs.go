@@ -111,31 +111,32 @@ func Initialize(m *Measurement) (s *State) {
 
 	// Diagonal matrix of initial state uncertainties, will be squared into covariance below
 	s.M = matrix.Diagonal([]float64{
-		50, 5, 5,           // U*3
-		5, 2, 2,            // Z*3
-		0.5, 0.5, 0.5, 0.5, // E*4
-		5, 5, 5,            // H*3
-		65, 65, 65,         // N*3
-		20, 20, 2,          // V*3
-		0.05, 0.05, 0.05,   // C*3
-		0.5, 0.5, 0.5, 0.5, // F*4
-		0.1, 0.1, 0.1,      // D*4
-		10, 10, 10,         // L*4
+		50, 5, 5,                   // U*3
+		0.5, 0.5, 0.5,              // Z*3
+		0.5, 0.5, 0.5, 0.5,         // E*4
+		2, 2, 2,                    // H*3
+		65, 65, 65,                 // N*3
+		20, 20, 2,                  // V*3
+		0.02, 0.02, 0.02,           // C*3
+		0.002, 0.002, 0.002, 0.002, // F*4
+		0.1, 0.1, 0.1,              // D*4
+		10, 10, 10,                 // L*4
 	})
 	s.M = matrix.Product(s.M, s.M)
 
 	// Diagonal matrix of state process uncertainties per s, will be squared into covariance below
+	tt := math.Sqrt(60*60) // One-hour time constant for drift of biases V, C, F, D, L
 	s.N = matrix.Diagonal([]float64{
-		0.1, 0.1, 0.1,                          // U*3
-		0.2, 0.2, 0.2,                          // Z*3
-		0.01, 0.01, 0.01, 0.01,                 // E*4
-		1, 1, 1,                                // H*3
-		0.01, 0.01, 0.01,                       // N*3
-		0.1, 0.1, 0.05,                         // V*3
-		0.01/60, 0.01/60, 0.01/60,              // C*3
-		0.001/60, 0.001/60, 0.001/60, 0.001/60, // F*4
-		0.1/60, 0.1/60, 0.1/60,                 // D*3
-		0.01/60, 0.01/60, 0.01/60,              // L*3
+		0.1, 0.1, 0.1,                              // U*3
+		0.02, 0.02, 0.02,                           // Z*3
+		0.002, 0.002, 0.002, 0.002,                 // E*4
+		0.1, 0.1, 0.1,                              // H*3
+		0.01, 0.01, 0.01,                           // N*3
+		5/tt, 5/tt, 5/tt,                           // V*3
+		0.01/tt, 0.01/tt, 0.01/tt,                  // C*3
+		0.0001/tt, 0.0001/tt, 0.0001/tt, 0.0001/tt, // F*4
+		0.1/tt, 0.1/tt, 0.1/tt,                     // D*3
+		0.01/tt, 0.01/tt, 0.01/tt,                  // L*3
 	})
 	s.N = matrix.Product(s.N, s.N)
 
@@ -145,8 +146,8 @@ func Initialize(m *Measurement) (s *State) {
 	if m.WValid {
 		s.U1 = math.Hypot(m.W1, m.W2)
 		s.M.Set(0, 0, 10*10) // Our estimate of airspeed is better
-		s.M.Set(16, 16, 50) // Matching uncertainty of windspeed
-		s.M.Set(17, 17, 50) // Matching uncertainty of windspeed
+		s.M.Set(16, 16, 50)  // Matching uncertainty of windspeed
+		s.M.Set(17, 17, 50)  // Matching uncertainty of windspeed
 	}
 
 	// Best guess at initial heading is initial track
@@ -232,8 +233,8 @@ func (s *State) Update(m *Measurement) {
 	}
 	// U2, U3 are just here to bias toward coordinated flight
 	//TODO westphae: not sure I really want these to not be BIG
-	m.M.Set(1, 1, 25)
-	m.M.Set(2, 2, 25)
+	m.M.Set(1, 1, 9)
+	m.M.Set(2, 2, 9)
 
 	if m.WValid {
 		m.M.Set(3, 3, 0.2)
@@ -249,12 +250,12 @@ func (s *State) Update(m *Measurement) {
 	}
 
 	if m.SValid {
-		m.M.Set( 6,  6, 0.2)
-		m.M.Set( 7,  7, 0.2)
-		m.M.Set( 8,  8, 0.2)
-		m.M.Set( 9,  9,   1)
-		m.M.Set(10, 10,   1)
-		m.M.Set(11, 11,   1)
+		m.M.Set( 6,  6, 0.1)
+		m.M.Set( 7,  7, 0.1)
+		m.M.Set( 8,  8, 0.1)
+		m.M.Set( 9,  9, 0.2)
+		m.M.Set(10, 10, 0.2)
+		m.M.Set(11, 11, 0.2)
 	} else {
 		y.Set( 6, 0, 0)
 		y.Set( 7, 0, 0)

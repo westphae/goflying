@@ -49,9 +49,9 @@ func main() {
 		defaultUdt = 0.1
 		udtUsage = "Kalman filter update period, seconds"
 		defaultGyroNoise = 0.0
-		gyroNoiseUsage = "Amount of noise to add to gyro measurements, deg/s"
+		gyroNoiseUsage = "Amount of noise to add to gyro measurements, °/s"
 		defaultGyroBias = "0,0,0"
-		gyroBiasUsage = "Amount of bias to add to gyro measurements, \"x,y,z\" deg/s"
+		gyroBiasUsage = "Amount of bias to add to gyro measurements, \"x,y,z\" °/s"
 		defaultAccelNoise = 0.0
 		accelNoiseUsage = "Amount of noise to add to accel measurements, G"
 		defaultAccelBias = "0,0,0"
@@ -63,9 +63,9 @@ func main() {
 		defaultASIBias = 0.0
 		asiBiasUsage = "Amount of bias to add to airspeed measurements, kt"
 		defaultMagNoise = 0.0
-		magNoiseUsage = "Amount of noise to add to magnetometer measurements, uT"
+		magNoiseUsage = "Amount of noise to add to magnetometer measurements, μT"
 		defaultMagBias = "0,0,0"
-		magBiasUsage = "Amount of bias to add to magnetometer measurements, \"x,y,z\" uT"
+		magBiasUsage = "Amount of bias to add to magnetometer measurements, \"x,y,z\" μT"
 		defaultGPSInop = false
 		gpsInopUsage = "Make the GPS inoperative"
 		defaultASIInop = true
@@ -121,7 +121,7 @@ func main() {
 	fmt.Printf("\tNoise: %f G\n", accelNoise)
 	fmt.Printf("\tBias: %f,%f,%f\n", accelBias[0], accelBias[1], accelBias[2])
 	fmt.Println("Gyro:")
-	fmt.Printf("\tNoise: %f G\n", gyroNoise)
+	fmt.Printf("\tNoise: %f °/s\n", gyroNoise)
 	fmt.Printf("\tBias: %f,%f,%f\n", gyroBias[0], gyroBias[1], gyroBias[2])
 	fmt.Println("GPS:")
 	fmt.Printf("\tInop: %t\n", gpsInop)
