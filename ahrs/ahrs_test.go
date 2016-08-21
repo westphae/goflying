@@ -196,3 +196,31 @@ func TestJacobianState(t *testing.T) {
 		}
 	}
 }
+
+
+func TestAccumulator(t *testing.T) {
+	const Decay = 0.995
+
+	var n, m, v float64
+
+	rand.Seed(time.Now().Unix())
+
+	N := 1/(1-Decay)
+	a := NewVarianceAccumulator(1+rand.NormFloat64(), Decay)
+	for i:=1; i<int(50*N); i++ {
+		n, m, v = a(1+rand.NormFloat64())
+	}
+	if math.Abs(n-N) > 0.01 {
+		log.Printf("Error: effective observations was %6f, should be %6f\n", n, N)
+		t.Fail()
+	}
+	if math.Abs(m-1) > 2/math.Sqrt(N) {
+		log.Printf("Error: mean was %6f, should be 1\n", m)
+		t.Fail()
+	}
+	if math.Abs(v-1) > 2/math.Sqrt(N) {
+		log.Printf("Error: var was %6f, should be 1\n", v)
+		t.Fail()
+	}
+	log.Printf("Success: n=%6.0f, m=%6f, v=%6f\n", n, m, v)
+}
