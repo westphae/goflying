@@ -118,8 +118,8 @@ func (s *SituationSim) Interpolate(t float64, st *ahrs.State, aBias, bBias, mBia
 // gps noise (gaussian stdev) and bias are in kt
 // airspeed noise and bias are in kt
 // accelerometer noise and bias are in G
-// gyro noise and bias are in deg/s
-// magnetometer noise and bias are in uT
+// gyro noise and bias are in °/s
+// magnetometer noise and bias are in μT
 func (s *SituationSim) Measurement(t float64, m *ahrs.Measurement,
 		uValid, wValid, sValid, mValid bool,
 		uNoise, wNoise, aNoise, bNoise, mNoise float64,
@@ -209,8 +209,6 @@ func (s *SituationSim) Measurement(t float64, m *ahrs.Measurement,
 	}
 
 	m.T = t
-
-	m.M = matrix.Zeros(15, 15)
 
 	return nil
 }

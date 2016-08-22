@@ -189,8 +189,8 @@ func TestJacobianState(t *testing.T) {
 				if math.Abs(dS - f.Get(j, i)) > 1e-4 {
 					log.Printf("Error in index %2d,%2d: Calc %6f, Jacobian was %6f\n", j, i, dS, f.Get(j, i))
 					t.Fail()
-				} else if math.Abs(dS) > Small {
-					log.Printf("Passed   index %2d,%2d: Calc %6f, Jacobian was %6f\n", j, i, dS, f.Get(j, i))
+				//} else if math.Abs(dS) > Small {
+				//	log.Printf("Passed   index %2d,%2d: Calc %6f, Jacobian was %6f\n", j, i, dS, f.Get(j, i))
 				}
 			}
 		}
@@ -205,10 +205,12 @@ func TestAccumulator(t *testing.T) {
 
 	rand.Seed(time.Now().Unix())
 
-	N := 1/(1-Decay)
-	a := NewVarianceAccumulator(1+rand.NormFloat64(), Decay)
+	N := 1/(1-Decay) // Go long enough to get good statistics
+	a := NewVarianceAccumulator(0, 0, Decay)
+	x := 0.0
 	for i:=1; i<int(50*N); i++ {
-		n, m, v = a(1+rand.NormFloat64())
+		x += 1+rand.NormFloat64()
+		n, m, v = a(x)
 	}
 	if math.Abs(n-N) > 0.01 {
 		log.Printf("Error: effective observations was %6f, should be %6f\n", n, N)

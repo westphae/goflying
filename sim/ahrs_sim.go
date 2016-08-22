@@ -175,8 +175,8 @@ func main() {
 	// This is where it all happens
 	fmt.Println("Running Simulation")
 	s0 := new(ahrs.State)       // Actual state from simulation, for comparison
-	m  := new(ahrs.Measurement)
-	pm := new(ahrs.Measurement)
+	m  := ahrs.NewMeasurement()
+	pm := ahrs.NewMeasurement()
 	t := sit.BeginTime()
 	tNextUpdate := t + udt
 	sit.Measurement(t, m, !asiInop, !gpsInop, true, !magInop,
@@ -185,6 +185,7 @@ func main() {
 	s := ahrs.Initialize(m)
 	// These next few just for testing with a correct starting state
 	//TODO testing
+	/*
 	sit.Interpolate(t, s0, accelBias, gyroBias, magBias)
 	// U, Z, E, H, N,
 	// V, C, F, D, L
@@ -221,6 +222,7 @@ func main() {
 	s.L2 = s0.L2
 	s.L3 = s0.L3
 	// Done for testing
+	*/
 	for {
 		if t>tNextUpdate-1e-9 {
 			t = tNextUpdate
@@ -334,6 +336,9 @@ func main() {
 		)
 
 		t += pdt
+		if s.U1 < 0 {
+			s = ahrs.Initialize(m)
+		}
 	}
 
 	// Clean up
@@ -343,6 +348,7 @@ func main() {
 	lPMeas.Close()
 	lVar.Close()
 	lMeas.Close()
+	lKMeas.Close()
 
 	// Run analysis web server
 	fmt.Println("Serving charts")

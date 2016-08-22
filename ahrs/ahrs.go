@@ -14,6 +14,7 @@ const (
 	Small = 1e-9
 	Big = 1e9
 	Deg = Pi/180
+	MMDecay = (1-1.0/50)           // Exponential decay constant for measurement variances
 )
 
 // State holds the complete information describing the state of the aircraft
@@ -61,7 +62,33 @@ type Measurement struct {                      // Order here also defines order 
 	M1, M2, M3                     float64 // Vector of magnetometer readings, µT, aircraft (accelerated) frame
 	T                              float64 // Timestamp of GPS, airspeed and magnetometer readings
 
+	Accums                         [15]func(float64)(float64, float64, float64) // Accumulators to track means & variances of all variables
+
 	M                              *matrix.DenseMatrix // Measurement noise covariance
+}
+
+func NewMeasurement() (*Measurement) {
+	m := new(Measurement)
+
+	m.M = matrix.Zeros(15, 15)
+
+	m.Accums[0] = NewVarianceAccumulator(0, 1, MMDecay)
+	m.Accums[1] = NewVarianceAccumulator(0, 1, MMDecay)
+	m.Accums[2] = NewVarianceAccumulator(0, 1, MMDecay)
+	m.Accums[3] = NewVarianceAccumulator(0, 0.2, MMDecay)
+	m.Accums[4] = NewVarianceAccumulator(0, 0.2, MMDecay)
+	m.Accums[5] = NewVarianceAccumulator(0, 0.2, MMDecay)
+	m.Accums[6] = NewVarianceAccumulator(0, 0.3, MMDecay) // 0.006 typical from sensor
+	m.Accums[7] = NewVarianceAccumulator(0, 0.3, MMDecay)
+	m.Accums[8] = NewVarianceAccumulator(0, 0.3, MMDecay)
+	m.Accums[9] = NewVarianceAccumulator(0, 1, MMDecay) // 0.03 typical from sensor
+	m.Accums[10] = NewVarianceAccumulator(0, 1, MMDecay)
+	m.Accums[11] = NewVarianceAccumulator(0, 1, MMDecay)
+	m.Accums[12] = NewVarianceAccumulator(0, 80, MMDecay) //TODO westphae: get a feel for magnetometer noise
+	m.Accums[13] = NewVarianceAccumulator(0, 80, MMDecay)
+	m.Accums[14] = NewVarianceAccumulator(0, 80, MMDecay)
+
+	return m
 }
 
 // normalize normalizes the E & F quaternions in State s
@@ -110,13 +137,14 @@ func Initialize(m *Measurement) (s *State) {
 	s = new(State)
 
 	// Diagonal matrix of initial state uncertainties, will be squared into covariance below
+	// Specifics here aren't too important--it will change very quickly
 	s.M = matrix.Diagonal([]float64{
 		50, 5, 5,                   // U*3
-		0.5, 0.5, 0.5,              // Z*3
+		0.4, 0.2, 0.5,              // Z*3
 		0.5, 0.5, 0.5, 0.5,         // E*4
 		2, 2, 2,                    // H*3
 		65, 65, 65,                 // N*3
-		20, 20, 2,                  // V*3
+		10, 10, 2,                  // V*3
 		0.02, 0.02, 0.02,           // C*3
 		0.002, 0.002, 0.002, 0.002, // F*4
 		0.1, 0.1, 0.1,              // D*4
@@ -125,18 +153,19 @@ func Initialize(m *Measurement) (s *State) {
 	s.M = matrix.Product(s.M, s.M)
 
 	// Diagonal matrix of state process uncertainties per s, will be squared into covariance below
-	tt := math.Sqrt(60*60) // One-hour time constant for drift of biases V, C, F, D, L
+	// Tuning these is more important
+	tt := math.Sqrt(60.0*60.0) // One-hour time constant for drift of biases V, C, F, D, L
 	s.N = matrix.Diagonal([]float64{
-		0.1, 0.1, 0.1,                              // U*3
-		0.02, 0.02, 0.02,                           // Z*3
-		0.002, 0.002, 0.002, 0.002,                 // E*4
-		0.1, 0.1, 0.1,                              // H*3
-		0.01, 0.01, 0.01,                           // N*3
+		1, 0.1, 0.1,                                // U*3
+		0.2, 0.1, 0.2,                              // Z*3
+		0.02, 0.02, 0.02, 0.02,                     // E*4
+		1, 1, 1,                                    // H*3
+		100, 100, 100,                              // N*3
 		5/tt, 5/tt, 5/tt,                           // V*3
 		0.01/tt, 0.01/tt, 0.01/tt,                  // C*3
 		0.0001/tt, 0.0001/tt, 0.0001/tt, 0.0001/tt, // F*4
 		0.1/tt, 0.1/tt, 0.1/tt,                     // D*3
-		0.01/tt, 0.01/tt, 0.01/tt,                  // L*3
+		0.1/tt, 0.1/tt, 0.1/tt,                     // L*3
 	})
 	s.N = matrix.Product(s.N, s.N)
 
@@ -223,23 +252,27 @@ func (s *State) Update(m *Measurement) {
 
 	h := s.calcJacobianMeasurement()
 
+	var v float64
 	// U, W, A, B, M
-	// The m.M will be squared below, so enter stdev here, not variance
 	if m.UValid {
-		m.M.Set(0, 0, 2)
+		_, _, v = m.Accums[0](m.U1)
+		m.M.Set(0, 0, v)
 	} else {
 		y.Set(0, 0, 0)
 		m.M.Set(0, 0, Big)
 	}
 	// U2, U3 are just here to bias toward coordinated flight
 	//TODO westphae: not sure I really want these to not be BIG
-	m.M.Set(1, 1, 9)
-	m.M.Set(2, 2, 9)
+	m.M.Set(1, 1, 1)
+	m.M.Set(2, 2, 1)
 
 	if m.WValid {
-		m.M.Set(3, 3, 0.2)
-		m.M.Set(4, 4, 0.2)
-		m.M.Set(5, 5, 0.2)
+		_, _, v = m.Accums[3](m.W1)
+		m.M.Set(3, 3, v)
+		_, _, v = m.Accums[4](m.W2)
+		m.M.Set(4, 4, v)
+		_, _, v = m.Accums[5](m.W3)
+		m.M.Set(5, 5, v)
 	} else {
 		y.Set(3, 0, 0)
 		y.Set(4, 0, 0)
@@ -250,12 +283,18 @@ func (s *State) Update(m *Measurement) {
 	}
 
 	if m.SValid {
-		m.M.Set( 6,  6, 0.1)
-		m.M.Set( 7,  7, 0.1)
-		m.M.Set( 8,  8, 0.1)
-		m.M.Set( 9,  9, 0.2)
-		m.M.Set(10, 10, 0.2)
-		m.M.Set(11, 11, 0.2)
+		_, _, v = m.Accums[6](m.A1)
+		m.M.Set(6, 6, v)
+		_, _, v = m.Accums[7](m.A2)
+		m.M.Set(7, 7, v)
+		_, _, v = m.Accums[8](m.A3)
+		m.M.Set(8, 8, v)
+		_, _, v = m.Accums[9](m.B1)
+		m.M.Set(9, 9, v)
+		_, _, v = m.Accums[10](m.B2)
+		m.M.Set(10, 10, v)
+		_, _, v = m.Accums[11](m.B3)
+		m.M.Set(11, 11, v)
 	} else {
 		y.Set( 6, 0, 0)
 		y.Set( 7, 0, 0)
@@ -272,9 +311,12 @@ func (s *State) Update(m *Measurement) {
 	}
 
 	if m.MValid {
-		m.M.Set(12, 12, 5) //TODO westphae: get a feel for magnetometer noise
-		m.M.Set(13, 13, 5)
-		m.M.Set(14, 14, 5)
+		_, _, v = m.Accums[12](m.M1)
+		m.M.Set(12, 12, v)
+		_, _, v = m.Accums[13](m.M2)
+		m.M.Set(13, 13, v)
+		_, _, v = m.Accums[14](m.M3)
+		m.M.Set(14, 14, v)
 	} else {
 		y.Set(12, 0, 0)
 		y.Set(13, 0, 0)
@@ -283,7 +325,6 @@ func (s *State) Update(m *Measurement) {
 		m.M.Set(13, 13, Big)
 		m.M.Set(14, 14, Big)
 	}
-	m.M = matrix.Product(m.M, m.M)
 
 	ss := matrix.Sum(matrix.Product(h, matrix.Product(s.M, h.Transpose())), m.M)
 
@@ -332,7 +373,7 @@ func (s *State) Update(m *Measurement) {
 }
 
 func (s *State) PredictMeasurement() (m *Measurement) {
-	m = new(Measurement)
+	m = NewMeasurement()
 
 	m.UValid = true
 	m.U1 = s.U1
