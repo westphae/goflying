@@ -139,24 +139,24 @@ func main() {
 	// Files to save data to for analysis
 	// U, Z, E, H, N,
 	// V, C, F, D, L
-	lActual := NewAHRSLogger("k_state.csv",
+	lActual := ahrs.NewSensorLogger("k_state.csv",
 		"T", "U1", "U2", "U3", "Z1", "Z2", "Z3", "Phi", "Theta", "Psi", "H1", "H2", "H3", "N1", "N2", "N3",
 		"V1", "V2", "V3", "C1", "C2", "C3", "Phi0", "Theta0", "Psi0", "D1", "D2", "D3", "L1", "L2", "L3")
-	lKalman := NewAHRSLogger("k_kalman.csv",
+	lKalman := ahrs.NewSensorLogger("k_kalman.csv",
 		"T", "U1", "U2", "U3", "Z1", "Z2", "Z3", "Phi", "Theta", "Psi", "H1", "H2", "H3", "N1", "N2", "N3",
 		"V1", "V2", "V3", "C1", "C2", "C3", "Phi0", "Theta0", "Psi0", "D1", "D2", "D3", "L1", "L2", "L3")
-	lPredict := NewAHRSLogger("k_predict.csv",
+	lPredict := ahrs.NewSensorLogger("k_predict.csv",
 		"T", "U1", "U2", "U3", "Z1", "Z2", "Z3", "Phi", "Theta", "Psi", "H1", "H2", "H3", "N1", "N2", "N3",
 		"V1", "V2", "V3", "C1", "C2", "C3", "Phi0", "Theta0", "Psi0", "D1", "D2", "D3", "L1", "L2", "L3")
-	lVar := NewAHRSLogger("k_var.csv",
+	lVar := ahrs.NewSensorLogger("k_var.csv",
 		"T", "U1", "U2", "U3", "Z1", "Z2", "Z3", "Phi", "Theta", "Psi", "H1", "H2", "H3", "N1", "N2", "N3",
 		"V1", "V2", "V3", "C1", "C2", "C3", "Phi0", "Theta0", "Psi0", "D1", "D2", "D3", "L1", "L2", "L3")
 	// U, W, A, B, M
-	lMeas := NewAHRSLogger("k_meas.csv",
+	lMeas := ahrs.NewSensorLogger("k_meas.csv",
 		"T", "U1", "U2", "U3", "W1", "W2", "W3", "A1", "A2", "A3", "B1", "B2", "B3", "M1", "M2", "M3")
-	lPMeas := NewAHRSLogger("k_predmeas.csv",
+	lPMeas := ahrs.NewSensorLogger("k_predmeas.csv",
 		"T", "U1", "U2", "U3", "W1", "W2", "W3", "A1", "A2", "A3", "B1", "B2", "B3", "M1", "M2", "M3")
-	lKMeas := NewAHRSLogger("k_kalmeas.csv",
+	lKMeas := ahrs.NewSensorLogger("k_kalmeas.csv",
 		"T", "U1", "U2", "U3", "W1", "W2", "W3", "A1", "A2", "A3", "B1", "B2", "B3", "M1", "M2", "M3")
 
 	switch scenario {

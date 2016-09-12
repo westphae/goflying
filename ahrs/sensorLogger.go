@@ -1,21 +1,21 @@
-package main
+package ahrs
 
 import (
+	"os"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 )
 
-type AHRSLogger struct {
-	f	*os.File
-	h	[]string
-	fmt 	string
+type SensorLogger struct {
+	f       *os.File
+	h       []string
+	fmt     string
 }
 
-func NewAHRSLogger(fn string, h ...string) (l AHRSLogger) {
+func NewSensorLogger(fn string, h ...string) (l SensorLogger) {
 	l.h = h
-	f, err := os.Create(fn)
+	f, err := os.Create("/var/log/" + fn)
 	l.f = f
 	if err != nil {
 		log.Fatalln(err)
@@ -27,11 +27,10 @@ func NewAHRSLogger(fn string, h ...string) (l AHRSLogger) {
 	return
 }
 
-func (l *AHRSLogger) Log(v ...interface{}) {
+func (l *SensorLogger) Log(v ...interface{}) {
 	fmt.Fprintf(l.f, l.fmt, v...)
 }
 
-func (l *AHRSLogger) Close() {
+func (l *SensorLogger) Close() {
 	l.f.Close()
 }
-
