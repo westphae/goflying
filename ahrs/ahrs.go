@@ -61,6 +61,7 @@ type Measurement struct {                      // Order here also defines order 
 	B1, B2, B3                     float64 // Vector of gyro rates in roll, pitch, heading axes, °/s, aircraft (accelerated) frame
 	M1, M2, M3                     float64 // Vector of magnetometer readings, µT, aircraft (accelerated) frame
 	T                              float64 // Timestamp of GPS, airspeed and magnetometer readings
+	//TODO westphae: track separate measurement timestamps for Gyro/Accel, Magnetometer, GPS, Baro
 
 	Accums                         [15]func(float64)(float64, float64, float64) // Accumulators to track means & variances of all variables
 

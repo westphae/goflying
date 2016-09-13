@@ -63,6 +63,10 @@ func (ml *MPU9250Listener) Init() {
 	}
 
 	ml.data = new(AHRSData)
+	ml.data.E0 = 1
+	ml.data.F0 = 1
+	ml.data.UValid = false
+	ml.data.WValid = false
 	time.Sleep(250 * time.Millisecond)
 }
 
@@ -78,30 +82,24 @@ func (ml *MPU9250Listener) update() {
 	data := <-ml.mpu.CAvg
 
 	if data.GAError == nil && data.N > 0 {
-		ml.data.Ts = data.T.UnixNano()
-		ml.data.Gx, ml.data.Gy, ml.data.Gz = data.G1, data.G2, data.G3
-		ml.data.Ax, ml.data.Ay, ml.data.Az = data.A1, data.A2, data.A3
+		ml.data.SValid = true
+		ml.data.T = data.T.UnixNano()
+		ml.data.B1, ml.data.B2, ml.data.B3 = data.G1, data.G2, data.G3
+		ml.data.A1, ml.data.A2, ml.data.A3 = data.A1, data.A2, data.A3
 
-		// Quick and dirty calcs
-		ml.data.Pitch += 0.1 * ml.data.Gx
-		ml.data.Roll += 0.1 * ml.data.Gy
-		ml.data.Heading -= 0.1 * ml.data.Gz
-
-		ml.data.X_accel = ml.data.Ax
-		ml.data.Y_accel = ml.data.Ay
-		ml.data.Z_accel = ml.data.Az
+		// Quick and dirty calcs for demonstration
+		ml.data.Pitch += 0.1 * ml.data.B1
+		ml.data.Roll += 0.1 * ml.data.B2
+		ml.data.Heading -= 0.1 * ml.data.B3
+	} else {
+		ml.data.SValid = false
 	}
 
 	if data.MagError == nil && data.NM > 0 {
-		ml.data.Tsm = data.TM.UnixNano()
-		ml.data.Mx, ml.data.My, ml.data.Mz = data.M1, data.M2, data.M3
-
-		ml.data.X_mag = ml.data.Mx
-		ml.data.Y_mag = ml.data.My
-		ml.data.Z_mag = ml.data.Mz
-	}
-	if ml.data.Az < 0.2 {
-		os.Exit(0)
+		ml.data.MValid = true
+		ml.data.M1, ml.data.M2, ml.data.M3 = data.M1, data.M2, data.M3
+	} else {
+		ml.data.MValid = false
 	}
 }
 

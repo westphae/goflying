@@ -1,12 +1,23 @@
 <html>
 <head>
-    <title>Stratux AHRS</title>
+    <title>Stratux AHRS Diagnostics</title>
     <style>
         ul    { list-style: none; }
-        table   { display: inline; }
+
+        table   {
+            /*display: inline;*/
+            text-align: right;
+            margin-bottom: 2em;
+        }
+
+        th {
+            width: 5em;
+        }
+
         body {
             font: 10px sans-serif;
         }
+
         .earth  {
             stroke-width: 0;
             fill: Brown;
@@ -60,105 +71,223 @@
     </style>
 </head>
 <body>
+
 <table>
     <tr>
-        <th>Ts</th>
-        <th>Tsm</th>
-    </tr>
-    <tr>
-        <td id="Ts"></td>
-        <td id="Tsm"></td>
-    </tr>
-</table>
-<table>
-    <tr>
+        <th>T</th>
         <th>Pitch</th>
-        <td id="Pitch">0</td>
-    </tr>
-    <tr>
         <th>Roll</th>
-        <td id="Roll">0</td>
+        <th>Heading</th>
     </tr>
     <tr>
-        <th>Heading</th>
+        <td id="T">0</td>
+        <td id="Pitch">0</td>
+        <td id="Roll">0</td>
         <td id="Heading">0</td>
     </tr>
 </table>
+
 <table>
     <tr>
         <th></th>
-        <th>Accel</th>
-        <th>Mag</th>
+        <th>U</th>
+        <th>dU</th>
+        <th>V</th>
+        <th>dV</th>
+        <th>S</th>
+        <th>W</th>
     </tr>
     <tr>
-        <th>X</th>
-        <td id="X_accel"></td>
-        <td id="X_mag"></td>
+        <th>1</th>
+        <td id="U1">0</td>
+        <td id="DU1">0</td>
+        <td id="V1">0</td>
+        <td id="DV1">0</td>
+        <td id="S1">0</td>
+        <td id="W1">0</td>
     </tr>
     <tr>
-        <th>Y</th>
-        <td id="Y_accel"></td>
-        <td id="Y_mag"></td>
+        <th>2</th>
+        <td id="U2">0</td>
+        <td id="DU2">0</td>
+        <td id="V2">0</td>
+        <td id="DV2">0</td>
+        <td id="S2">0</td>
+        <td id="W2">0</td>
     </tr>
     <tr>
-        <th>Z</th>
-        <td id="Z_accel"></td>
-        <td id="Z_mag"></td>
+        <th>3</th>
+        <td id="U3">0</td>
+        <td id="DU3">0</td>
+        <td id="V3">0</td>
+        <td id="DV3">0</td>
+        <td id="S3">0</td>
+        <td id="W3">0</td>
     </tr>
 </table>
+
 <table>
     <tr>
         <th></th>
-        <th>Accel</th>
-        <th>Gyro</th>
-        <th>Mag</th>
-    </tr>
-    <tr>
-        <th>X</th>
-        <td id="Ax">0</td>
-        <td id="Gx">0</td>
-        <td id="Mx">0</td>
-    </tr>
-    <tr>
-        <th>Y</th>
-        <td id="Ay">0</td>
-        <td id="Gy">0</td>
-        <td id="My">0</td>
-    </tr>
-    <tr>
         <th>Z</th>
-        <td id="Az">0</td>
-        <td id="Gz">0</td>
-        <td id="Mz">0</td>
+        <th>dZ</th>
+        <th>C</th>
+        <th>dC</th>
+        <th>A</th>
+    </tr>
+    <tr>
+        <th>1</th>
+        <td id="Z1">0</td>
+        <td id="DZ1">0</td>
+        <td id="C1">0</td>
+        <td id="DC1">0</td>
+        <td id="A1">0</td>
+    </tr>
+    <tr>
+        <th>2</th>
+        <td id="Z2">0</td>
+        <td id="DZ2">0</td>
+        <td id="C2">0</td>
+        <td id="DC2">0</td>
+        <td id="A2">0</td>
+    </tr>
+    <tr>
+        <th>3</th>
+        <td id="Z3">0</td>
+        <td id="DZ3">0</td>
+        <td id="C3">0</td>
+        <td id="DC3">0</td>
+        <td id="A3">0</td>
     </tr>
 </table>
+
 <table>
     <tr>
-        <th>Qw</th>
-        <td id="Qw"></td>
+        <th></th>
+        <th>E</th>
+        <th>dE</th>
+        <th>F</th>
+        <th>dF</th>
     </tr>
     <tr>
-        <th>Qx</th>
-        <td id="Qx"></td>
+        <th>0</th>
+        <td id="E0">0</td>
+        <td id="DE0">0</td>
+        <td id="F0">0</td>
+        <td id="DF0">0</td>
     </tr>
     <tr>
-        <th>Qy</th>
-        <td id="Qy"></td>
+        <th>1</th>
+        <td id="E1">0</td>
+        <td id="DE1">0</td>
+        <td id="F1">0</td>
+        <td id="DF1">0</td>
     </tr>
     <tr>
-        <th>Qz</th>
-        <td id="Qz"></td>
+        <th>2</th>
+        <td id="E2">0</td>
+        <td id="DE2">0</td>
+        <td id="F2">0</td>
+        <td id="DF2">0</td>
+    </tr>
+    <tr>
+        <th>3</th>
+        <td id="E3">0</td>
+        <td id="DE3">0</td>
+        <td id="F3">0</td>
+        <td id="DF3">0</td>
     </tr>
 </table>
+
+
+<table>
+    <tr>
+        <th></th>
+        <th>H</th>
+        <th>dH</th>
+        <th>D</th>
+        <th>dD</th>
+        <th>B</th>
+    </tr>
+    <tr>
+        <th>1</th>
+        <td id="H1">0</td>
+        <td id="DH1">0</td>
+        <td id="D1">0</td>
+        <td id="DD1">0</td>
+        <td id="B1">0</td>
+    </tr>
+    <tr>
+        <th>2</th>
+        <td id="H2">0</td>
+        <td id="DH2">0</td>
+        <td id="D2">0</td>
+        <td id="DD2">0</td>
+        <td id="B2">0</td>
+    </tr>
+    <tr>
+        <th>3</th>
+        <td id="H3">0</td>
+        <td id="DH3">0</td>
+        <td id="D3">0</td>
+        <td id="DD3">0</td>
+        <td id="B3">0</td>
+    </tr>
+</table>
+
+<table>
+    <tr>
+        <th></th>
+        <th>N</th>
+        <th>dN</th>
+        <th>L</th>
+        <th>dL</th>
+        <th>M</th>
+    </tr>
+    <tr>
+        <th>1</th>
+        <td id="N1">0</td>
+        <td id="DN1">0</td>
+        <td id="L1">0</td>
+        <td id="DL1">0</td>
+        <td id="M1">0</td>
+    </tr>
+    <tr>
+        <th>2</th>
+        <td id="N2">0</td>
+        <td id="DN2">0</td>
+        <td id="L2">0</td>
+        <td id="DL2">0</td>
+        <td id="M2">0</td>
+    </tr>
+    <tr>
+        <th>3</th>
+        <td id="N3">0</td>
+        <td id="DN3">0</td>
+        <td id="L3">0</td>
+        <td id="DL3">0</td>
+        <td id="M3">0</td>
+    </tr>
+</table>
+
 <div id="ai"></div>
-<div id="accel"></div>
-<div id="gyro"></div>
-<div id="mag"></div>
+<div id="k_airspeed"></div>
+<div id="k_windspeed"></div>
+<div id="m_groundspeed"></div>
+<div id="k_accel"></div>
+<div id="k_accel_cal"></div>
+<div id="m_accel"></div>
+<div id="k_gyro"></div>
+<div id="k_gyro_cal"></div>
+<div id="m_gyro"></div>
+<div id="k_mag"></div>
+<div id="k_mag_cal"></div>
+<div id="m_mag"></div>
 <ul id="messages"></ul>
 <script src="d3.min.js" charset="utf-8"></script>
 <script>
 
-    const t0 = Date.now() * 1000000;
+    const t0 = Date.now() / 1000;
     const DEG = Math.PI/180;
 
     var width = 400, height=400;
@@ -167,38 +296,34 @@
     var updateTable = (function() {
         function formatVar(k, v) {
             var fmt;
-            switch (k) {
-                case "Pitch":
-                case "Roll":
-                case "Heading":
-                    fmt = "<+6.2f";
-                    vv = v;
+            vv = v;
+            switch (k.slice(0,-1)) {
+                case "":
+                    fmt = ".2f";
+                    vv = (v - t0);
                     break;
-                case "Gx":
-                case "Gy":
-                case "Gz":
-                case "Ax":
-                case "Ay":
-                case "Az":
-                case "Mx":
-                case "My":
-                case "Mz":
-                case "X_accel":
-                case "Y_accel":
-                case "Z_accel":
-                case "X_mag":
-                case "Y_mag":
-                case "Z_mag":
-                case "Qw":
-                case "Qx":
-                case "Qy":
-                case "Qz":
-                    fmt = "<+6.4f";
-                    vv = v;
+                case "Z":
+                case "DZ":
+                case "A":
+                case "E":
+                case "DE":
+                case "F":
+                case "DF":
+                    fmt = "+.3f";
+                    break;
+                case "H":
+                case "DH":
+                case "B":
+                    fmt = "+.4f";
+                    break;
+                case "C":
+                case "DC":
+                case "D":
+                case "DD":
+                    fmt = "+.5f";
                     break;
                 default:
-                    fmt = "8.2f";
-                    vv = (v - t0)/1e9;
+                    fmt = "+.0f";
             }
             return d3.format(fmt)(vv);
         }
@@ -226,7 +351,7 @@
         }
 
         function y(d) {
-            return height * (90 - d.theta * DEG) / 180 - d.side * width / 2 * Math.tan(d.phi * DEG)
+            return height * (45 - d.theta) / 180 - d.side * width / 2 * Math.tan(d.phi * DEG)
         }
 
         var svg = d3.select("#ai").append("svg")
@@ -275,10 +400,6 @@
 
     })();
 
-    var updateAccel = makeRollingPlot("accel", 4, "A"),
-            updateGyro = makeRollingPlot("gyro", 250, "G"),
-            updateMag = makeRollingPlot("mag", 9830, "M");
-
     function makeRollingPlot(el, ylim, v) {
         const TMAX = 10;
 
@@ -306,7 +427,7 @@
                         return x(i / 10);
                     })
                     .y(function (d, i) {
-                        if (d.Ax) {
+                        if (d.A3) {
                             return y(d[v + dim]);
                         } else {
                             return y(0);
@@ -317,8 +438,14 @@
         var svg = d3.select("#"+el)
                 .append("svg")
                 .attr("width", width)
-                .attr("height", height)
-                .append("g")
+                .attr("height", height);
+
+             svg.append("text")
+                .attr("x", width/2)
+                .attr("y", 10)
+                .text(el);
+
+             svg.append("g")
                 .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
 
         svg.append("defs").append("clipPath")
@@ -342,37 +469,37 @@
                 .append("path")
                 .attr("class", "line x")
                 .datum(D0)
-                .attr("d", getLine("x"));
+                .attr("d", getLine("1"));
 
         var ypath = svg.append("g")
                 .attr("clip-path", "url(#"+el+"Clip)")
                 .append("path")
                 .attr("class", "line y")
                 .datum(D0)
-                .attr("d", getLine("y"));
+                .attr("d", getLine("2"));
 
         var zpath = svg.append("g")
                 .attr("clip-path", "url(#"+el+"Clip)")
                 .append("path")
                 .attr("class", "line z")
                 .datum(D0)
-                .attr("d", getLine("z"));
+                .attr("d", getLine("3"));
 
         return function(data) {
             D0.push(data);
-            xpath.attr("d", getLine("x"))
+            xpath.attr("d", getLine("1"))
                     .attr("transform", null)
                     .transition()
                     .duration(100)
                     .ease("linear")
                     .attr("transform", "translate(" + x(-0.1) + ",0)");
-            ypath.attr("d", getLine("y"))
+            ypath.attr("d", getLine("2"))
                     .attr("transform", null)
                     .transition()
                     .duration(100)
                     .ease("linear")
                     .attr("transform", "translate(" + x(-0.1) + ",0)");
-            zpath.attr("d", getLine("z"))
+            zpath.attr("d", getLine("3"))
                     .attr("transform", null)
                     .transition()
                     .duration(100)
@@ -382,6 +509,19 @@
         }
 
     }
+
+    var     updateAirspeed = makeRollingPlot("k_airspeed", 200, "U"),
+            updateWindspeed = makeRollingPlot("k_windspeed", 100, "V"),
+            updateGroundspeed = makeRollingPlot("m_groundspeed", 200, "W"),
+            updateKAccel = makeRollingPlot("k_accel", 4, "Z"),
+            updateKAccelCal = makeRollingPlot("k_accel_cal", 4, "C"),
+            updateMAccel = makeRollingPlot("m_accel", 4, "A"),
+            updateKGyro = makeRollingPlot("k_gyro", 50, "H"),
+            updateKGyroCal = makeRollingPlot("k_gyro_cal", 50, "D"),
+            updateMGyro = makeRollingPlot("m_gyro", 50, "B"),
+            updateKMag = makeRollingPlot("k_mag", 9830, "N"),
+            updateKMagCal = makeRollingPlot("k_mag_cal", 9830, "L"),
+            updateMMag = makeRollingPlot("m_mag", 9830, "M");
 
     if (!window["WebSocket"]) {
         alert("Error: Your browser does not support web sockets.")
@@ -400,9 +540,18 @@
                 updateTable(msg);
                 updateMessageList(msg);
                 updateAI(msg);
-                updateAccel(msg);
-                updateGyro(msg);
-                updateMag(msg);
+                updateAirspeed(msg);
+                updateWindspeed(msg);
+                updateGroundspeed(msg);
+                updateKAccel(msg);
+                updateKAccelCal(msg);
+                updateMAccel(msg);
+                updateKGyro(msg);
+                updateKGyroCal(msg);
+                updateMGyro(msg);
+                updateKMag(msg);
+                updateKMagCal(msg);
+                updateMMag(msg);
             };
         }
         reconnectLoop()
