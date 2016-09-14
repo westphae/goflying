@@ -1,4 +1,4 @@
-package main
+package ahrsweb
 
 import (
 	"log"
@@ -7,17 +7,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// newRoom makes a new room that is ready to go.
-func newRoom() *room {
-	return &room{
-		forward: make(chan []byte),
-		join:    make(chan *client),
-		leave:   make(chan *client),
-		clients: make(map[*client]bool),
-	}
-}
-
-type room struct {
+type Room struct {
 	// forward is a channel that holds incoming messages
 	// that should be forwarded to the other clients.
 	forward chan []byte
@@ -29,7 +19,17 @@ type room struct {
 	clients map[*client]bool
 }
 
-func (r *room) run() {
+// newRoom makes a new room that is ready to go.
+func NewRoom() *Room {
+	return &Room{
+		forward: make(chan []byte),
+		join:    make(chan *client),
+		leave:   make(chan *client),
+		clients: make(map[*client]bool),
+	}
+}
+
+func (r *Room) Run() {
 	for {
 		select {
 		case client := <-r.join:
@@ -42,7 +42,7 @@ func (r *room) run() {
 			close(client.send)
 			log.Println("Client left")
 		case msg := <-r.forward:
-			log.Print("Message received: ", string(msg))
+			log.Println("Message received")
 			// forward message to all clients
 			for client := range r.clients {
 				select {
@@ -67,7 +67,7 @@ const (
 
 var upgrader = &websocket.Upgrader{ReadBufferSize: socketBufferSize, WriteBufferSize: socketBufferSize}
 
-func (r *room) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (r *Room) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	socket, err := upgrader.Upgrade(w, req, nil)
 	if err != nil {
 		log.Fatal("ServeHTTP:", err)

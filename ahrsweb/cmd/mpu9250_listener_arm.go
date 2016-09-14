@@ -1,5 +1,3 @@
-// +build arm
-
 package main
 
 import (
@@ -83,7 +81,7 @@ func (ml *MPU9250Listener) update() {
 
 	if data.GAError == nil && data.N > 0 {
 		ml.data.SValid = true
-		ml.data.T = data.T.UnixNano()
+		ml.data.T = float64(data.T.UnixNano()/1000)/1e6
 		ml.data.B1, ml.data.B2, ml.data.B3 = data.G1, data.G2, data.G3
 		ml.data.A1, ml.data.A2, ml.data.A3 = data.A1, data.A2, data.A3
 
