@@ -43,7 +43,7 @@ func main() {
 	http.Handle("/", &templateHandler{filename: "analyzer.html"})
 	http.HandleFunc("/d3.min.js",
 		func(w http.ResponseWriter, r *http.Request) { http.ServeFile(w, r, "res/d3.min.js") })
-	http.Handle("/room", r)
+	http.Handle("/ahrsweb", r)
 	log.Println("Starting web server on", *addr)
 	if err := http.ListenAndServe(*addr, nil); err != nil {
 		log.Fatal("ListenAndServe:", err.Error())

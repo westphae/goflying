@@ -89,6 +89,21 @@
 
 <table>
     <tr>
+        <th>UValid</th>
+        <th>WValid</th>
+        <th>SValid</th>
+        <th>MValid</th>
+    </tr>
+    <tr>
+        <td id="UValid"></td>
+        <td id="WValid"></td>
+        <td id="SValid"></td>
+        <td id="MValid"></td>
+    </tr>
+</table>
+
+<table>
+    <tr>
         <th></th>
         <th>U</th>
         <th>dU</th>
@@ -322,6 +337,17 @@
                 case "DD":
                     fmt = "+.5f";
                     break;
+                case"UVali":
+                case"WVali":
+                case"SVali":
+                case"MVali":
+                    if (v) {
+                        vv = 1;
+                    } else {
+                        vv = 0;
+                    }
+                    fmt = "1d";
+                    break;
                 default:
                     fmt = "+.0f";
             }
@@ -527,7 +553,7 @@
         alert("Error: Your browser does not support web sockets.")
     } else {
         function reconnectLoop() {
-            var socket = new WebSocket("ws://{{.Host}}/room");
+            var socket = new WebSocket("ws://{{.Host}}/ahrsweb");
             socket.onclose = function () {
 //            alert("Connection has been closed.");
                 console.log("Socket has been closed.  Trying to reconnect.");
