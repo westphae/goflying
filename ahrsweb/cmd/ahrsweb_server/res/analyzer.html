@@ -95,10 +95,10 @@
         <th>MValid</th>
     </tr>
     <tr>
-        <td id="UValid"></td>
-        <td id="WValid"></td>
-        <td id="SValid"></td>
-        <td id="MValid"></td>
+        <td id="UValid">0</td>
+        <td id="WValid">0</td>
+        <td id="SValid">0</td>
+        <td id="MValid">0</td>
     </tr>
 </table>
 
@@ -306,35 +306,58 @@
     const DEG = Math.PI/180;
 
     var width = 400, height=400;
-    var margin = {top: 20, right: 20, bottom: 20, left: 40};
+    var margin = {top: 20, right: 2, bottom: 20, left: 40};
 
     var updateTable = (function() {
         function formatVar(k, v) {
-            var fmt;
-            vv = v;
+            var vv, fmt;
             switch (k.slice(0,-1)) {
                 case "":
                     fmt = ".2f";
                     vv = (v - t0);
                     break;
                 case "Z":
-                case "DZ":
                 case "A":
                 case "E":
-                case "DE":
                 case "F":
-                case "DF":
+                    vv = v;
                     fmt = "+.3f";
                     break;
-                case "H":
+                case "DZ":
+                case "DE":
+                case "DF":
+                    if (v > 0) {
+                        vv = Math.sqrt(v);
+                    } else {
+                        vv = 0;
+                    }
+                    fmt = ".3f";
+                    break;
                 case "DH":
+                    if (v > 0) {
+                        vv = Math.sqrt(v);
+                    } else {
+                        vv = 0;
+                    }
+                    fmt = ".4f";
+                    break;
+                case "H":
                 case "B":
+                    vv = v;
                     fmt = "+.4f";
                     break;
-                case "C":
                 case "DC":
-                case "D":
                 case "DD":
+                    if (v > 0) {
+                        vv = Math.sqrt(v);
+                    } else {
+                        vv = 0;
+                    }
+                    fmt = ".5f";
+                    break;
+                case "C":
+                case "D":
+                    vv = v;
                     fmt = "+.5f";
                     break;
                 case"UVali":
@@ -348,7 +371,19 @@
                     }
                     fmt = "1d";
                     break;
+                case "DU":
+                case "DV":
+                case "DN":
+                case "DL":
+                    if (v > 0) {
+                        vv = Math.sqrt(v);
+                    } else {
+                        vv = 0;
+                    }
+                    fmt = ".0f";
+                    break;
                 default:
+                    vv = v;
                     fmt = "+.0f";
             }
             return d3.format(fmt)(vv);
@@ -377,7 +412,7 @@
         }
 
         function y(d) {
-            return height * (45 - d.theta) / 180 - d.side * width / 2 * Math.tan(d.phi * DEG)
+            return height * (90 + d.theta) / 180 - d.side * width / 2 * Math.tan(d.phi * DEG)
         }
 
         var svg = d3.select("#ai").append("svg")
@@ -464,14 +499,8 @@
         var svg = d3.select("#"+el)
                 .append("svg")
                 .attr("width", width)
-                .attr("height", height);
-
-             svg.append("text")
-                .attr("x", width/2)
-                .attr("y", 10)
-                .text(el);
-
-             svg.append("g")
+                .attr("height", height)
+                .append("g")
                 .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
 
         svg.append("defs").append("clipPath")
@@ -488,7 +517,12 @@
         svg.append("g")
                 .attr("class", "y axis")
                 .call(yAxis)
-                .append("text");
+                .append("text")
+                .attr("transform", "rotate(-90)")
+                .attr("y", 6)
+                .attr("dy", ".71em")
+                .style("text-anchor", "end")
+                .text(el);
 
         var xpath = svg.append("g")
                 .attr("clip-path", "url(#"+el+"Clip)")
@@ -536,18 +570,18 @@
 
     }
 
-    var     updateAirspeed = makeRollingPlot("k_airspeed", 200, "U"),
-            updateWindspeed = makeRollingPlot("k_windspeed", 100, "V"),
-            updateGroundspeed = makeRollingPlot("m_groundspeed", 200, "W"),
+    var     updateAirspeed = makeRollingPlot("k_airspeed", 400, "U"),
+            updateWindspeed = makeRollingPlot("k_windspeed", 150, "V"),
+            updateGroundspeed = makeRollingPlot("m_groundspeed", 500, "W"),
             updateKAccel = makeRollingPlot("k_accel", 4, "Z"),
-            updateKAccelCal = makeRollingPlot("k_accel_cal", 4, "C"),
+            updateKAccelCal = makeRollingPlot("k_accel_cal", 0.4, "C"),
             updateMAccel = makeRollingPlot("m_accel", 4, "A"),
             updateKGyro = makeRollingPlot("k_gyro", 50, "H"),
-            updateKGyroCal = makeRollingPlot("k_gyro_cal", 50, "D"),
+            updateKGyroCal = makeRollingPlot("k_gyro_cal", 5, "D"),
             updateMGyro = makeRollingPlot("m_gyro", 50, "B"),
-            updateKMag = makeRollingPlot("k_mag", 9830, "N"),
-            updateKMagCal = makeRollingPlot("k_mag_cal", 9830, "L"),
-            updateMMag = makeRollingPlot("m_mag", 9830, "M");
+            updateKMag = makeRollingPlot("k_mag", 4000, "N"), // 9830
+            updateKMagCal = makeRollingPlot("k_mag_cal", 400, "L"),
+            updateMMag = makeRollingPlot("m_mag", 4000, "M"); // 9830
 
     if (!window["WebSocket"]) {
         alert("Error: Your browser does not support web sockets.")

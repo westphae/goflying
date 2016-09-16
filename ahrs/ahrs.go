@@ -203,6 +203,13 @@ func Initialize(m *Measurement) (s *State) {
 		s.N1 = m.M1*s.e11 + m.M2*s.e12 + m.M3*s.e13
 		s.N2 = m.M1*s.e21 + m.M2*s.e22 + m.M3*s.e23
 		s.N3 = m.M1*s.e31 + m.M2*s.e32 + m.M3*s.e33
+	} else {
+		s.M.Set(13, 13, Big) // Don't try to update the magnetometer
+		s.M.Set(14, 14, Big)
+		s.M.Set(15, 15, Big)
+		s.M.Set(29, 29, Big)
+		s.M.Set(30, 30, Big)
+		s.M.Set(31, 31, Big)
 	}
 
 	return
@@ -233,6 +240,14 @@ func (s *State) Predict(t float64) {
 // Update applies the Kalman filter corrections given the measurements
 func (s *State) Update(m *Measurement) {
 	z := s.PredictMeasurement()
+
+	//TODO westphae: for testing, if no GPS, we're probably inside at a desk - assume zero groundspeed
+	if !m.WValid {
+		m.W1 = 0
+		m.W2 = 0
+		m.W3 = 0
+		m.WValid = true
+	}
 
 	y := matrix.Zeros(15, 1)
 	y.Set( 0, 0, m.U1 - z.U1)
