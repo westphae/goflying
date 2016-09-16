@@ -9,6 +9,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/westphae/goflying/ahrs"
+	"fmt"
 )
 
 type KalmanListener struct {
@@ -16,27 +17,29 @@ type KalmanListener struct {
 	c	*websocket.Conn
 }
 
-func NewKalmanListener() (*KalmanListener, error) {
-	kl := new(KalmanListener)
+func NewKalmanListener() (kl *KalmanListener, err error) {
+	kl = new(KalmanListener)
 	kl.data = new(AHRSData)
+	err = kl.connect()
 
+	return kl, err
+}
+
+func (kl *KalmanListener) connect() (err error) {
 	u := url.URL{Scheme: "ws", Host: "localhost:8080", Path: "/ahrsweb"}
 
-	log.Printf("AHRSWeb: Sending Kalman data on %s\n", u.String())
+	log.Printf("AHRSWeb: making socket connection for Kalman data on %s\n", u.String())
 	if c, _, err := websocket.DefaultDialer.Dial(u.String(), nil); err != nil {
-		log.Printf("AHRSWeb dial error: %s\n", err.Error())
-		return nil, err
+		log.Printf("AHRSWeb dial error: %s\n", err)
 	} else {
 		log.Println("AHRSWeb websocket connected")
 		kl.c = c
 	}
-
-	return kl, nil
+	return err
 }
 
 func (kl *KalmanListener) update(s *ahrs.State, m *ahrs.Measurement) {
 	log.Println("AHRSWeb: Updating Kalman data")
-
 	kl.data.T = float64(time.Now().UnixNano()/1000)/1e6
 
 	kl.data.U1 = s.U1
@@ -107,7 +110,6 @@ func (kl *KalmanListener) update(s *ahrs.State, m *ahrs.Measurement) {
 	kl.data.L2 = s.L2
 	kl.data.L3 = s.L3
 
-	log.Println("AHRSWeb: Updating roll, pitch, heading")
 	roll, pitch, heading := ahrs.FromQuaternion(s.E0, s.E1, s.E2, s.E3)
 	kl.data.Pitch = pitch / ahrs.Deg
 	kl.data.Roll = roll / ahrs.Deg
@@ -133,21 +135,21 @@ func (kl *KalmanListener) update(s *ahrs.State, m *ahrs.Measurement) {
 	kl.data.M1 = m.M1
 	kl.data.M2 = m.M2
 	kl.data.M3 = m.M3
-	log.Println("AHRSWeb: Finished updating Kalman data")
 }
 
 func (kl *KalmanListener) Send(s *ahrs.State, m *ahrs.Measurement) error {
 	kl.update(s, m)
 
 	if msg, err := json.Marshal(kl.data); err != nil {
-		log.Println("AHRSWeb: Error marshalling json data:", err.Error())
+		log.Println("AHRSWeb: Error marshalling json data:", err)
 		log.Println("AHRSWeb: Data was:", kl.data)
 		return err
 	} else {
 		log.Println("AHRSWeb: Sending AHRS data over websocket")
 		if err := kl.c.WriteMessage(websocket.TextMessage, msg); err != nil {
-			log.Println("AHRSWeb: Error writing to websocket:", err.Error())
-			return err
+			log.Println("AHRSWeb: Error writing to websocket:", err)
+			err2 := kl.connect()
+			return fmt.Errorf("AHRSWeb: %v: %v", err, err2) // Just drop this message
 		}
 	}
 	log.Println("AHRSWeb: Kalman data sent successfully")
@@ -156,7 +158,7 @@ func (kl *KalmanListener) Send(s *ahrs.State, m *ahrs.Measurement) error {
 
 func (kl *KalmanListener) Close() {
 	if err := kl.c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")); err != nil {
-		log.Println("AHRSWeb: Error closing websocket:", err.Error())
+		log.Println("AHRSWeb: Error closing websocket:", err)
 		return
 	}
 	kl.c.Close()

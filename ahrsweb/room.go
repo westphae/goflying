@@ -45,16 +45,8 @@ func (r *Room) Run() {
 			log.Println("Message received")
 			// forward message to all clients
 			for client := range r.clients {
-				select {
-				case client.send <- msg:
-					// send the message
-					log.Print(" -- sent to client")
-				default:
-					// failed to send
-					delete(r.clients, client)
-					close(client.send)
-					log.Print(" -- failed to send, cleaned up client")
-				}
+				client.send <- msg
+				log.Print(" -- sent to client")
 			}
 		}
 	}
