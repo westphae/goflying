@@ -182,7 +182,7 @@ func main() {
 	sit.Measurement(t, m, !asiInop, !gpsInop, true, !magInop,
 		asiNoise, gpsNoise, accelNoise, gyroNoise, magNoise,
 		uBias, accelBias, gyroBias, magBias)
-	s := ahrs.Initialize(m)
+	s := ahrs.InitializeKalman(m)
 	// These next few just for testing with a correct starting state
 	//TODO testing
 	/*
@@ -337,7 +337,7 @@ func main() {
 
 		t += pdt
 		if s.U1 < 0 {
-			s = ahrs.Initialize(m)
+			s = ahrs.InitializeKalman(m)
 		}
 	}
 

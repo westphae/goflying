@@ -38,7 +38,7 @@ func (kl *KalmanListener) connect() (err error) {
 	return err
 }
 
-func (kl *KalmanListener) update(s *ahrs.State, m *ahrs.Measurement) {
+func (kl *KalmanListener) update(s *ahrs.KalmanState, m *ahrs.Measurement) {
 	log.Println("AHRSWeb: Updating Kalman data")
 	kl.data.T = float64(time.Now().UnixNano()/1000)/1e6
 
@@ -141,7 +141,7 @@ func (kl *KalmanListener) update(s *ahrs.State, m *ahrs.Measurement) {
 	}
 }
 
-func (kl *KalmanListener) Send(s *ahrs.State, m *ahrs.Measurement) error {
+func (kl *KalmanListener) Send(s *ahrs.KalmanState, m *ahrs.Measurement) error {
 	kl.update(s, m)
 
 	if msg, err := json.Marshal(kl.data); err != nil {
