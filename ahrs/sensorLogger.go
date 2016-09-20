@@ -15,7 +15,7 @@ type SensorLogger struct {
 
 func NewSensorLogger(fn string, h ...string) (l SensorLogger) {
 	l.h = h
-	f, err := os.Create("/var/log/" + fn)
+	f, err := os.Create(fn)
 	l.f = f
 	if err != nil {
 		log.Fatalln(err)
