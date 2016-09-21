@@ -137,7 +137,7 @@ func (s *State) CalcRollPitchHeading() (roll float64, pitch float64, heading flo
 
 type AHRSProvider interface {
 	Compute(*Measurement)
-	Valid()
+	Valid() (bool)
 	CalcRollPitchHeading() (roll float64, pitch float64, heading float64)
 	CalcRollPitchHeadingUncertainty() (droll float64, dpitch float64, dheading float64)
 }

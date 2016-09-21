@@ -101,10 +101,37 @@ func InitializeKalman(m *Measurement) (s *KalmanState) {
 	return
 }
 
-// Run first the prediction and then the update phases of the Kalman filter
+// Compute runs first the prediction and then the update phases of the Kalman filter
 func (s *KalmanState) Compute(m *Measurement) {
 	s.Predict(m.T)
 	s.Update(m)
+}
+
+// Valid applies some heuristics to detect whether the computed state is valid or not
+func (s *KalmanState) Valid() (ok bool) {
+	ok = true
+
+	if s.U1 < -5 {
+		log.Println("AHRS got negative airspeed, restarting")
+		ok = false
+	}
+
+
+	if math.Abs(s.U1) > 300 || math.Abs(s.U2) > 20 || math.Abs(s.U3) > 20 ||
+		math.Abs(s.V1) > 40 || math.Abs(s.V2) > 40 || math.Abs(s.V3) > 40 {
+		log.Println("Speeds too high")
+		ok = false
+	}
+
+	roll, pitch, heading := s.CalcRollPitchHeading()
+	droll, dpitch, dheading := s.CalcRollPitchHeadingUncertainty()
+	if droll > 2.5*Deg || dpitch > 2.5*Deg {
+		log.Printf("AHRS too uncertain: roll %5.1f +/- %3.1f, pitch %4.1f +/- %3.1f, heading %5.1f +/- %3.1f\n",
+			roll/Deg, droll/Deg, pitch/Deg, dpitch/Deg, heading/Deg, dheading/Deg)
+		ok = false
+	}
+
+	return ok
 }
 
 // Predict performs the prediction phase of the Kalman filter
@@ -321,32 +348,6 @@ func (s *KalmanState) PredictMeasurement() (m *Measurement) {
 	m.T = s.T
 
 	return
-}
-
-func (s *KalmanState) Valid() (ok bool) {
-	ok = true
-
-	if s.U1 < -5 {
-		log.Println("AHRS got negative airspeed, restarting")
-		ok = false
-	}
-
-
-	if math.Abs(s.U1) > 300 || math.Abs(s.U2) > 20 || math.Abs(s.U3) > 20 ||
-		math.Abs(s.V1) > 40 || math.Abs(s.V2) > 40 || math.Abs(s.V3) > 40 {
-		log.Println("Speeds too high")
-		ok = false
-	}
-
-	roll, pitch, heading := s.CalcRollPitchHeading()
-	droll, dpitch, dheading := s.CalcRollPitchHeadingUncertainty()
-	if droll > 2.5*Deg || dpitch > 2.5*Deg {
-		log.Printf("AHRS too uncertain: roll %5.1f +/- %3.1f, pitch %4.1f +/- %3.1f, heading %5.1f +/- %3.1f\n",
-			roll/Deg, droll/Deg, pitch/Deg, dpitch/Deg, heading/Deg, dheading/Deg)
-		ok = false
-	}
-
-	return ok
 }
 
 func (s *KalmanState) calcJacobianState(t float64) (jac *matrix.DenseMatrix) {
