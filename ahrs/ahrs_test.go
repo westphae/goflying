@@ -9,8 +9,8 @@ import (
 	"github.com/skelterjohn/go.matrix"
 )
 
-func createRandomState() (s *State) {
-	s = &State{
+func createRandomState() (s *KalmanState) {
+	s = &KalmanState{State{
 		U1: rand.Float64()*100+15,
 		U2: rand.Float64()*10-5,
 		U3: rand.Float64()*10-5,
@@ -48,14 +48,14 @@ func createRandomState() (s *State) {
 		T : 10,
 		M : matrix.Zeros(32, 32),
 		N : matrix.Zeros(32, 32),
-	}
+	}}
 
 	s.normalize()
 
 	return
 }
 
-func stateMap(s *State) (map[int]*float64) {
+func stateMap(s *KalmanState) (map[int]*float64) {
 	return map[int]*float64{
 		 0: &s.U1,
 		 1: &s.U2,

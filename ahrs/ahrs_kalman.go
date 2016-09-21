@@ -70,7 +70,7 @@ func InitializeKalman(m *Measurement) (s *KalmanState) {
 	if m.WValid && s.U1 > 5 {
 		// Simplified half-angle formulae
 		s.E0, s.E3 = math.Sqrt((s.U1 + m.W1) / (2 * s.U1)), math.Sqrt((s.U1 - m.W1) / (2 * s.U1))
-		if m.W2 > 0 {
+		if m.W2 < 0 {
 			s.E3 *= -1
 		}
 		s.M.Set(6, 6, 0.1*0.1) // Our estimate of orientation is better

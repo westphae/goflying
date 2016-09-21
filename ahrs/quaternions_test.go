@@ -8,6 +8,11 @@ import (
 	"github.com/westphae/quaternion"
 )
 
+var (
+	c30 = math.Sqrt(3) / 2
+	c60 = 0.5
+)
+
 func TestRoundTrips(t *testing.T) {
 	phis := []float64{0, 0.1, 0.2, 0.5, 1, 1.5, 2, 2.5, 3, -3, -2, -1, -0.5, -0.2}
 	thetas := []float64{0.1, 0.2, 0.5, 1, 1.5, -1.5, -0.5, -0.2, 0.2, 0.1, -1, -0.5, -0.2, 0}
@@ -32,10 +37,6 @@ func TestRoundTrips(t *testing.T) {
 }
 
 func TestSpecificToQuaternion(t *testing.T) {
-	var (
-		c30 = math.Sqrt(3) / 2
-		c60 = 0.5
-	)
 	phis :=   []float64{ 0,    0,  0,      0,      0,    0,        0,  Pi/3, Pi/3, -2*Pi/3}
 	thetas := []float64{ 0,    0,  0,      0,      0, Pi/3,    -Pi/3,     0,    0,       0}
 	psis :=   []float64{ 0, Pi/2, Pi, 4*Pi/3, 3*Pi/2, Pi/2,   5*Pi/3,  Pi/2,    0,      Pi}
@@ -147,5 +148,29 @@ func TestYawRotationQuaternion(t *testing.T) {
 		fmt.Println(q_nose_yawed_e)
 		fmt.Println(q_rt_wing_yawed_e)
 		t.Fail()
+	}
+}
+
+// Quickie half-angle formulae for quaternions works
+func TestQuaternionHalfAngles(t *testing.T) {
+
+	psis :=   []float64{ 0, Pi/2, Pi, 4*Pi/3, 3*Pi/2, Pi/2,   5*Pi/3,  Pi/2,    0,      Pi}
+
+	var (
+		w1, w2, u, psi, e0, e3      float64
+	)
+
+	for i := 0; i < len(psis); i++ {
+		w1, w2 = math.Sin(psis[i]), math.Cos(psis[i])
+		u = math.Hypot(w1, w2)
+		e0, e3 = math.Sqrt((u + w1) / (2 * u)), math.Sqrt((u - w1) / (2 * u))
+		if w2 < 0 {
+			e3 *= -1
+		}
+		_, _, psi = FromQuaternion(e0, 0, 0, e3)
+
+		if math.Abs(psi - psis[i]) > Small {
+			t.Fail()
+		}
 	}
 }
