@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/westphae/quaternion"
+	"math/rand"
 )
 
 var (
@@ -172,5 +173,53 @@ func TestQuaternionHalfAngles(t *testing.T) {
 		if math.Abs(psi - psis[i]) > Small {
 			t.Fail()
 		}
+	}
+}
+
+// Rotating vector A into B works
+func TestQuaternionAToB(t *testing.T) {
+
+	var (
+		a1, a2, a3, aa float64
+		b1, b2, b3, bb float64
+		q0, q1, q2, q3 float64
+		a, q, z        quaternion.Quaternion
+	)
+	for i:=0; i<100; i++ {
+		a1 = 2*rand.Float64()-1
+		a2 = 2*rand.Float64()-1
+		a3 = 2*rand.Float64()-1
+		aa = math.Sqrt(a1*a1 + a2*a2 + a3*a3)
+
+		b1 = 2*rand.Float64()-1
+		b2 = 2*rand.Float64()-1
+		b3 = 2*rand.Float64()-1
+		bb = math.Sqrt(b1*b1 + b2*b2 + b3*b3)
+
+		q0, q1, q2, q3 = QuaternionAToB(a1, a2, a3, b1, b2, b3)
+		a = quaternion.Quaternion{0, a1/aa, a2/aa, a3/aa}
+		q = quaternion.Quaternion{q0, q1, q2, q3}
+		z = quaternion.Prod(q, a, quaternion.Conj(q))
+		if math.Abs(z.W) > Small || math.Abs(z.X-b1/bb) > Small ||
+			math.Abs(z.Y-b2/bb) > Small || math.Abs(z.Z-b3/bb) > Small {
+			fmt.Printf("A:  %4f %4f %4f\n", a1, a2, a3)
+			fmt.Printf("B:  %4f %4f %4f\n", b1, b2, b3)
+			fmt.Printf("Got %4f %4f %4f (%4f)\n", z.X*bb/aa, z.Y*bb/aa, z.Z*bb/aa, z.W*bb/aa)
+			t.Fail()
+		}
+	}
+
+	// Additional test: opposite vectors
+	q0, q1, q2, q3 = QuaternionAToB(a1, a2, a3, -a1, -a2, -a3)
+	a = quaternion.Quaternion{0, a1, a2, a3}
+	q = quaternion.Quaternion{q0, q1, q2, q3}
+	z = quaternion.Prod(q, a, quaternion.Conj(q))
+	if math.Abs(z.W) > Small || math.Abs(z.X+a1) > Small ||
+		math.Abs(z.Y+a2) > Small || math.Abs(z.Z+a3) > Small {
+		fmt.Printf("A:  %4f %4f %4f\n", a1, a2, a3)
+		fmt.Printf("B:  %4f %4f %4f\n", -a1, -a2, -a3)
+		fmt.Printf("Got %4f %4f %4f (%4f)\n", z.X, z.Y, z.Z, z.W)
+		fmt.Printf("Q:  %4f %4f %4f (%4f)\n", q.X, q.Y, q.Z, q.W)
+		t.Fail()
 	}
 }

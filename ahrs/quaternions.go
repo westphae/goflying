@@ -1,6 +1,8 @@
 package ahrs
 
-import "math"
+import (
+	"math"
+)
 
 // ToQuaternion calculates the 0,1,2,3 components of the rotation quaternion
 // corresponding to the Tait-Bryan angles phi, theta, psi
@@ -61,4 +63,30 @@ func VarFromQuaternion(q0, q1, q2, q3, dq0, dq1, dq2, dq3 float64) (float64, flo
 	return (dphidq0*dq0 + dphidq1*dq1 +dphidq2*dq2 +dphidq3*dq3),
 		(dthetadq0*dq0 + dthetadq1*dq1 +dthetadq2*dq2 +dthetadq3*dq3),
 		(dpsidq0*dq0 + dpsidq1*dq1 +dpsidq2*dq2 +dpsidq3*dq3)
+}
+
+// QuaternionAToB constructs a quaternion Q such that QAQ* = B for arbitrary vectors A and B
+func QuaternionAToB(a1, a2, a3, b1, b2, b3 float64) (q0, q1, q2, q3 float64){
+	aa := math.Sqrt(a1*a1 + a2*a2 + a3*a3)
+	bb := math.Sqrt(b1*b1 + b2*b2 + b3*b3)
+	ab := a1*b1 + a2*b2 + a3*b3
+
+	q0 = aa*bb + ab
+	if q0 < Small { // break the degeneracy
+		q1 = a2 * (a3+1) - a3 * a2
+		q2 = a3 * a1 - a1 * (a3+1)
+		q3 = 0
+	} else {
+		q1 = a2 * b3 - a3 * b2
+		q2 = a3 * b1 - a1 * b3
+		q3 = a1 * b2 - a2 * b1
+	}
+
+	qq := math.Sqrt(q0*q0 + q1*q1 + q2*q2 + q3*q3)
+	q0 /= qq
+	q1 /= qq
+	q2 /= qq
+	q3 /= qq
+
+	return q0, q1, q2, q3
 }
