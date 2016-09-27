@@ -44,8 +44,8 @@ func main() {
 	http.HandleFunc("/d3.min.js",
 		func(w http.ResponseWriter, r *http.Request) { http.ServeFile(w, r, "res/d3.min.js") })
 	http.Handle("/ahrsweb", r)
-	log.Println("Starting web server on", *addr)
+	log.Println("AHRSWeb: Starting web server on", *addr)
 	if err := http.ListenAndServe(*addr, nil); err != nil {
-		log.Fatal("ListenAndServe:", err.Error())
+		log.Fatal("AHRSWeb: ListenAndServe fatal error:", err.Error())
 	}
 }

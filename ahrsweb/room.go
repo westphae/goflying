@@ -35,18 +35,22 @@ func (r *Room) Run() {
 		case client := <-r.join:
 			// joining
 			r.clients[client] = true
-			log.Println("New client joined")
+			log.Println("AHRSWeb: New client joined")
 		case client := <-r.leave:
 			// leaving
 			delete(r.clients, client)
 			close(client.send)
-			log.Println("Client left")
+			log.Println("AHRSWeb: Client left")
 		case msg := <-r.forward:
-			log.Println("Message received")
+			log.Println("AHRSWeb: Message received")
 			// forward message to all clients
 			for client := range r.clients {
-				client.send <- msg
-				log.Print(" -- sent to client")
+				select {
+				case client.send <- msg:
+					log.Print(" -- sent to client")
+				default:
+					log.Print(" -- couldn't send to client")
+				}
 			}
 		}
 	}
@@ -54,7 +58,7 @@ func (r *Room) Run() {
 
 const (
 	socketBufferSize  = 1024
-	messageBufferSize = 256
+	messageBufferSize = 10
 )
 
 var upgrader = &websocket.Upgrader{ReadBufferSize: socketBufferSize, WriteBufferSize: socketBufferSize}
