@@ -128,8 +128,12 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, enableMag boo
 	}
 
 	sampRate := byte(1000/mpu.sampleRate - 1)
-	// Set LPF to half of sample rate
-	if err := mpu.SetLPF(sampRate >> 1); err != nil {
+	// Default: Set Gyro LPF to half of sample rate
+	if err := mpu.SetGyroLPF(sampRate >> 1); err != nil {
+		return nil, err
+	}
+	// Default: Set Accel LPF to half of sample rate
+	if err := mpu.SetAccelLPF(sampRate >> 1); err != nil {
 		return nil, err
 	}
 	// Set sample rate to chosen
@@ -476,7 +480,7 @@ func (mpu *MPU9250) SetSampleRate(rate byte) (err error) {
 	return
 }
 
-func (mpu *MPU9250) SetLPF(rate byte) (err error) {
+func (mpu *MPU9250) SetGyroLPF(rate byte) (err error) {
 	var r byte
 	switch {
 	case rate >= 188:
@@ -495,7 +499,31 @@ func (mpu *MPU9250) SetLPF(rate byte) (err error) {
 
 	errWrite := mpu.i2cWrite(MPUREG_CONFIG, r)
 	if errWrite != nil {
-		err = fmt.Errorf("MPU9250 Error: couldn't set LPF: %s", errWrite.Error())
+		err = fmt.Errorf("MPU9250 Error: couldn't set Gyro LPF: %s", errWrite.Error())
+	}
+	return
+}
+
+func (mpu *MPU9250) SetAccelLPF(rate byte) (err error) {
+	var r byte
+	switch {
+	case rate >= 218:
+		r = BITS_DLPF_CFG_188HZ
+	case rate >= 99:
+		r = BITS_DLPF_CFG_98HZ
+	case rate >= 45:
+		r = BITS_DLPF_CFG_42HZ
+	case rate >= 21:
+		r = BITS_DLPF_CFG_20HZ
+	case rate >= 10:
+		r = BITS_DLPF_CFG_10HZ
+	default:
+		r = BITS_DLPF_CFG_5HZ
+	}
+
+	errWrite := mpu.i2cWrite(MPUREG_ACCEL_CONFIG_2, r)
+	if errWrite != nil {
+		err = fmt.Errorf("MPU9250 Error: couldn't set Accel LPF: %s", errWrite.Error())
 	}
 	return
 }
