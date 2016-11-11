@@ -4,6 +4,7 @@ package mpu9250
 // Also referenced https://github.com/brianc118/MPU9250/blob/master/MPU9250.cpp
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/kidoman/embd"
 	_ "github.com/kidoman/embd/host/all"
@@ -13,6 +14,7 @@ import (
 	"log"
 	"math"
 	"time"
+	"os"
 )
 
 const (
@@ -22,6 +24,7 @@ const (
 	MAXACCELVAR = 0.1
 	BUFSIZE     = 250
 	SCALEMAG    = 9830.0/65536
+	CALDATALOCATION = "/etc/mpu9250cal.json"
 )
 
 type MPUData struct {
@@ -34,14 +37,77 @@ type MPUData struct {
 	DT, DTM           time.Duration
 }
 
+type mpuCalData struct {
+	A01, A02, A03    float64 // Accelerometer bias
+	G01, G02, G03    float64 // Gyro bias
+	M01, M02, M03    float64 // Magnetometer bias
+	Ms11, Ms12, Ms13 float64 // Magnetometer rescaling matrix
+	Ms21, Ms22, Ms23 float64 // (Only diagonal is used currently)
+	Ms31, Ms32, Ms33 float64
+}
+
+func (d *mpuCalData) reset() {
+	d.Ms11 = 1
+	d.Ms22 = 1
+	d.Ms33 = 1
+}
+
+func (d *mpuCalData) save() {
+	fd, err := os.OpenFile(CALDATALOCATION, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(0644))
+	if err != nil {
+		log.Printf("MPU9250: Error saving calibration data to %s: %s", CALDATALOCATION, err.Error())
+		return
+	}
+	defer fd.Close()
+	calData, err := json.Marshal(d)
+	if err != nil {
+		log.Printf("MPU9250: Error marshaling calibration data: %s", err)
+		return
+	}
+	fd.Write(calData)
+	log.Println("MPU9250: Wrote calibration data:")
+	log.Println(string(calData))
+}
+
+func (d *mpuCalData) load() (err error) {
+	//d.M01 = 1638.0
+	//d.M02 = -589.0
+	//d.M03 = -2153.0
+	//d.Ms11 = 0.00031969309462915601
+	//d.Ms22 = 0.00035149384885764499
+	//d.Ms33 = 0.00028752156411730879
+	//d.save()
+	//return
+	errstr := "MPU9250: Error reading calibration data from %s: %s"
+	fd, rerr := os.Open(CALDATALOCATION)
+	if rerr != nil {
+		err = fmt.Errorf(errstr, CALDATALOCATION, rerr.Error())
+		return
+	}
+	defer fd.Close()
+	buf := make([]byte, 1024)
+	count, rerr := fd.Read(buf)
+	if rerr != nil {
+		err = fmt.Errorf(errstr, CALDATALOCATION, rerr.Error())
+		return
+	}
+	rerr = json.Unmarshal(buf[0:count], d)
+	if rerr != nil {
+		err = fmt.Errorf(errstr, CALDATALOCATION, rerr.Error())
+		return
+	}
+	log.Println("MPU9250: read calibration data:")
+	log.Println(*d)
+	return
+}
+
 type MPU9250 struct {
 	i2cbus                embd.I2CBus
 	scaleGyro, scaleAccel float64 // Max sensor reading for value 2**15-1
 	sampleRate            int
 	enableMag             bool
-	a01, a02, a03         float64   // Accelerometer bias
-	g01, g02, g03         float64   // Gyro bias
-	mcal1, mcal2, mcal3   float64   // Magnetometer calibration values, uT
+	                      mpuCalData
+	mcal1, mcal2, mcal3   float64   // Hardware magnetometer calibration values, uT
 	C                     <-chan *MPUData
 	CAvg                  <-chan *MPUData
 	CBuf                  <-chan *MPUData
@@ -52,6 +118,10 @@ type MPU9250 struct {
 
 func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, enableMag bool, applyHWOffsets bool) (*MPU9250, error) {
 	var mpu = new(MPU9250)
+	if err := mpu.mpuCalData.load(); err != nil {
+		log.Println(err)
+		mpu.mpuCalData.reset()
+	}
 
 	mpu.sampleRate = sampleRate
 	mpu.enableMag = enableMag
@@ -295,16 +365,19 @@ func (m *MPU9250) readSensors() {
 	t0m = time.Now()
 
 	makeMPUData := func() *MPUData {
+		mm1 := float64(m1) * m.mcal1 - m.M01
+		mm2 := float64(m2) * m.mcal2 - m.M02
+		mm3 := float64(m3) * m.mcal3 - m.M03
 		d := MPUData{
-			G1: (float64(g1) - m.g01) * m.scaleGyro,
-			G2: (float64(g2) - m.g02) * m.scaleGyro,
-			G3: (float64(g3) - m.g03) * m.scaleGyro,
-			A1: (float64(a1) - m.a01) * m.scaleAccel,
-			A2: (float64(a2) - m.a02) * m.scaleAccel,
-			A3: (float64(a3) - m.a03) * m.scaleAccel,
-			M1: float64(m1) * m.mcal1,
-			M2: float64(m2) * m.mcal2,
-			M3: float64(m3) * m.mcal3,
+			G1: (float64(g1) - m.G01) * m.scaleGyro,
+			G2: (float64(g2) - m.G02) * m.scaleGyro,
+			G3: (float64(g3) - m.G03) * m.scaleGyro,
+			A1: (float64(a1) - m.A01) * m.scaleAccel,
+			A2: (float64(a2) - m.A02) * m.scaleAccel,
+			A3: (float64(a3) - m.A03) * m.scaleAccel,
+			M1: m.Ms11*mm1 + m.Ms12*mm2 + m.Ms13*mm3,
+			M2: m.Ms21*mm1 + m.Ms22*mm2 + m.Ms23*mm3,
+			M3: m.Ms31*mm1 + m.Ms32*mm2 + m.Ms33*mm3,
 			GAError: gaError, MagError: magError,
 			N: 1, NM: 1,
 			T: t, TM: tm,
@@ -320,22 +393,25 @@ func (m *MPU9250) readSensors() {
 	}
 
 	makeAvgMPUData := func() *MPUData {
+		mm1 := float64(avm1) * m.mcal1 / nm - m.M01
+		mm2 := float64(avm2) * m.mcal2 / nm - m.M02
+		mm3 := float64(avm3) * m.mcal3 / nm - m.M03
 		d := MPUData{}
 		if n > 0.5 {
-			d.G1 = (avg1/n-m.g01) * m.scaleGyro
-			d.G2 = (avg2/n-m.g02) * m.scaleGyro
-			d.G3 = (avg3/n-m.g03) * m.scaleGyro
-			d.A1 = (ava1/n-m.a01) * m.scaleAccel
-			d.A2 = (ava2/n-m.a02) * m.scaleAccel
-			d.A3 = (ava3/n-m.a03) * m.scaleAccel
+			d.G1 = (avg1/n-m.G01) * m.scaleGyro
+			d.G2 = (avg2/n-m.G02) * m.scaleGyro
+			d.G3 = (avg3/n-m.G03) * m.scaleGyro
+			d.A1 = (ava1/n-m.A01) * m.scaleAccel
+			d.A2 = (ava2/n-m.A02) * m.scaleAccel
+			d.A3 = (ava3/n-m.A03) * m.scaleAccel
 			d.N = int(n+0.5); d.T = t; d.DT = t.Sub(t0)
 		} else {
 			d.GAError = errors.New("MPU9250 Error: No new accel/gyro values")
 		}
 		if nm > 0 {
-			d.M1 = float64(avm1) * m.mcal1 / nm
-			d.M2 = float64(avm2) * m.mcal2 / nm
-			d.M3 = float64(avm3) * m.mcal3 / nm
+			d.M1 = m.Ms11 *mm1 + m.Ms12 *mm2 + m.Ms13 *mm3
+			d.M2 = m.Ms21 *mm1 + m.Ms22 *mm2 + m.Ms23 *mm3
+			d.M3 = m.Ms31 *mm1 + m.Ms32 *mm2 + m.Ms33 *mm3
 			d.NM = int(nm+0.5); d.TM = tm; d.DTM = t.Sub(t0m)
 		} else {
 			d.MagError = errors.New("MPU9250 Error: No new magnetometer values")
@@ -392,15 +468,15 @@ func (m *MPU9250) readSensors() {
 					va1 > MAXACCELVAR || va2 > MAXACCELVAR || va3 > MAXACCELVAR {
 					cCalResult<- errors.New("MPU9250 Calibration Error: sensor was not inertial during calibration")
 				} else {
-					m.g01 = g11 / nc
-					m.g02 = g12 / nc
-					m.g03 = g13 / nc
-					m.a01 = a11 / nc
-					m.a02 = a12 / nc
-					m.a03 = a13 / nc
+					m.G01 = g11 / nc
+					m.G02 = g12 / nc
+					m.G03 = g13 / nc
+					m.A01 = a11 / nc
+					m.A02 = a12 / nc
+					m.A03 = a13 / nc
 
-					log.Printf("MPU9250 Gyro Calibration: %6f, %6f, %6f\n", m.g01*m.scaleGyro, m.g02*m.scaleGyro, m.g03*m.scaleGyro)
-					log.Printf("MPU9250 Accel Calibration: %6f, %6f, %6f\n", m.a01*m.scaleAccel, m.a02*m.scaleAccel, m.a03*m.scaleAccel)
+					log.Printf("MPU9250 Gyro Calibration: %6f, %6f, %6f\n", m.G01 *m.scaleGyro, m.G02 *m.scaleGyro, m.G03 *m.scaleGyro)
+					log.Printf("MPU9250 Accel Calibration: %6f, %6f, %6f\n", m.A01 *m.scaleAccel, m.A02 *m.scaleAccel, m.A03 *m.scaleAccel)
 					cCalResult <- nil
 				}
 				g11, g12, g13, g21, g22, g23 = 0, 0, 0, 0, 0, 0
@@ -444,7 +520,6 @@ func (m *MPU9250) readSensors() {
 				}
 
 				// Update values and increment count of magnetometer readings
-				log.Printf("Raw mag values: %d %d %d\n", m1, m2, m3)
 				avm1 += int32(m1)
 				avm2 += int32(m2)
 				avm3 += int32(m3)
@@ -623,26 +698,26 @@ func (mpu *MPU9250) ReadAccelBias(sensitivityAccel int) error {
 
 	switch sensitivityAccel {
 	case 16:
-		mpu.a01 = float64(a0x >> 1)
-		mpu.a02 = float64(a0y >> 1)
-		mpu.a03 = float64(a0z >> 1)
+		mpu.A01 = float64(a0x >> 1)
+		mpu.A02 = float64(a0y >> 1)
+		mpu.A03 = float64(a0z >> 1)
 	case 8:
-		mpu.a01 = float64(a0x)
-		mpu.a02 = float64(a0y)
-		mpu.a03 = float64(a0z)
+		mpu.A01 = float64(a0x)
+		mpu.A02 = float64(a0y)
+		mpu.A03 = float64(a0z)
 	case 4:
-		mpu.a01 = float64(a0x << 1)
-		mpu.a02 = float64(a0y << 1)
-		mpu.a03 = float64(a0z << 1)
+		mpu.A01 = float64(a0x << 1)
+		mpu.A02 = float64(a0y << 1)
+		mpu.A03 = float64(a0z << 1)
 	case 2:
-		mpu.a01 = float64(a0x << 2)
-		mpu.a02 = float64(a0y << 2)
-		mpu.a03 = float64(a0z << 2)
+		mpu.A01 = float64(a0x << 2)
+		mpu.A02 = float64(a0y << 2)
+		mpu.A03 = float64(a0z << 2)
 	default:
 		return fmt.Errorf("MPU9250 Error: %d is not a valid acceleration sensitivity", sensitivityAccel)
 	}
 
-	log.Printf("MPU9250 Accel bias read: %d %d %d\n", mpu.a01, mpu.a02, mpu.a03)
+	log.Printf("MPU9250 Accel bias read: %d %d %d\n", mpu.A01, mpu.A02, mpu.A03)
 	return nil
 }
 
@@ -662,26 +737,26 @@ func (mpu *MPU9250) ReadGyroBias(sensitivityGyro int) error {
 
 	switch sensitivityGyro {
 	case 2000:
-		mpu.g01 = float64(g0x >> 1)
-		mpu.g02 = float64(g0y >> 1)
-		mpu.g03 = float64(g0z >> 1)
+		mpu.G01 = float64(g0x >> 1)
+		mpu.G02 = float64(g0y >> 1)
+		mpu.G03 = float64(g0z >> 1)
 	case 1000:
-		mpu.g01 = float64(g0x)
-		mpu.g02 = float64(g0y)
-		mpu.g03 = float64(g0z)
+		mpu.G01 = float64(g0x)
+		mpu.G02 = float64(g0y)
+		mpu.G03 = float64(g0z)
 	case 500:
-		mpu.g01 = float64(g0x << 1)
-		mpu.g02 = float64(g0y << 1)
-		mpu.g03 = float64(g0z << 1)
+		mpu.G01 = float64(g0x << 1)
+		mpu.G02 = float64(g0y << 1)
+		mpu.G03 = float64(g0z << 1)
 	case 250:
-		mpu.g01 = float64(g0x << 2)
-		mpu.g02 = float64(g0y << 2)
-		mpu.g03 = float64(g0z << 2)
+		mpu.G01 = float64(g0x << 2)
+		mpu.G02 = float64(g0y << 2)
+		mpu.G03 = float64(g0z << 2)
 	default:
 		return fmt.Errorf("MPU9250 Error: %d is not a valid gyro sensitivity", sensitivityGyro)
 	}
 
-	log.Printf("MPU9250 Gyro  bias read: %d %d %d\n", mpu.g01, mpu.g02, mpu.g03)
+	log.Printf("MPU9250 Gyro  bias read: %d %d %d\n", mpu.G01, mpu.G02, mpu.G03)
 	return nil
 }
 
@@ -818,4 +893,9 @@ func (mpu *MPU9250) memWrite(addr uint16, data *[]byte) error {
 	}
 
 	return nil
+}
+
+// TODO westphae: write something to perform a guided magnetometer calibration
+func CalbrateMagnetometer() {
+
 }

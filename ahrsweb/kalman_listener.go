@@ -28,22 +28,18 @@ func NewKalmanListener() (kl *KalmanListener, err error) {
 func (kl *KalmanListener) connect() (err error) {
 	u := url.URL{Scheme: "ws", Host: "localhost:8080", Path: "/ahrsweb"}
 
-	log.Printf("AHRSWeb: making socket connection for Kalman data on %s\n", u.String())
 	if c, _, err := websocket.DefaultDialer.Dial(u.String(), nil); err != nil {
 		log.Printf("AHRSWeb dial error: %s\n", err)
 	} else {
-		log.Println("AHRSWeb websocket connected")
 		kl.c = c
 	}
-	return err
+	return
 }
 
 func (kl *KalmanListener) update(s *ahrs.State, m *ahrs.Measurement) {
-	log.Println("AHRSWeb: Updating AHRS data")
 	kl.data.T = float64(time.Now().UnixNano()/1000)/1e6
 
 	if s != nil {
-		log.Println("AHRSWeb: Updating primary state data")
 		kl.data.U1 = s.U1
 		kl.data.U2 = s.U2
 		kl.data.U3 = s.U3
@@ -95,11 +91,8 @@ func (kl *KalmanListener) update(s *ahrs.State, m *ahrs.Measurement) {
 			kl.data.DL1 = s.M.Get(29, 29)
 			kl.data.DL2 = s.M.Get(30, 30)
 			kl.data.DL3 = s.M.Get(31, 31)
-		} else {
-			log.Println("AHRSWeb: state uncertainties are nil, not updating data")
 		}
 
-		log.Println("AHRSWeb: Updating secondary state data")
 		kl.data.V1 = s.V1
 		kl.data.V2 = s.V2
 		kl.data.V3 = s.V3
@@ -117,7 +110,6 @@ func (kl *KalmanListener) update(s *ahrs.State, m *ahrs.Measurement) {
 		kl.data.L2 = s.L2
 		kl.data.L3 = s.L3
 
-		log.Println("AHRSWeb: Updating attitude data")
 		roll, pitch, heading := ahrs.FromQuaternion(s.E0, s.E1, s.E2, s.E3)
 		kl.data.Pitch = pitch / ahrs.Deg
 		kl.data.Roll = roll / ahrs.Deg
@@ -127,7 +119,6 @@ func (kl *KalmanListener) update(s *ahrs.State, m *ahrs.Measurement) {
 	}
 
 	if m != nil {
-		log.Println("AHRSWeb: Updating measurement data")
 		kl.data.UValid = m.UValid
 		kl.data.WValid = m.WValid
 		kl.data.SValid = m.SValid
@@ -161,14 +152,12 @@ func (kl *KalmanListener) Send(s *ahrs.State, m *ahrs.Measurement) error {
 		log.Println("AHRSWeb: Data was:", kl.data)
 		return err
 	} else {
-		log.Println("AHRSWeb: Sending AHRS data over websocket")
 		if err := kl.c.WriteMessage(websocket.TextMessage, msg); err != nil {
 			log.Println("AHRSWeb: Error writing to websocket:", err)
 			err2 := kl.connect()
 			return fmt.Errorf("AHRSWeb: %v: %v", err, err2) // Just drop this message
 		}
 	}
-	log.Println("AHRSWeb: AHRS data sent successfully")
 	return nil
 }
 
