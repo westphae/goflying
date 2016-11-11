@@ -82,11 +82,11 @@ func (s *SimpleState) Compute(m *Measurement) {
 	dp := (-math.Cos(s.rollGPS*Deg)*m.B2 + math.Sin(s.rollGPS*Deg)*m.B3)*dt
 	dh := (-math.Sin(s.rollGPS*Deg)*m.B2 - math.Cos(s.rollGPS*Deg)*m.B3)*dt
 
-	if (s.roll - s.rollGPS)*dr > 0 {
-		dr *= K
-	}
 	if (s.pitch - s.pitchGPS)*dp > 0 {
 		dp *= K
+	}
+	if (s.roll - s.rollGPS)*dr > 0 {
+		dr *= K
 	}
 	ddh := s.heading - s.headingGPS
 	if ddh > 180 {
@@ -97,9 +97,43 @@ func (s *SimpleState) Compute(m *Measurement) {
 	if ddh*dh > 0 {
 		dh *= K
 	}
-	s.roll += dr
+
 	s.pitch += dp
-	s.heading = math.Mod(s.heading + dh, 360)
+	s.roll += dr
+	s.heading += dh
+
+	// Regularize
+	for s.pitch > 180 {
+		s.pitch -= 360
+	}
+	for s.pitch <= -180 {
+		s.pitch += 360
+	}
+	if s.pitch > 90 {
+		s.pitch = 180 - s.pitch
+		s.roll -= 180
+		s.heading += 180
+	}
+	if s.pitch < -90 {
+		s.pitch = -180 - s.pitch
+		s.roll -= 180
+		s.heading += 180
+	}
+
+	for s.roll > 180 {
+		s.roll -= 360
+	}
+	for s.roll < -180 {
+		s.roll += 360
+	}
+
+	for s.heading >= 360 {
+		s.heading -= 360
+	}
+	for s.heading < 0 {
+		s.heading += 360
+	}
+
 	s.E0, s.E1, s.E2, s.E3 = ToQuaternion(s.roll*Deg, s.pitch*Deg, s.heading*Deg)
 	s.T = m.T
 }
