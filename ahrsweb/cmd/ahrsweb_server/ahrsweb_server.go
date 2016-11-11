@@ -41,8 +41,11 @@ func main() {
 
 	// start the web server
 	http.Handle("/", &templateHandler{filename: "analyzer.html"})
+	http.Handle("/magnetometer", &templateHandler{filename: "magnetometer.html"})
 	http.HandleFunc("/d3.min.js",
 		func(w http.ResponseWriter, r *http.Request) { http.ServeFile(w, r, "res/d3.min.js") })
+	http.HandleFunc("/magcal.js",
+		func(w http.ResponseWriter, r *http.Request) { http.ServeFile(w, r, "res/magcal.js") })
 	http.Handle("/ahrsweb", r)
 	log.Println("AHRSWeb: Starting web server on", *addr)
 	if err := http.ListenAndServe(*addr, nil); err != nil {

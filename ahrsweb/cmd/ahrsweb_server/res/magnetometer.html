@@ -1,0 +1,406 @@
+<html>
+<head>
+    <title>Magnetometer Calibration</title>
+    <style>
+        ul    { list-style: none; }
+
+        table   {
+            /*display: inline;*/
+            text-align: right;
+            margin-bottom: 2em;
+        }
+
+        th {
+            width: 5em;
+        }
+
+        body {
+            font: 10px sans-serif;
+        }
+
+        .center {
+            fill: Black;
+        }
+
+        .ellipse {
+            stroke: Black;
+            stroke-width: 1;
+            fill: None;
+        }
+
+        .pointer {
+            stroke: Black;
+            stroke-width: 2;
+        }
+
+        .line {
+            stroke-width: 2;
+            fill: none;
+        }
+
+        .line.x {
+            stroke: Red;
+        }
+
+        .line.y {
+            stroke: Green;
+        }
+        .line.z {
+            stroke: Blue;
+        }
+
+        .axis path,
+        .axis line {
+            fill: none;
+            stroke: black;
+            shape-rendering: crispEdges;
+        }
+        svg {
+            font: 10px sans-serif;
+        }
+    </style>
+</head>
+<body>
+
+<table>
+    <tr>
+        <th></th>
+        <th>M1</th>
+        <th>M2</th>
+        <th>M3</th>
+        <th>HDG</th>
+        <th>DIP</th>
+        <th>Raw HDG</th>
+        <th>Raw DIP</th>
+    </tr>
+    <tr>
+        <td>Values</td>
+        <td id="M1">0</td>
+        <td id="M2">0</td>
+        <td id="M3">0</td>
+        <td id="HDG">0</td>
+        <td id="DIP">0</td>
+        <td id="HDGRaw">0</td>
+        <td id="DIPRaw">0</td>
+    </tr>
+    <tr>
+        <td>Offset</td>
+        <td id="O1">0</td>
+        <td id="O2">0</td>
+        <td id="O3">0</td>
+    </tr>
+    <tr>
+        <td>Scale</td>
+        <td id="S1">0</td>
+        <td id="S2">0</td>
+        <td id="S3">0</td>
+    </tr>
+</table>
+
+<div>
+    <span id="m_mag"></span>
+    <span id="mm_mag"></span>
+</div>
+<div>
+    <span id="m1m2"></span>
+    <span id="m1m3"></span>
+    <span id="m2m3"></span>
+</div>
+<script src="d3.min.js" charset="utf-8"></script>
+<script src="magcal.js" charset="utf-8"></script>
+<script>
+
+    const DEG = Math.PI/180;
+
+    var width = 400, height=400;
+    var margin = {top: 20, right: 2, bottom: 20, left: 40};
+
+    var updateTable = (function() {
+        function formatVar(k, v) {
+            var fmt;
+            switch (k) {
+                case "HDG":
+                case "DIP":
+                    fmt = ".1f";
+                    break;
+                case "S1":
+                case "S2":
+                case "S3":
+                    fmt = ".2f";
+                    break;
+                default:
+                    fmt = "+.0f";
+            }
+            return d3.format(fmt)(v);
+        }
+
+        return function(data) {
+            for (var f in data) {
+                d3.select("#"+f).text(formatVar(f, data[f]));
+            }
+        }
+    })();
+
+    // Draw Magnetometer cross-sections
+    function updateMagXS(ax, ay) {
+        var col, lim = 1;
+
+        switch (ax+ay) {
+            case 3:
+                col = "Blue";
+                break;
+            case 4:
+                col = "Green";
+                break;
+            case 5:
+                col = "Red";
+        }
+
+        var x = d3.scale.linear()
+                .domain([-lim, lim])
+                .range([0, width-margin.left-margin.right]);
+
+        var y = d3.scale.linear()
+                .domain([-lim, lim])
+                .range([height-margin.top-margin.bottom, 0]);
+
+        var xAxis = d3.svg.axis()
+                .scale(x)
+                .orient("bottom");
+
+        var yAxis = d3.svg.axis()
+                .scale(y)
+                .orient("left");
+
+        var svg = d3.select("#m"+ax+"m"+ay).append("svg")
+                .attr("width", width)
+                .attr("height", height)
+                .append("g");
+
+        svg.append("g")
+                .attr("class", "x axis")
+                .attr("transform", "translate(0," + y(0) + ")")
+                .call(xAxis)
+                .append("text")
+                .attr("x", width-margin.left-margin.right-6)
+                .attr("dx", ".71em")
+                .style("text-anchor", "end")
+                .text("m"+ax);
+
+        svg.append("g")
+                .attr("class", "y axis")
+                .attr("transform", "translate(" + x(0) + ",0)")
+                .call(yAxis)
+                .append("text")
+                .attr("y", 6)
+                .attr("dy", ".71em")
+                .style("text-anchor", "end")
+                .text("m"+ay);
+
+        var dots = svg.append("g");
+
+        var ctr = svg.append("circle")
+                .attr("class", "center")
+                .attr("r", 2)
+                .attr("cx", x(0))
+                .attr("cy", y(0));
+
+        var crc = svg.append("ellipse")
+                .attr("class", "ellipse")
+                .attr("cx", x(0))
+                .attr("cy", y(0))
+                .attr("rx", 0)
+                .attr("ry", 0);
+
+        var vec = svg.append("line")
+                .attr("class", "pointer")
+                .attr("x1", x(0))
+                .attr("y1", y(0))
+                .attr("x2", x(0))
+                .attr("y2", y(0));
+
+        return function(data) {
+            var ox = data["O"+ax],
+                    oy = data["O"+ay];
+
+            dots.append("circle")
+                    .attr("class", "dot")
+                    .attr("r", 2)
+                    .attr("cx", x(data['M'+ax]))
+                    .attr("cy", y(data['M'+ay]))
+                    .style("fill", col);
+
+            ctr
+                    .attr("cx", x(ox))
+                    .attr("cy", y(oy));
+
+            crc
+                    .attr("cx", x(ox))
+                    .attr("cy", y(oy))
+                    .attr("rx", (x(ox+data["S"+ax]) - x(ox-data["S"+ax]))/2)
+                    .attr("ry", (y(oy-data["S"+ay]) - y(oy+data["S"+ay]))/2);
+
+            vec
+                    .attr("x1", x(ox))
+                    .attr("y1", y(oy))
+                    .attr("x2", x(data['M'+ax]))
+                    .attr("y2", y(data['M'+ay]))
+        }
+
+    }
+
+    function makeRollingPlot(el, ylim, v) {
+        const TMAX = 10;
+
+        var D0 = d3.range(TMAX*10).map(function() { return 0; });
+
+        var x = d3.scale.linear()
+                .domain([0, TMAX])
+                .range([0, width-margin.left-margin.right]);
+
+        var y = d3.scale.linear()
+                .domain([-ylim, ylim])
+                .range([height-margin.top-margin.bottom, 0]);
+
+        var xAxis = d3.svg.axis()
+                .scale(x)
+                .orient("bottom");
+
+        var yAxis = d3.svg.axis()
+                .scale(y)
+                .orient("left");
+
+        var getLine = function(dim) {
+            return d3.svg.line()
+                    .x(function (d, i) {
+                        return x(i / 10);
+                    })
+                    .y(function (d, i) {
+                        if (d.A3) {
+                            return y(d[v + dim]);
+                        } else {
+                            return y(0);
+                        }
+                    });
+        };
+
+        var svg = d3.select("#"+el)
+                .append("svg")
+                .attr("width", width)
+                .attr("height", height)
+                .append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+        svg.append("defs").append("clipPath")
+                .attr("id", el+"Clip")
+                .append("rect")
+                .attr("width", width-margin.left-margin.right)
+                .attr("height", height-margin.top-margin.bottom);
+
+        svg.append("g")
+                .attr("class", "x axis")
+                .attr("transform", "translate(0," + y(0) + ")")
+                .call(xAxis);
+
+        svg.append("g")
+                .attr("class", "y axis")
+                .call(yAxis)
+                .append("text")
+                .attr("transform", "rotate(-90)")
+                .attr("y", 6)
+                .attr("dy", ".71em")
+                .style("text-anchor", "end")
+                .text(el);
+
+        var xpath = svg.append("g")
+                .attr("clip-path", "url(#"+el+"Clip)")
+                .append("path")
+                .attr("class", "line x")
+                .datum(D0)
+                .attr("d", getLine("1"));
+
+        var ypath = svg.append("g")
+                .attr("clip-path", "url(#"+el+"Clip)")
+                .append("path")
+                .attr("class", "line y")
+                .datum(D0)
+                .attr("d", getLine("2"));
+
+        var zpath = svg.append("g")
+                .attr("clip-path", "url(#"+el+"Clip)")
+                .append("path")
+                .attr("class", "line z")
+                .datum(D0)
+                .attr("d", getLine("3"));
+
+        return function(data) {
+            D0.push(data);
+            xpath.attr("d", getLine("1"))
+                    .attr("transform", null)
+                    .transition()
+                    .duration(100)
+                    .ease("linear")
+                    .attr("transform", "translate(" + x(-0.1) + ",0)");
+            ypath.attr("d", getLine("2"))
+                    .attr("transform", null)
+                    .transition()
+                    .duration(100)
+                    .ease("linear")
+                    .attr("transform", "translate(" + x(-0.1) + ",0)");
+            zpath.attr("d", getLine("3"))
+                    .attr("transform", null)
+                    .transition()
+                    .duration(100)
+                    .ease("linear")
+                    .attr("transform", "translate(" + x(-0.1) + ",0)");
+            D0.shift();
+        }
+
+    }
+
+    var updateMMag = makeRollingPlot("m_mag", 1, "M"),
+            updateMMMag = makeRollingPlot("mm_mag", 1, "MM"),
+            magCal = magCalSimple(),
+            magsmoother = smoother(0.9),
+            updateMagXY = updateMagXS(1, 2),
+            updateMagXZ = updateMagXS(1, 3),
+            updateMagYZ = updateMagXS(2, 3);
+
+    if (!window["WebSocket"]) {
+        alert("Error: Your browser does not support web sockets.")
+    } else {
+        function reconnectLoop() {
+            var socket = new WebSocket("ws://{{.Host}}/ahrsweb"),
+                    msg, hdgdip, hdgdipRaw;
+            socket.onclose = function () {
+                console.log("Socket has been closed.  Trying to reconnect.");
+                setTimeout(function () {
+                    reconnectLoop()
+                }, 1000);
+            };
+            socket.onmessage = function (e) {
+                msg = JSON.parse(e.data);
+                magCal(msg);
+                hdgdipRaw = calcHdgDip(msg['M1'], msg['M2'], msg['M3']);
+                sg['HDGRaw'] = hdgdipRaw.hdg;
+                msg['DIPRaw'] = hdgdipRaw.dip;
+                msg['MM1'] = (msg['M1']-msg['O1'])/msg['S1'];
+                msg['MM2'] = (msg['M2']-msg['O2'])/msg['S2'];
+                msg['MM3'] = (msg['M3']-msg['O3'])/msg['S3'];
+                hdgdip = calcHdgDip(msg['MM1'], msg['MM2'], msg['MM3']);
+                msg['HDG'] = hdgdip.hdg;
+                msg['DIP'] = hdgdip.dip;
+                updateMMag(msg);
+                updateMMMag(msg);
+                updateMagXY(msg);
+                updateMagXZ(msg);
+                updateMagYZ(msg);
+                msg = magsmoother(msg);
+                updateTable(msg);
+            };
+        }
+        reconnectLoop()
+    }
+</script>
+</body>
+</html>
