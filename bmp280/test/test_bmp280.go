@@ -8,7 +8,7 @@ import (
 
 const (
 	RETRIES = 10
-	FREQ = 3
+	FREQ = 0x03
 )
 
 func main() {
@@ -16,9 +16,9 @@ func main() {
 	if FREQ==1 {
 		freq = 62500
 	} else if FREQ > 1 {
-		freq = (uint(4000) >> uint(7-FREQ))*1000
+		freq = int(uint(4000) >> uint(7-FREQ))*1000
 	}
-	clock := time.NewTicker(freq * time.Microsecond)
+	clock := time.NewTicker(time.Duration(freq) * time.Microsecond)
 	var (
 		bmp      *bmp280.BMP280
 		cur      *bmp280.BMPData
@@ -26,9 +26,9 @@ func main() {
 	)
 
 	for i:=0; i<RETRIES; i++ {
-		bmp, err = bmp280.NewBMP280(3, FREQ, 4, 5, 5)
+		bmp, err = bmp280.NewBMP280(0x03, FREQ, 0x04, 0x05, 0x05)
 		if err != nil {
-			fmt.Printf("Error initializing BMP280, attempt %d of 10\n", i)
+			fmt.Printf("Error initializing BMP280, attempt %d of 10, %s\n", i, err)
 			time.Sleep(5 * time.Second)
 		} else {
 			break
