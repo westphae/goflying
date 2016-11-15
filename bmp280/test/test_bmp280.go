@@ -27,6 +27,12 @@ func main() {
 
 	for i:=0; i<RETRIES; i++ {
 		bmp, err = bmp280.NewBMP280(0x03, FREQ, 0x04, 0x05, 0x05)
+
+		fmt.Printf("DigT1: %d, DigT2: %d, DigT3: %d\n", bmp.DigT1, bmp.DigT2, bmp.DigT3)
+		fmt.Printf("DigP1: %d, DigP2: %d, DigP3: %d\n", bmp.DigP1, bmp.DigP2, bmp.DigP3)
+		fmt.Printf("DigP4: %d, DigP5: %d, DigP6: %d\n", bmp.DigP4, bmp.DigP5, bmp.DigP6)
+		fmt.Printf("DigP7: %d, DigP8: %d, DigP9: %d\n", bmp.DigP7, bmp.DigP8, bmp.DigP9)
+
 		if err != nil {
 			fmt.Printf("Error initializing BMP280, attempt %d of 10, %s\n", i, err)
 			time.Sleep(5 * time.Second)

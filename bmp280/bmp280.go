@@ -15,7 +15,9 @@ import (
 )
 
 const (
-	BMP_ADDRESS = 0x76 // BMP280 I2C Address (or 0x77)
+	BMP_ADDRESS                    = 0x76 // BMP280 I2C Address (or 0x77)
+	BMP280_CHIPID                  = 0x58 // Byte specifying the Chip ID
+	BMP280_SOFTRESET               = 0xB6
 
 	// BMP280 registers
 	BMP280_REGISTER_DIG_T1         = 0x88
@@ -36,12 +38,12 @@ const (
 	BMP280_REGISTER_CONTROL        = 0xF4
 	BMP280_REGISTER_CONFIG         = 0xF5
 	BMP280_REGISTER_STATUS         = 0xF3
-	BMP280_REGISTER_TEMPDATA_MSB   = 0xFA
-	BMP280_REGISTER_TEMPDATA_LSB   = 0xFB
-	BMP280_REGISTER_TEMPDATA_XLSB  = 0xFC
 	BMP280_REGISTER_PRESSDATA_MSB  = 0xF7
 	BMP280_REGISTER_PRESSDATA_LSB  = 0xF8
 	BMP280_REGISTER_PRESSDATA_XLSB = 0xF9
+	BMP280_REGISTER_TEMPDATA_MSB   = 0xFA
+	BMP280_REGISTER_TEMPDATA_LSB   = 0xFB
+	BMP280_REGISTER_TEMPDATA_XLSB  = 0xFC
 
 	QNH = 1020 // Reference pressure in hPa
 
@@ -107,11 +109,11 @@ func NewBMP280(powerMode, freq, filter, tempRes, presRes byte) (bmp *BMP280, err
 		err = fmt.Errorf("BMP280: couldn't read ChipID register: %s", errv)
 		return
 	}
-	if v != 0x58 {
-		err = fmt.Errorf("BMP280: Wrong ChipID, got %s", v)
+	if v != BMP280_CHIPID {
+		err = fmt.Errorf("BMP280: Wrong ChipID, got %x, expecting %x", v, BMP280_CHIPID)
 		return
 	}
-	bmp.i2cWrite(BMP280_REGISTER_SOFTRESET, 0xB6) // reset sensor
+	bmp.i2cWrite(BMP280_REGISTER_SOFTRESET, BMP280_SOFTRESET) // reset sensor
 	time.Sleep(200 * time.Millisecond)
 	bmp.i2cWrite(BMP280_REGISTER_CONTROL, bmp.control) //
 	time.Sleep(200 * time.Millisecond)
@@ -259,7 +261,7 @@ func (bmp *BMP280) CalcCompensatedTemp(raw_temp int32) (temp float64) {
 	return
 }
 
-func (bmp *BMP280) CalcCompensatedPress(raw_press int64) (press float64) {
+func (bmp *BMP280) CalcCompensatedPress(raw_press int32) (press float64) {
 	var var1, var2, p int64
 
 	var1 = int64(bmp.T_fine) - 128000
@@ -271,7 +273,7 @@ func (bmp *BMP280) CalcCompensatedPress(raw_press int64) (press float64) {
 	if var1 == 0 {
 		return 0
 	}
-	p = 1048576 - raw_press
+	p = 1048576 - int64(raw_press)
 	p = (((p << 31) - var2) * 3125) / var1
 	var1 = (int64(bmp.DigP9) * (p >> 13) * (p >> 13)) >> 25
 	var2 = (int64(bmp.DigP8) * p) >> 19
@@ -296,28 +298,35 @@ func (bmp *BMP280) i2cWrite(register, value byte) (err error) {
 }
 
 func (bmp *BMP280) i2cRead(register byte) (value uint8, err error) {
-	value, errWrite := bmp.i2cbus.ReadByteFromReg(BMP_ADDRESS, register)
-	if errWrite != nil {
-		err = fmt.Errorf("BMP280 error: %s", errWrite.Error())
+	value, errRead := bmp.i2cbus.ReadByteFromReg(BMP_ADDRESS, register)
+	if errRead != nil {
+		err = fmt.Errorf("BMP280 error: %s", errRead.Error())
 	}
 	return
 }
 
 func (bmp *BMP280) i2cRead2(register byte) (value int16, err error) {
-	v, errWrite := bmp.i2cbus.ReadWordFromReg(BMP_ADDRESS, register)
-	if errWrite != nil {
+	v, errRead := bmp.i2cbus.ReadWordFromReg(BMP_ADDRESS, register)
+	if errRead != nil {
 		err = fmt.Errorf("BMP280 Error reading %x: %s\n", register, err.Error())
 	} else {
 		value = int16(v)
 	}
 	return
 }
+
 func (bmp *BMP280) i2cRead2u(register byte) (value uint16, err error) {
-	v, errWrite := bmp.i2cbus.ReadWordFromReg(BMP_ADDRESS, register)
-	if errWrite != nil {
+	value, errRead := bmp.i2cbus.ReadWordFromReg(BMP_ADDRESS, register)
+	if errRead != nil {
 		err = fmt.Errorf("BMP280 Error reading %x: %s\n", register, err.Error())
-	} else {
-		value = uint16(v)
+	}
+	return
+}
+
+func (bmp *BMP280) i2cReadBytes(register byte, out *[]byte) (err error) {
+	errRead := bmp.i2cbus.ReadFromReg(BMP_ADDRESS, register, out)
+	if errRead != nil {
+		err = fmt.Errorf("BMP280 Error reading %x: %s\n", register, err.Error())
 	}
 	return
 }
