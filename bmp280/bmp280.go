@@ -177,7 +177,8 @@ func NewBMP280(address, powerMode, standby, filter, tempRes, presRes byte) (bmp 
 
 // Close closes the BMP280
 func (bmp *BMP280) Close() {
-	// Nothing to do bitwise
+	//TODO westphae: put into sleep mode
+	bmp.SetPowerMode(SleepMode)
 	bmp.cClose <- true
 }
 
@@ -295,6 +296,19 @@ func (bmp *BMP280) CalcCompensatedPress(raw_press int64) (press float64) {
 func (bmp *BMP280) CalcAltitude(press float64) (altitude float64) {
 	altitude = 145366.45 * (1.0 - math.Pow(press/QNH, 0.190284))
 	return
+}
+
+func (bmp *BMP280) SetPowerMode(powerMode byte) error {
+	v := make([]byte, 1)
+	if errv := bmp.i2cReadBytes(RegisterControl, v); errv != nil {
+		return fmt.Errorf("BMP280 Error: Couldn't read power mode: %s", errv)
+	}
+	v[0] = v[0] & 0xFC | powerMode
+
+	if errv := bmp.i2cWrite(RegisterControl, v[0]); errv != nil {
+		return fmt.Errorf("BMP280 Error: Couldn't write power mode: %s", errv)
+	}
+	return nil
 }
 
 func (bmp *BMP280) i2cWrite(register, value byte) (err error) {
