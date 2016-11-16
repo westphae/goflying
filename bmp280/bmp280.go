@@ -20,18 +20,7 @@ const (
 	BMP280_SOFTRESET               = 0xB6
 
 	// BMP280 registers
-	BMP280_REGISTER_DIG_T1         = 0x88
-	BMP280_REGISTER_DIG_T2         = 0x8A
-	BMP280_REGISTER_DIG_T3         = 0x8C
-	BMP280_REGISTER_DIG_P1         = 0x8E
-	BMP280_REGISTER_DIG_P2         = 0x90
-	BMP280_REGISTER_DIG_P3         = 0x92
-	BMP280_REGISTER_DIG_P4         = 0x94
-	BMP280_REGISTER_DIG_P5         = 0x96
-	BMP280_REGISTER_DIG_P6         = 0x98
-	BMP280_REGISTER_DIG_P7         = 0x9A
-	BMP280_REGISTER_DIG_P8         = 0x9C
-	BMP280_REGISTER_DIG_P9         = 0x9E
+	BMP280_REGISTER_COMPDATA       = 0x88
 	BMP280_REGISTER_CHIPID         = 0xD0
 	BMP280_REGISTER_VERSION        = 0xD1
 	BMP280_REGISTER_SOFTRESET      = 0xE0
@@ -45,7 +34,7 @@ const (
 	BMP280_REGISTER_TEMPDATA_LSB   = 0xFB
 	BMP280_REGISTER_TEMPDATA_XLSB  = 0xFC
 
-	QNH = 1020 // Reference pressure in hPa
+	QNH = 1013.25 // Reference pressure in hPa
 
 	BUFSIZE = 256 // Buffer size for reading data from BMP
 )
@@ -59,6 +48,7 @@ type BMPData struct {
 
 type BMP280 struct {
 	i2cbus    embd.I2CBus
+
 	PowerMode byte
 	Freq      byte
 	Filter    byte
@@ -68,12 +58,8 @@ type BMP280 struct {
 	config  byte
 	control byte
 
-	DigT1, DigP1 uint16
-	DigT2, DigT3 int16
-	DigP2, DigP3 int16
-	DigP4, DigP5 int16
-	DigP6, DigP7 int16
-	DigP8, DigP9 int16
+	DigT map[int]int32
+	DigP map[int]int64
 
 	T_fine int32
 
@@ -92,6 +78,8 @@ presRes = 0 (no pres), 1 (16 bit), 2 (17 bit), 3 (18 bit), 4 (19 bit), 5 (20 bit
 */
 func NewBMP280(powerMode, freq, filter, tempRes, presRes byte) (bmp *BMP280, err error) {
 	bmp = new(BMP280)
+	bmp.i2cbus = embd.NewI2CBus(1)
+
 	bmp.PowerMode = powerMode
 	bmp.Freq = freq
 	bmp.Filter = filter
@@ -101,9 +89,7 @@ func NewBMP280(powerMode, freq, filter, tempRes, presRes byte) (bmp *BMP280, err
 	bmp.config = (bmp.Freq << 5) + (filter << 2)              // combine bits for config
 	bmp.control = (tempRes << 5) + (presRes << 2) + powerMode // combine bits for control
 
-	bmp.i2cbus = embd.NewI2CBus(1)
-
-	// check sensor id 0x58=BMP280
+	// Check we have the right chip, then reset it and set it up
 	v, errv := bmp.i2cRead(BMP280_REGISTER_CHIPID)
 	if errv != nil {
 		err = fmt.Errorf("BMP280: couldn't read ChipID register: %s", errv)
@@ -120,7 +106,10 @@ func NewBMP280(powerMode, freq, filter, tempRes, presRes byte) (bmp *BMP280, err
 	bmp.i2cWrite(BMP280_REGISTER_CONFIG, bmp.config) //
 	time.Sleep(200 * time.Millisecond)
 
+	bmp.DigT = make(map[int]int32)
+	bmp.DigP = make(map[int]int64)
 	bmp.ReadCorrectionSettings()
+
 	go bmp.readSensor()
 	time.Sleep(50 * time.Millisecond)
 	return
@@ -144,34 +133,21 @@ func (bmp *BMP280) Frequency() float64 {
 }
 
 func (bmp *BMP280) ReadCorrectionSettings() (err error) {
-	uRegMap := map[*uint16]byte{
-		&bmp.DigT1: BMP280_REGISTER_DIG_T1, &bmp.DigP1: BMP280_REGISTER_DIG_P1,
+	var raw []byte = make([]byte, 24)
+
+	errf := bmp.i2cbus.ReadFromReg(BMP_ADDRESS, BMP280_REGISTER_COMPDATA, raw)
+	if errf != nil {
+		err = fmt.Errorf("BMP280: Error reading calibration: %s", errf)
 	}
 
-	regMap := map[*int16]byte{
-		&bmp.DigT2: BMP280_REGISTER_DIG_T2, &bmp.DigT3: BMP280_REGISTER_DIG_T3,
-		&bmp.DigP2: BMP280_REGISTER_DIG_P2, &bmp.DigP3: BMP280_REGISTER_DIG_P3,
-		&bmp.DigP4: BMP280_REGISTER_DIG_P4, &bmp.DigP5: BMP280_REGISTER_DIG_P5,
-		&bmp.DigP6: BMP280_REGISTER_DIG_P6, &bmp.DigP7: BMP280_REGISTER_DIG_P7,
-		&bmp.DigP8: BMP280_REGISTER_DIG_P8, &bmp.DigP9: BMP280_REGISTER_DIG_P9,
+	bmp.DigT[1] = int32(((uint16(uint8(raw[1]))) << 8) + uint16(uint8(raw[0])))
+	for i:=1; i<3; i++ {
+		bmp.DigT[i+1] = int32(((int16(int8(raw[2*i+1]))) << 8) + int16(int8(raw[2*i])))
 	}
 
-	for p, reg := range uRegMap {
-		*p, err = bmp.i2cRead2u(reg)
-		if err != nil {
-			log.Printf("BMP280 Warning: error reading sensor data from %x", reg)
-			*p = 0
-			return
-		}
-	}
-
-	for p, reg := range regMap {
-		*p, err = bmp.i2cRead2(reg)
-		if err != nil {
-			log.Printf("BMP280 Warning: error reading sensor data from %x", reg)
-			*p = 0
-			return
-		}
+	bmp.DigP[1] = int64(((uint16(uint8(raw[7]))) << 8) + uint16(uint8(raw[6])))
+	for i:=1; i<9; i++ {
+		bmp.DigP[i+1] = int64(((int16(int8(raw[2*i+7]))) << 8) + int16(int8(raw[2*i+6])))
 	}
 
 	return
@@ -179,27 +155,14 @@ func (bmp *BMP280) ReadCorrectionSettings() (err error) {
 
 func (bmp *BMP280) readSensor() {
 	var (
-		raw_temp_msb  uint8
-		raw_temp_lsb  uint8
-		raw_temp_xlsb uint8
-		raw_temp      int32
-
-		raw_press_msb  uint8
-		raw_press_lsb  uint8
-		raw_press_xlsb uint8
-		raw_press      int32
-
+		raw_temp              int32
+		raw_press             int64
 		temp, press, altitude float64
 		err                   error
-
-		t time.Time
+		t                     time.Time
 	)
 
-	regMap := map[*uint8]byte{
-		&raw_temp_msb: BMP280_REGISTER_TEMPDATA_MSB, &raw_temp_lsb: BMP280_REGISTER_TEMPDATA_LSB,
-		&raw_temp_xlsb: BMP280_REGISTER_TEMPDATA_XLSB, &raw_press_msb: BMP280_REGISTER_PRESSDATA_MSB,
-		&raw_temp_lsb: BMP280_REGISTER_PRESSDATA_LSB, &raw_temp_xlsb: BMP280_REGISTER_PRESSDATA_XLSB,
-	}
+	raw := make([]byte, 6)
 
 	cC := make(chan *BMPData)
 	defer close(cC)
@@ -227,21 +190,19 @@ func (bmp *BMP280) readSensor() {
 	for {
 		select {
 		case t = <-clock.C: // Read sensor data:
-			for p, reg := range regMap {
-				*p, err = bmp.i2cRead(reg)
-				if err != nil {
-					log.Printf("BMP280 Warning: error reading sensor data from %x", reg)
-					continue
-				}
+			err = bmp.i2cbus.ReadFromReg(BMP_ADDRESS, BMP280_REGISTER_PRESSDATA_MSB, raw)
+			if err != nil {
+				log.Printf("BMP280 Warning: error reading sensor data: %s", err)
+				continue
 			}
 
-			raw_temp = (int32(raw_temp_msb) << 12) + (int32(raw_temp_lsb) << 4) + (int32(raw_temp_xlsb) >> 4) // combine 3 bytes  msb 12 bits left, lsb 4 bits left, xlsb 4 bits right
+			raw_temp = (int32(raw[3]) << 12) + (int32(raw[4]) << 4) + (int32(raw[5]) >> 4) // combine 3 bytes  msb 12 bits left, lsb 4 bits left, xlsb 4 bits right
 
-			raw_press = (int32(raw_press_msb) << 12) + (int32(raw_press_lsb) << 4) + (int32(raw_press_xlsb) >> 4) // combine 3 bytes  msb 12 bits left, lsb 4 bits left, xlsb 4 bits right
+			raw_press = (int64(raw[0]) << 12) + (int64(raw[1]) << 4) + (int64(raw[2]) >> 4) // combine 3 bytes  msb 12 bits left, lsb 4 bits left, xlsb 4 bits right
 
 			temp = bmp.CalcCompensatedTemp(raw_temp)
-			press = bmp.CalcCompensatedTemp(raw_press)
-			altitude = bmp.CalcAltitude(temp, press)
+			press = bmp.CalcCompensatedPress(raw_press)
+			altitude = bmp.CalcAltitude(press)
 		case cC <- makeBMPData(): // Send the latest values
 		case cBuf <- makeBMPData():
 		case <-bmp.cClose: // Stop the goroutine, ease up on the CPU
@@ -253,37 +214,37 @@ func (bmp *BMP280) readSensor() {
 func (bmp *BMP280) CalcCompensatedTemp(raw_temp int32) (temp float64) {
 	var var1, var2, t int32
 
-	var1 = (((raw_temp >> 3) - (int32(bmp.DigT1) << 1)) * int32(bmp.DigT2)) >> 11
-	var2 = (((((raw_temp >> 4) - int32(bmp.DigT1)) * ((raw_temp >> 4) - int32(bmp.DigT1))) >> 12) * int32(bmp.DigT3)) >> 14
+	var1 = (((raw_temp >> 3) - (bmp.DigT[1] << 1)) * bmp.DigT[2]) >> 11
+	var2 = (((((raw_temp >> 4) - bmp.DigT[1]) * ((raw_temp >> 4) - bmp.DigT[1])) >> 12) * bmp.DigT[3]) >> 14
 	bmp.T_fine = var1 + var2
 	t = (bmp.T_fine*5 + 128) >> 8
 	temp = float64(t) / 100 // Temperature in degC
 	return
 }
 
-func (bmp *BMP280) CalcCompensatedPress(raw_press int32) (press float64) {
+func (bmp *BMP280) CalcCompensatedPress(raw_press int64) (press float64) {
 	var var1, var2, p int64
 
 	var1 = int64(bmp.T_fine) - 128000
-	var2 = var1 * var1 * int64(bmp.DigP6)
-	var2 += (var1 * int64(bmp.DigP5)) << 17
-	var2 += int64(bmp.DigP4) << 35
-	var1 = ((var1 * var1 * int64(bmp.DigP3)) >> 8) + ((var1 * int64(bmp.DigP2)) << 12)
-	var1 = ((int64(1) << 47) + var1) * int64(bmp.DigP1) >> 33
+	var2 = var1 * var1 * bmp.DigP[6]
+	var2 += (var1 * bmp.DigP[5]) << 17
+	var2 += bmp.DigP[4] << 35
+	var1 = ((var1 * var1 * bmp.DigP[3]) >> 8) + ((var1 * bmp.DigP[2]) << 12)
+	var1 = ((int64(1) << 47) + var1) * bmp.DigP[1] >> 33
 	if var1 == 0 {
 		return 0
 	}
-	p = 1048576 - int64(raw_press)
+	p = 1048576 - raw_press
 	p = (((p << 31) - var2) * 3125) / var1
-	var1 = (int64(bmp.DigP9) * (p >> 13) * (p >> 13)) >> 25
-	var2 = (int64(bmp.DigP8) * p) >> 19
-	p = ((p + var1 + var2) >> 8) + (int64(bmp.DigP7) << 4)
+	var1 = (bmp.DigP[9] * (p >> 13) * (p >> 13)) >> 25
+	var2 = (bmp.DigP[8] * p) >> 19
+	p = ((p + var1 + var2) >> 8) + (bmp.DigP[7] << 4)
 	press = float64(p) / 25600
 	return
 }
 
-func (bmp *BMP280) CalcAltitude(temp, press float64) (altitude float64) {
-	altitude = 44330.0 * (1.0 - math.Pow(press/(QNH*100), (1.0/5.255)))
+func (bmp *BMP280) CalcAltitude(press float64) (altitude float64) {
+	altitude = 145366.45 * (1.0 - math.Pow(press/QNH, 0.190284))
 	return
 }
 
@@ -305,28 +266,3 @@ func (bmp *BMP280) i2cRead(register byte) (value uint8, err error) {
 	return
 }
 
-func (bmp *BMP280) i2cRead2(register byte) (value int16, err error) {
-	v, errRead := bmp.i2cbus.ReadWordFromReg(BMP_ADDRESS, register)
-	if errRead != nil {
-		err = fmt.Errorf("BMP280 Error reading %x: %s\n", register, err.Error())
-	} else {
-		value = int16(v)
-	}
-	return
-}
-
-func (bmp *BMP280) i2cRead2u(register byte) (value uint16, err error) {
-	value, errRead := bmp.i2cbus.ReadWordFromReg(BMP_ADDRESS, register)
-	if errRead != nil {
-		err = fmt.Errorf("BMP280 Error reading %x: %s\n", register, err.Error())
-	}
-	return
-}
-
-func (bmp *BMP280) i2cReadBytes(register byte, out *[]byte) (err error) {
-	errRead := bmp.i2cbus.ReadFromReg(BMP_ADDRESS, register, out)
-	if errRead != nil {
-		err = fmt.Errorf("BMP280 Error reading %x: %s\n", register, err.Error())
-	}
-	return
-}
