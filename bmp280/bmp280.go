@@ -1,5 +1,6 @@
 /*
-Modified from https://forums.adafruit.com/viewtopic.php?f=19&t=89049
+Reference 1: https://github.com/BoschSensortec/BMP280_driver
+Reference 2: https://forums.adafruit.com/viewtopic.php?f=19&t=89049
 */
 
 package bmp280
@@ -15,28 +16,72 @@ import (
 )
 
 const (
-	BMP_ADDRESS                    = 0x76 // BMP280 I2C Address (or 0x77)
-	BMP280_CHIPID                  = 0x58 // Byte specifying the Chip ID
-	BMP280_SOFTRESET               = 0xB6
+	// I2C Address Definitions
+	Address1  = 0x76
+	Address2  = 0x77
+	// Chip ID Definitions
+	ChipID1   = 0x56
+	ChipID2   = 0x57
+	ChipID3   = 0x58
+	// Power Mode Definitions
+	SleepMode = 0x00
+	ForcedMode = 0x01
+	NormalMode = 0x03
+	SoftResetCode = 0xB6
+	// Standby Time Definitions
+	StandbyTime1ms    = 0x00
+	StandbyTime63ms   = 0X01
+	StandbyTime125ms  = 0x02
+	StandbyTime250ms  = 0x03
+	StandbyTime500ms  = 0x04
+	StandbyTime1000ms = 0x05
+	StandbyTime2000ms = 0x06
+	StandbyTime4000ms = 0x07
+	// Filter Definitions
+	FilterCoeffOff = 0x00
+	FilterCoeff2   = 0x01
+	FilterCoeff4   = 0x02
+	FilterCoeff8   = 0x03
+	FilterCoeff16  = 0x04
+	// Oversampling Definitions
+	OversampSkipped = 0x00
+	Oversamp1x      = 0x01
+	Oversamp2x      = 0x02
+	Oversamp4x      = 0x03
+	Oversamp8x      = 0x04
+	Oversamp16x     = 0x05
+	// Working Mode Definitions
+	UltraLowPowerMode       = 0X00
+	LowPowerMode	        = 0X01
+	StandardResolutionMode  = 0X02
+	HighResolutionMode      = 0X03
+	UltraHighResolutionMode = 0x04
 
 	// BMP280 registers
-	BMP280_REGISTER_COMPDATA       = 0x88
-	BMP280_REGISTER_CHIPID         = 0xD0
-	BMP280_REGISTER_VERSION        = 0xD1
-	BMP280_REGISTER_SOFTRESET      = 0xE0
-	BMP280_REGISTER_CONTROL        = 0xF4
-	BMP280_REGISTER_CONFIG         = 0xF5
-	BMP280_REGISTER_STATUS         = 0xF3
-	BMP280_REGISTER_PRESSDATA_MSB  = 0xF7
-	BMP280_REGISTER_PRESSDATA_LSB  = 0xF8
-	BMP280_REGISTER_PRESSDATA_XLSB = 0xF9
-	BMP280_REGISTER_TEMPDATA_MSB   = 0xFA
-	BMP280_REGISTER_TEMPDATA_LSB   = 0xFB
-	BMP280_REGISTER_TEMPDATA_XLSB  = 0xFC
+	RegisterCompData      = 0x88
+	RegisterChipID        = 0xD0
+	RegisterSoftReset     = 0xE0
+	RegisterStatus        = 0xF3
+	RegisterControl       = 0xF4
+	RegisterConfig        = 0xF5
+	RegisterPressDataMSB  = 0xF7
+	RegisterPressDataLSB  = 0xF8
+	RegisterPressDataXLSB = 0xF9
+	RegisterTempDataMSB   = 0xFA
+	RegisterTempDataLSB   = 0xFB
+	RegisterTempDataXLSB  = 0xFC
 
-	QNH = 1013.25 // Reference pressure in hPa
+	// Connection retries definition
+	ConnAttempts = 5
 
-	BUFSIZE = 256 // Buffer size for reading data from BMP
+	// Sea level reference pressure in hPa
+	QNH = 1013.25
+
+	// Buffer size for reading data from BMP
+	BufSize = 256
+
+	// Read delay between chip reading attempts
+	ReadDelay = time.Millisecond
 )
 
 type BMPData struct {
@@ -49,14 +94,12 @@ type BMPData struct {
 type BMP280 struct {
 	i2cbus    embd.I2CBus
 
-	PowerMode byte
-	Freq      byte
-	Filter    byte
-	TempRes   byte
-	PresRes   byte
-
+	address byte
+	chipID  byte
 	config  byte
 	control byte
+
+	Delay time.Duration
 
 	DigT map[int]int32
 	DigP map[int]int64
@@ -70,48 +113,65 @@ type BMP280 struct {
 
 /*
 NewBMP280 returns a BMP280 object with the chosen settings
-powerMode = 0 (sleep), 1 (forced), 2 (forced), [3] (normal)
-freq = 0 (0.5ms), 1 (62.5ms), 2 (125ms), 3 (250ms), [4] (500ms), 5 (1000ms), 6 (2000ms), 7 (4000ms)
-filter = 0, 1, 2, 3, [4], 5, 6, 7
-tempRes = 0 (no temp), 1 (16 bit), 2 (17 bit), 3 (18 bit), 4 (19 bit), 5 (20 bit)
-presRes = 0 (no pres), 1 (16 bit), 2 (17 bit), 3 (18 bit), 4 (19 bit), 5 (20 bit)
+address is one of bmp280.Address1 or bmp280.Address2
+powerMode is one of bmp280.SleepMode, bmp280.ForcedMode, or bmp280.NormalMode
+standby is one of the bmp280.StandbyTimeX
+filter is one of bmp280.FilterCoeffX
+tempRes is one of bmp280.OversampX
+presRes is one of bmp280.XMode
 */
-func NewBMP280(powerMode, freq, filter, tempRes, presRes byte) (bmp *BMP280, err error) {
+func NewBMP280(address, powerMode, standby, filter, tempRes, presRes byte) (bmp *BMP280, err error) {
 	bmp = new(BMP280)
 	bmp.i2cbus = embd.NewI2CBus(1)
+	bmp.address = address
 
-	bmp.PowerMode = powerMode
-	bmp.Freq = freq
-	bmp.Filter = filter
-	bmp.TempRes = tempRes
-	bmp.PresRes = presRes
+	// Make sure we can connect to the chip and read a valid ChipID
+	v := make([]byte, 1)
+	for n := 0; n < ConnAttempts; n++ {
+		log.Printf("BMP280 Connection Attempt %d\n", n+1)
+		if errv := bmp.i2cReadBytes(RegisterChipID, v); errv != nil {
+			time.Sleep(ReadDelay)
+			err = fmt.Errorf("BMP280: couldn't find chip at address %x: %s", address, errv)
+			continue
+		}
+		if v[0] == ChipID1 || v[0] == ChipID2 || v[0] == ChipID3 {
+			err = nil
+			break
+		}
+		time.Sleep(ReadDelay)
+		err = fmt.Errorf("BMP280: Wrong ChipID, got %x", v)
+	}
+	if err != nil {
+		return nil, err
+	}
+	fmt.Printf("BMP280: Successful connection, ChipID %x\n", v[0])
+	bmp.chipID = v[0]
 
-	bmp.config = (bmp.Freq << 5) + (filter << 2)              // combine bits for config
+	bmp.config = (standby << 5) + (filter << 2)              // combine bits for config
 	bmp.control = (tempRes << 5) + (presRes << 2) + powerMode // combine bits for control
 
-	// Check we have the right chip, then reset it and set it up
-	v, errv := bmp.i2cRead(BMP280_REGISTER_CHIPID)
-	if errv != nil {
-		err = fmt.Errorf("BMP280: couldn't read ChipID register: %s", errv)
-		return
+	if standby == 0 {
+		bmp.Delay = 500 * time.Microsecond
+	} else if standby == 1 {
+		bmp.Delay = 62500 * time.Microsecond
+	} else {
+		bmp.Delay = time.Duration(int(4000) >> uint(7 - standby)) * time.Millisecond
 	}
-	if v != BMP280_CHIPID {
-		err = fmt.Errorf("BMP280: Wrong ChipID, got %x, expecting %x", v, BMP280_CHIPID)
-		return
-	}
-	bmp.i2cWrite(BMP280_REGISTER_SOFTRESET, BMP280_SOFTRESET) // reset sensor
-	time.Sleep(200 * time.Millisecond)
-	bmp.i2cWrite(BMP280_REGISTER_CONTROL, bmp.control) //
-	time.Sleep(200 * time.Millisecond)
-	bmp.i2cWrite(BMP280_REGISTER_CONFIG, bmp.config) //
-	time.Sleep(200 * time.Millisecond)
+
+	bmp.i2cWrite(RegisterSoftReset, SoftResetCode) // reset sensor
+	time.Sleep(ReadDelay)
+
+	bmp.i2cWrite(RegisterControl, bmp.control) //
+	time.Sleep(ReadDelay)
+	bmp.i2cWrite(RegisterConfig, bmp.config) //
+	time.Sleep(ReadDelay)
 
 	bmp.DigT = make(map[int]int32)
 	bmp.DigP = make(map[int]int64)
 	bmp.ReadCorrectionSettings()
 
 	go bmp.readSensor()
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(ReadDelay)
 	return
 }
 
@@ -121,21 +181,10 @@ func (bmp *BMP280) Close() {
 	bmp.cClose <- true
 }
 
-// Frequency returns the sampling frequency, in Hz
-func (bmp *BMP280) Frequency() float64 {
-	// freq = 0 (0.5ms), 1 (62.5ms), 2 (125ms), 3 (250ms), [4] (500ms), 5 (1000ms), 6 (2000ms), 7 (4000ms)
-	if bmp.Freq == 0 {
-		return 2000
-	} else if bmp.Freq == 1 {
-		return 62.5
-	}
-	return float64(uint(4000) >> uint(7-bmp.Freq))
-}
-
 func (bmp *BMP280) ReadCorrectionSettings() (err error) {
 	var raw []byte = make([]byte, 24)
 
-	errf := bmp.i2cbus.ReadFromReg(BMP_ADDRESS, BMP280_REGISTER_COMPDATA, raw)
+	errf := bmp.i2cReadBytes(RegisterCompData, raw)
 	if errf != nil {
 		err = fmt.Errorf("BMP280: Error reading calibration: %s", errf)
 	}
@@ -167,13 +216,13 @@ func (bmp *BMP280) readSensor() {
 	cC := make(chan *BMPData)
 	defer close(cC)
 	bmp.C = cC
-	cBuf := make(chan *BMPData, BUFSIZE)
+	cBuf := make(chan *BMPData, BufSize)
 	defer close(cBuf)
 	bmp.CBuf = cBuf
 	bmp.cClose = make(chan bool)
 	defer close(bmp.cClose)
 
-	clock := time.NewTicker(time.Duration(int(1000/bmp.Frequency()+0.5)) * time.Millisecond)
+	clock := time.NewTicker(bmp.Delay)
 	//TODO westphae: use the clock to record actual time instead of a timer
 	defer clock.Stop()
 
@@ -190,7 +239,7 @@ func (bmp *BMP280) readSensor() {
 	for {
 		select {
 		case t = <-clock.C: // Read sensor data:
-			err = bmp.i2cbus.ReadFromReg(BMP_ADDRESS, BMP280_REGISTER_PRESSDATA_MSB, raw)
+			err = bmp.i2cReadBytes(RegisterPressDataMSB, raw)
 			if err != nil {
 				log.Printf("BMP280 Warning: error reading sensor data: %s", err)
 				continue
@@ -249,19 +298,19 @@ func (bmp *BMP280) CalcAltitude(press float64) (altitude float64) {
 }
 
 func (bmp *BMP280) i2cWrite(register, value byte) (err error) {
-	if errWrite := bmp.i2cbus.WriteByteToReg(BMP_ADDRESS, register, value); errWrite != nil {
+	if errWrite := bmp.i2cbus.WriteByteToReg(bmp.address, register, value); errWrite != nil {
 		err = fmt.Errorf("BMP280 Error writing %X to %X: %s\n",
 			value, register, errWrite.Error())
 	} else {
-		time.Sleep(time.Millisecond)
+		time.Sleep(ReadDelay)
 	}
 	return
 }
 
-func (bmp *BMP280) i2cRead(register byte) (value uint8, err error) {
-	value, errRead := bmp.i2cbus.ReadByteFromReg(BMP_ADDRESS, register)
+func (bmp *BMP280) i2cReadBytes(register byte, value []byte) (err error) {
+	errRead := bmp.i2cbus.ReadFromReg(bmp.address, register, value)
 	if errRead != nil {
-		err = fmt.Errorf("BMP280 error: %s", errRead.Error())
+		err = fmt.Errorf("BMP280 error reading from %X: %s", register, err)
 	}
 	return
 }
