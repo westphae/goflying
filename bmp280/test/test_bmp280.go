@@ -18,21 +18,14 @@ func main() {
 		return
 	}
 
-	fmt.Printf("DigT1: %d, DigT2: %d, DigT3: %d\n", bmp.DigT[1], bmp.DigT[2], bmp.DigT[3])
-	fmt.Printf("DigP1: %d, DigP2: %d, DigP3: %d\n", bmp.DigP[1], bmp.DigP[2], bmp.DigP[3])
-	fmt.Printf("DigP4: %d, DigP5: %d, DigP6: %d\n", bmp.DigP[4], bmp.DigP[5], bmp.DigP[6])
-	fmt.Printf("DigP7: %d, DigP8: %d, DigP9: %d\n", bmp.DigP[7], bmp.DigP[8], bmp.DigP[9])
-
 	defer bmp.Close()
-	fmt.Println("BMP280 initialized successfully")
+	//fmt.Println("BMP280 initialized successfully")
+	fmt.Println("t,temp,press,alt")
 
 	clock := time.NewTicker(bmp.Delay)
 	for {
 		<-clock.C
 		cur = <-bmp.C
-		fmt.Printf("\nTime:   %v\n", cur.T)
-		fmt.Printf("Temperature: %3.2f\n", cur.Temperature)
-		fmt.Printf("Pressure:   %4.2f\n", cur.Pressure)
-		fmt.Printf("Altitude:  %5.1f\n", bmp280.CalcAltitude(cur.Pressure))
+		fmt.Printf("%v,%3.2f,%4.2f,%5.1f\n", cur.T, cur.Temperature, cur.Pressure, bmp280.CalcAltitude(cur.Pressure))
 	}
 }
