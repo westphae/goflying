@@ -87,8 +87,7 @@ const (
 type BMPData struct {
 	Temperature float64
 	Pressure    float64
-	Altitude    float64
-	T           time.Time
+	T           time.Duration
 }
 
 type BMP280 struct {
@@ -98,6 +97,8 @@ type BMP280 struct {
 	chipID  byte
 	config  byte
 	control byte
+
+	t       time.Time
 
 	Delay time.Duration
 
@@ -150,6 +151,8 @@ func NewBMP280(address, powerMode, standby, filter, tempRes, presRes byte) (bmp 
 	bmp.config = (standby << 5) + (filter << 2)              // combine bits for config
 	bmp.control = (tempRes << 5) + (presRes << 2) + powerMode // combine bits for control
 
+	bmp.t = time.Now()
+
 	if standby == 0 {
 		bmp.Delay = 500 * time.Microsecond
 	} else if standby == 1 {
@@ -177,9 +180,9 @@ func NewBMP280(address, powerMode, standby, filter, tempRes, presRes byte) (bmp 
 
 // Close closes the BMP280
 func (bmp *BMP280) Close() {
-	//TODO westphae: put into sleep mode
 	bmp.SetPowerMode(SleepMode)
 	bmp.cClose <- true
+	log.Println("BMP280 Closed")
 }
 
 func (bmp *BMP280) ReadCorrectionSettings() (err error) {
@@ -190,14 +193,14 @@ func (bmp *BMP280) ReadCorrectionSettings() (err error) {
 		err = fmt.Errorf("BMP280: Error reading calibration: %s", errf)
 	}
 
-	bmp.DigT[1] = int32(((uint16(uint8(raw[1]))) << 8) + uint16(uint8(raw[0])))
+	bmp.DigT[1] = int32(raw[1]) << 8 + int32(raw[0])
 	for i:=1; i<3; i++ {
-		bmp.DigT[i+1] = int32(((int16(int8(raw[2*i+1]))) << 8) + int16(int8(raw[2*i])))
+		bmp.DigT[i+1] = int32(int16(raw[2*i+1]) << 8 + int16(raw[2*i]))
 	}
 
-	bmp.DigP[1] = int64(((uint16(uint8(raw[7]))) << 8) + uint16(uint8(raw[6])))
+	bmp.DigP[1] = int64(raw[7]) << 8 + int64(raw[6])
 	for i:=1; i<9; i++ {
-		bmp.DigP[i+1] = int64(((int16(int8(raw[2*i+7]))) << 8) + int16(int8(raw[2*i+6])))
+		bmp.DigP[i+1] = int64(int16(raw[2*i+7]) << 8 + int16(raw[2*i+6]))
 	}
 
 	return
@@ -205,11 +208,11 @@ func (bmp *BMP280) ReadCorrectionSettings() (err error) {
 
 func (bmp *BMP280) readSensor() {
 	var (
-		raw_temp              int32
-		raw_press             int64
-		temp, press, altitude float64
-		err                   error
-		t                     time.Time
+		raw_temp    int32
+		raw_press   int64
+		temp, press float64
+		err         error
+		t           time.Time
 	)
 
 	raw := make([]byte, 6)
@@ -231,8 +234,7 @@ func (bmp *BMP280) readSensor() {
 		d := BMPData{
 			Temperature: temp,
 			Pressure:    press,
-			Altitude:    altitude,
-			T:           t,
+			T:           t.Sub(bmp.t),
 		}
 		return &d
 	}
@@ -252,7 +254,6 @@ func (bmp *BMP280) readSensor() {
 
 			temp = bmp.CalcCompensatedTemp(raw_temp)
 			press = bmp.CalcCompensatedPress(raw_press)
-			altitude = bmp.CalcAltitude(press)
 		case cC <- makeBMPData(): // Send the latest values
 		case cBuf <- makeBMPData():
 		case <-bmp.cClose: // Stop the goroutine, ease up on the CPU
@@ -293,8 +294,18 @@ func (bmp *BMP280) CalcCompensatedPress(raw_press int64) (press float64) {
 	return
 }
 
-func (bmp *BMP280) CalcAltitude(press float64) (altitude float64) {
+func CalcAltitude(press float64) (altitude float64) {
 	altitude = 145366.45 * (1.0 - math.Pow(press/QNH, 0.190284))
+	return
+}
+
+func (bmp *BMP280) GetPowerMode() (powerMode byte, err error) {
+	v := make([]byte, 1)
+	if errv := bmp.i2cReadBytes(RegisterControl, v); errv != nil {
+		err = fmt.Errorf("BMP280 Error: Couldn't read power mode: %s", errv)
+		return
+	}
+	powerMode = v[0] & 0x03
 	return
 }
 
@@ -303,10 +314,104 @@ func (bmp *BMP280) SetPowerMode(powerMode byte) error {
 	if errv := bmp.i2cReadBytes(RegisterControl, v); errv != nil {
 		return fmt.Errorf("BMP280 Error: Couldn't read power mode: %s", errv)
 	}
-	v[0] = v[0] & 0xFC | powerMode
+	v[0] = (v[0] & 0xfc) | powerMode
 
 	if errv := bmp.i2cWrite(RegisterControl, v[0]); errv != nil {
 		return fmt.Errorf("BMP280 Error: Couldn't write power mode: %s", errv)
+	}
+	return nil
+}
+
+func (bmp *BMP280) GetOversampPress() (oversampPres byte, err error) {
+	v := make([]byte, 1)
+	if errv := bmp.i2cReadBytes(RegisterControl, v); errv != nil {
+		err = fmt.Errorf("BMP280 Error: Couldn't read Pressure Oversampling: %s", errv)
+		return
+	}
+	oversampPres = (v[0] & 0x1c) >> 2
+	return
+}
+
+func (bmp *BMP280) SetOversampPress(oversampPres byte) error {
+	v := make([]byte, 1)
+	if errv := bmp.i2cReadBytes(RegisterControl, v); errv != nil {
+		return fmt.Errorf("BMP280 Error: Couldn't read Pressure Oversampling: %s", errv)
+	}
+	v[0] = (v[0] & 0xe3) | (oversampPres << 2)
+
+	time.Sleep(bmp.Delay)
+	if errv := bmp.i2cWrite(RegisterControl, v[0]); errv != nil {
+		return fmt.Errorf("BMP280 Error: Couldn't write Pressure Oversampling: %s", errv)
+	}
+	return nil
+}
+
+func (bmp *BMP280) GetOversampTemp() (oversampTemp byte, err error) {
+	v := make([]byte, 1)
+	if errv := bmp.i2cReadBytes(RegisterControl, v); errv != nil {
+		err = fmt.Errorf("BMP280 Error: Couldn't read Temperature Oversampling: %s", errv)
+		return
+	}
+	oversampTemp = (v[0] & 0xe0) >> 5
+	return
+}
+
+func (bmp *BMP280) SetOversampTemp(oversampTemp byte) error {
+	v := make([]byte, 1)
+	if errv := bmp.i2cReadBytes(RegisterControl, v); errv != nil {
+		return fmt.Errorf("BMP280 Error: Couldn't read Temperature Oversampling: %s", errv)
+	}
+	v[0] = (v[0] & 0x1f) | (oversampTemp << 5)
+
+	time.Sleep(bmp.Delay)
+	if errv := bmp.i2cWrite(RegisterControl, v[0]); errv != nil {
+		return fmt.Errorf("BMP280 Error: Couldn't write Temperature Oversampling: %s", errv)
+	}
+	return nil
+}
+
+func (bmp *BMP280) GetFilterCoeff() (filterCoeff byte, err error) {
+	v := make([]byte, 1)
+	if errv := bmp.i2cReadBytes(RegisterConfig, v); errv != nil {
+		err = fmt.Errorf("BMP280 Error: Couldn't read Filter Coefficient: %s", errv)
+		return
+	}
+	filterCoeff = (v[0] & 0x1c) >> 2
+	return
+}
+
+func (bmp *BMP280) SetFilterCoeff(filterCoeff byte) error {
+	v := make([]byte, 1)
+	if errv := bmp.i2cReadBytes(RegisterConfig, v); errv != nil {
+		return fmt.Errorf("BMP280 Error: Couldn't read Filter Coefficient: %s", errv)
+	}
+	v[0] = (v[0] & 0xe3) | (filterCoeff << 2)
+
+	if errv := bmp.i2cWrite(RegisterConfig, v[0]); errv != nil {
+		return fmt.Errorf("BMP280 Error: Couldn't write Filter Coefficient: %s", errv)
+	}
+	return nil
+}
+
+func (bmp *BMP280) GetStandbyTime() (standbyTime byte, err error) {
+	v := make([]byte, 1)
+	if errv := bmp.i2cReadBytes(RegisterConfig, v); errv != nil {
+		err = fmt.Errorf("BMP280 Error: Couldn't read Standby Time: %s", errv)
+		return
+	}
+	standbyTime = (v[0] & 0xe0) >> 5
+	return
+}
+
+func (bmp *BMP280) SetStandbyTime(standbyTime byte) error {
+	v := make([]byte, 1)
+	if errv := bmp.i2cReadBytes(RegisterConfig, v); errv != nil {
+		return fmt.Errorf("BMP280 Error: Couldn't read Standby Time: %s", errv)
+	}
+	v[0] = (v[0] & 0x1f) | (standbyTime << 5)
+
+	if errv := bmp.i2cWrite(RegisterConfig, v[0]); errv != nil {
+		return fmt.Errorf("BMP280 Error: Couldn't write Standby Time: %s", errv)
 	}
 	return nil
 }

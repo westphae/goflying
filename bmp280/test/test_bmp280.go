@@ -35,6 +35,6 @@ func main() {
 		fmt.Printf("\nTime:   %v\n", cur.T)
 		fmt.Printf("Temperature: %3.2f\n", cur.Temperature)
 		fmt.Printf("Pressure:   %4.2f\n", cur.Pressure)
-		fmt.Printf("Altitude:  %5.1f\n", cur.Altitude)
+		fmt.Printf("Altitude:  %5.1f\n", bmp280.CalcAltitude(cur.Pressure))
 	}
 }
