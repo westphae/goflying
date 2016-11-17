@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"fmt"
+	"github.com/kidoman/embd"
 )
 
 func TestBMP280Math(t *testing.T) {
@@ -151,11 +152,10 @@ func TestBMP280Setup(t *testing.T) {
 		}
 	}
 
-	bmp, err = bmp280.NewBMP280(bmp280.Address1, mode,
-		standbyTime, filterCoeff, oversampTemp, oversampPress)
+	i2cbus := embd.NewI2CBus(1)
+	bmp, err = bmp280.NewBMP280(&i2cbus, bmp280.Address1, mode, standbyTime, filterCoeff, oversampTemp, oversampPress)
 	if err != nil {
-		bmp, err = bmp280.NewBMP280(bmp280.Address2, mode,
-			standbyTime, filterCoeff, oversampTemp, oversampPress)
+		bmp, err = bmp280.NewBMP280(&i2cbus, bmp280.Address2, mode, standbyTime, filterCoeff, oversampTemp, oversampPress)
 	}
 	if err != nil {
 		log.Println("Couldn't find a BMP280")

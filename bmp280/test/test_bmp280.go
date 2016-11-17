@@ -4,16 +4,15 @@ import (
 	"fmt"
 	"time"
 	"github.com/westphae/goflying/bmp280"
+	"github.com/kidoman/embd"
 )
 
 func main() {
-	var (
-		bmp      *bmp280.BMP280
-		cur      *bmp280.BMPData
-		err      error
-	)
+	var cur      *bmp280.BMPData
 
-	bmp, err = bmp280.NewBMP280(bmp280.Address1, bmp280.NormalMode, bmp280.StandbyTime63ms, bmp280.FilterCoeff16, bmp280.Oversamp16x, bmp280.Oversamp16x)
+	i2cbus := embd.NewI2CBus(1)
+	bmp, err := bmp280.NewBMP280(&i2cbus, bmp280.Address1,
+		bmp280.NormalMode, bmp280.StandbyTime63ms, bmp280.FilterCoeff16, bmp280.Oversamp16x, bmp280.Oversamp16x)
 	if err != nil {
 		fmt.Printf("Error: couldn't initialize BMP280: %s\n", err)
 		return
@@ -30,7 +29,6 @@ func main() {
 	clock := time.NewTicker(bmp.Delay)
 	for {
 		<-clock.C
-
 		cur = <-bmp.C
 		fmt.Printf("\nTime:   %v\n", cur.T)
 		fmt.Printf("Temperature: %3.2f\n", cur.Temperature)
