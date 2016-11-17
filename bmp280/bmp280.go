@@ -152,14 +152,7 @@ func NewBMP280(address, powerMode, standby, filter, tempRes, presRes byte) (bmp 
 	bmp.control = (tempRes << 5) + (presRes << 2) + powerMode // combine bits for control
 
 	bmp.t = time.Now()
-
-	if standby == 0 {
-		bmp.Delay = 500 * time.Microsecond
-	} else if standby == 1 {
-		bmp.Delay = 62500 * time.Microsecond
-	} else {
-		bmp.Delay = time.Duration(int(4000) >> uint(7 - standby)) * time.Millisecond
-	}
+	bmp.Delay = delayFromStandby(standby)
 
 	bmp.i2cWrite(RegisterSoftReset, SoftResetCode) // reset sensor
 	time.Sleep(ReadDelay)
@@ -183,6 +176,17 @@ func (bmp *BMP280) Close() {
 	bmp.SetPowerMode(SleepMode)
 	bmp.cClose <- true
 	log.Println("BMP280 Closed")
+}
+
+func delayFromStandby(standby byte) (delay time.Duration) {
+	if standby == 0 {
+		delay = 500 * time.Microsecond
+	} else if standby == 1 {
+		delay = 62500 * time.Microsecond
+	} else {
+		delay = time.Duration(int(4000) >> uint(7 - standby)) * time.Millisecond
+	}
+	return
 }
 
 func (bmp *BMP280) ReadCorrectionSettings() (err error) {
@@ -413,6 +417,7 @@ func (bmp *BMP280) SetStandbyTime(standbyTime byte) error {
 	if errv := bmp.i2cWrite(RegisterConfig, v[0]); errv != nil {
 		return fmt.Errorf("BMP280 Error: Couldn't write Standby Time: %s", errv)
 	}
+	bmp.Delay = delayFromStandby(standbyTime)
 	return nil
 }
 
