@@ -91,7 +91,7 @@ type BMPData struct {
 }
 
 type BMP280 struct {
-	i2cbus    embd.I2CBus
+	i2cbus    *embd.I2CBus
 
 	address byte
 	chipID  byte
@@ -121,9 +121,9 @@ filter is one of bmp280.FilterCoeffX
 tempRes is one of bmp280.OversampX
 presRes is one of bmp280.XMode
 */
-func NewBMP280(address, powerMode, standby, filter, tempRes, presRes byte) (bmp *BMP280, err error) {
+func NewBMP280(i2cbus *embd.I2CBus, address, powerMode, standby, filter, tempRes, presRes byte) (bmp *BMP280, err error) {
 	bmp = new(BMP280)
-	bmp.i2cbus = embd.NewI2CBus(1)
+	bmp.i2cbus = i2cbus
 	bmp.address = address
 
 	// Make sure we can connect to the chip and read a valid ChipID
@@ -422,9 +422,9 @@ func (bmp *BMP280) SetStandbyTime(standbyTime byte) error {
 }
 
 func (bmp *BMP280) i2cWrite(register, value byte) (err error) {
-	if errWrite := bmp.i2cbus.WriteByteToReg(bmp.address, register, value); errWrite != nil {
+	if errWrite := (*bmp.i2cbus).WriteByteToReg(bmp.address, register, value); errWrite != nil {
 		err = fmt.Errorf("BMP280 Error writing %X to %X: %s\n",
-			value, register, errWrite.Error())
+			value, register, errWrite)
 	} else {
 		time.Sleep(ReadDelay)
 	}
@@ -432,9 +432,9 @@ func (bmp *BMP280) i2cWrite(register, value byte) (err error) {
 }
 
 func (bmp *BMP280) i2cReadBytes(register byte, value []byte) (err error) {
-	errRead := bmp.i2cbus.ReadFromReg(bmp.address, register, value)
+	errRead := (*bmp.i2cbus).ReadFromReg(bmp.address, register, value)
 	if errRead != nil {
-		err = fmt.Errorf("BMP280 error reading from %X: %s", register, err)
+		err = fmt.Errorf("BMP280 Error reading from %X: %s", register, err)
 	}
 	return
 }
