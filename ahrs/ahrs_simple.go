@@ -40,6 +40,8 @@ func (s *SimpleState) init(m *Measurement) {
 	s.roll = s.rollGPS
 	s.pitch = s.pitchGPS
 	s.heading = s.headingGPS
+
+	s.E0, s.E1, s.E2, s.E3 = ToQuaternion(s.roll*Deg, s.pitch*Deg, s.heading*Deg)
 }
 
 func InitializeSimple(m *Measurement) (s *SimpleState) {
