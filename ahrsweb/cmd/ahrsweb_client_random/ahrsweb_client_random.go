@@ -17,6 +17,7 @@ import (
 	"github.com/westphae/goflying/ahrsweb"
 	"os/signal"
 	"net/url"
+	"fmt"
 )
 
 func update(data *ahrsweb.AHRSData) {
@@ -139,7 +140,7 @@ func update(data *ahrsweb.AHRSData) {
 	data.M3 = data.N3 + data.L3 + 10*rand.Float64()
 }
 
-var addr = flag.String("addr", "localhost:8080", "ahrsweb server address")
+var addr = flag.String("addr", fmt.Sprint("localhost:%d", ahrsweb.Port), "ahrsweb server address")
 
 func main() {
 	flag.Parse()

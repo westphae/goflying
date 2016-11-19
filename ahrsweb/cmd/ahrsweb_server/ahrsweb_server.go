@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"sync"
 	"github.com/westphae/goflying/ahrsweb"
+	"fmt"
 )
 
 // templ represents a single template
@@ -32,7 +33,7 @@ func (t *templateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	var addr = flag.String("addr", ":8080", "The port for the AHRS data publication.")
+	var addr = flag.String("addr", fmt.Sprintf(":%d", ahrsweb.Port), "The port for the AHRS data publication.")
 	flag.Parse() // parse the flags
 
 	// get the room going

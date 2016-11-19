@@ -1,5 +1,7 @@
 package ahrsweb
 
+const Port = 8000
+
 type AHRSData struct {
 	// Kalman state variables
 	U1, U2, U3     float64 // Vector for airspeed, aircraft frame, kt
