@@ -27,12 +27,7 @@ func NewKalmanListener() (kl *KalmanListener, err error) {
 
 func (kl *KalmanListener) connect() (err error) {
 	u := url.URL{Scheme: "ws", Host: fmt.Sprintf("localhost:%d", Port), Path: "/ahrsweb"}
-
-	if c, _, err := websocket.DefaultDialer.Dial(u.String(), nil); err != nil {
-		log.Printf("AHRSWeb dial error: %s\n", err)
-	} else {
-		kl.c = c
-	}
+	kl.c, _, err = websocket.DefaultDialer.Dial(u.String(), nil)
 	return
 }
 
