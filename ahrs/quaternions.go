@@ -99,16 +99,16 @@ func QuaternionAToB(a1, a2, a3, b1, b2, b3 float64) (q0, q1, q2, q3 float64){
 	return q0, q1, q2, q3
 }
 
-// QuaternionRotate rotates a quaternion Qae by a small rate-of-change vector Ha
-// (e.g. as measured by a gyro in the aircraft frame), Qae -> Qae + 0.5*Ha*Qae
+// QuaternionRotate rotates a quaternion Qea by a small rate-of-change vector Ha
+// (e.g. as measured by a gyro in the aircraft frame), Qea -> Qea + 0.5*Qea*Ha
 func QuaternionRotate(q0, q1, q2, q3, h1, h2, h3 float64) (r0, r1, r2, r3 float64) {
-	r0 = q0 + 0.5*(-h1*q1 - h2*q2 - h3*q3)
-	r1 = q1 + 0.5*( h1*q0 + h2*q3 - h3*q2)
-	r2 = q2 + 0.5*(-h1*q3 + h2*q0 + h3*q1)
-	r3 = q3 + 0.5*( h1*q2 - h2*q1 + h3*q0)
+	r0 = q0 + 0.5*(-q1*h1 - q2*h2 - q3*h3)
+	r1 = q1 + 0.5*( q0*h1 - q3*h2 + q2*h3)
+	r2 = q2 + 0.5*( q3*h1 + q0*h2 - q1*h3)
+	r3 = q3 + 0.5*(-q2*h1 + q1*h2 + q0*h3)
 
 	// Re-normalize
-	rr := (q0*q0 + q1*q1 + q2*q2 + q3*q3) / (r0*r0 + r1*r1 + r2*r2 + r3*r3)
+	rr := math.Sqrt((q0*q0 + q1*q1 + q2*q2 + q3*q3) / (r0*r0 + r1*r1 + r2*r2 + r3*r3))
 	r0 *= rr
 	r1 *= rr
 	r2 *= rr
