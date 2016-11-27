@@ -133,7 +133,7 @@ func TestPitchRotationQuaternion(t *testing.T) {
 
 	q_nose_aircraft := quaternion.Quaternion{0, 1, 0, 0}
 	q_rt_wing_aircraft := quaternion.Quaternion{0, 0, -1, 0}
-	q_ae := quaternion.Quaternion{1, 0, 0, 0} // headed north
+	q_ae := quaternion.Quaternion{1, 0, 0, 0} // headed East
 	h_a := quaternion.Quaternion{1, 0, -0.5 * Pi / 180, 0}
 
 	q_nose_pitched_a := quaternion.Prod(h_a, q_nose_aircraft, quaternion.Conj(h_a))
@@ -154,7 +154,7 @@ func TestRollRotationQuaternion(t *testing.T) {
 
 	q_nose_aircraft := quaternion.Quaternion{0, 1, 0, 0}
 	q_rt_wing_aircraft := quaternion.Quaternion{0, 0, -1, 0}
-	q_ae := quaternion.Quaternion{1, 0, 0, 0} // headed north
+	q_ae := quaternion.Quaternion{1, 0, 0, 0} // headed East
 	h_a := quaternion.Quaternion{1, 0.5 * Pi / 180, 0, 0}
 
 	q_nose_rolled_a := quaternion.Prod(h_a, q_nose_aircraft, quaternion.Conj(h_a))
@@ -175,7 +175,7 @@ func TestYawRotationQuaternion(t *testing.T) {
 
 	q_nose_aircraft := quaternion.Quaternion{0, 1, 0, 0}
 	q_rt_wing_aircraft := quaternion.Quaternion{0, 0, -1, 0}
-	q_ae := quaternion.Quaternion{1, 0, 0, 0} // headed north
+	q_ae := quaternion.Quaternion{1, 0, 0, 0} // headed East
 	h_a := quaternion.Quaternion{1, 0, 0, -0.5 * Pi / 180}
 
 	q_nose_yawed_a := quaternion.Prod(h_a, q_nose_aircraft, quaternion.Conj(h_a))
@@ -265,7 +265,7 @@ func TestQuaternionAToB(t *testing.T) {
 
 // Composing pitch & yaw rotations results in just separate net rotations
 func TestMultipleRotations(t *testing.T) {
-	// Starting orientation: nose pointing north, no roll
+	// Starting orientation: nose pointing East, no roll
 	q0 := quaternion.Quaternion{1, 0, 0, 0}
 	q0 = quaternion.Unit(q0)
 	p := Pi / 3  // Pitch up
@@ -328,37 +328,43 @@ func TestMultipleRotations(t *testing.T) {
 
 // Composing a large number of small aircraft-frame rotations (e.g. from a sensor) adds up to the net earth-frame rotation
 func TestSmallCompositions(t *testing.T) {
-	// Starting orientation: nose pointing north, no roll
+	// Starting orientation: nose pointing East, no roll
 	q0 := quaternion.Quaternion{1, 0, 0, 0}
-	p := Pi / 3  // Pitch up 60°
-	//r := Pi / 4  // Roll right 45°
-	y := Pi / 2 // Yaw left 90°
-	n := 10 // Number of divisions for each rotation
-	dp := p / float64(n)
-	dy := y / float64(n)
+	n := 100 // Number of divisions for each rotation
+	dp := (Pi / 3) / float64(n)  // Pitch up 60°
+	dr := (Pi / 4) / float64(n) // Roll right 45°
+	dy := (Pi / 2) / float64(n) // Yaw left 90°
 
 	// Define some rotations in earth frame
 	var qqs []quaternion.Quaternion = []quaternion.Quaternion{
 		quaternion.Quaternion{math.Cos(-dp / 2), 0, math.Sin(-dp / 2), 0}, // Pitch up
+		quaternion.Quaternion{math.Cos(-dr / 2), math.Sin(-dr / 2), 0, 0}, // Roll left (aircraft frame!)
 		quaternion.Quaternion{math.Cos(dy / 2), 0, 0, math.Sin(dy / 2)}, // Yaw left
+		quaternion.Quaternion{math.Cos(dr / 2), math.Sin(dr / 2), 0, 0}, // Roll right (aircraft frame!)
 		quaternion.Quaternion{math.Cos(-dp / 2), math.Sin(-dp / 2), 0, 0}, // Pitch down
 	}
 
-	// Apply the rotations successively in aircraft frame:
+	// Apply the rotations successively
 	var qqa quaternion.Quaternion
 	qa := q0
 	qe := q0
 	for _, qq := range qqs {
 		for i := 0; i < n; i++ {
+			// Convert aircraft frame to earth frame
+			qqs[1] = quaternion.Prod(qq, qqs[1], quaternion.Conj(qq))
+			qqs[3] = quaternion.Prod(qq, qqs[3], quaternion.Conj(qq))
+
+			// Apply to current earth-frame orientation
+			qe = quaternion.Prod(qq, qe)
+
+			// Apply to current aircraft-frame orientation
 			qqa = quaternion.Prod(quaternion.Conj(qa), qq, qa) // Translate from earth to aircraft frame
-			//qa = quaternion.Prod(qa, qqa) // Apply to current aircraft-frame orientation
 			qa0, qa1, qa2, qa3 := QuaternionRotate(qa.W, qa.X, qa.Y, qa.Z, 2*qqa.X, 2*qqa.Y, 2*qqa.Z)
 			qa = quaternion.Quaternion{qa0, qa1, qa2, qa3}
-			qe = quaternion.Prod(qq, qe) // Apply to current earth-frame orientation
 		}
-		fmt.Printf("%1.4f %1.4f %1.4f %1.4f\n", qa.W, qa.X, qa.Y, qa.Z)
 	}
 
+	// Result should be just a rotation from East to North
 	fmt.Println("Checking aircraft frame result:")
 	if !checkQ(qa, 0, 0, 0) {
 		t.Fail()
