@@ -5,6 +5,7 @@ import (
 	"time"
 	"github.com/westphae/goflying/mpu9250"
 	"math"
+	"github.com/westphae/goflying/ahrs"
 )
 
 func main() {
@@ -42,14 +43,20 @@ func main() {
 		fmt.Println("Calibration succeeded")
 	}
 
+	logger := ahrs.NewSensorLogger(fmt.Sprintf("/var/log/mpucal_%s.csv", time.Now().Format("20060102_150405")),
+		"T", "A1", "A2", "A3", "H1", "H2", "H3", "M1", "M2", "M3", "Tmp")
+	defer logger.Close()
+
 	for {
 		<-clock.C
 
 		avg = <-mpu.CAvg
-		fmt.Printf("\nTime:   %6.1f ms\n", float64(avg.DT.Nanoseconds())/1000000)
+		t := float64(avg.DT.Nanoseconds()) / 1000000
+		fmt.Printf("\nTime:   %6.1f ms\n", t)
 		fmt.Printf("Number of Observations: %d\n", avg.N)
 		fmt.Printf("Avg Gyro:   % +8.2f % +8.2f % +8.2f\n", avg.G1, avg.G2, avg.G3)
 		fmt.Printf("Avg Accel:  % +8.2f % +8.2f % +8.2f\n", avg.A1, avg.A2, avg.A3)
+		fmt.Printf("Temperature: % +3.1f\n", avg.Temp)
 
 		if !mpu.MagEnabled() {
 			fmt.Println("Magnetometer disabled")
@@ -63,6 +70,9 @@ func main() {
 			fmt.Printf("Mag:        % +8.0f % +8.0f % +8.0f:  %3.f\n", avg.M1, avg.M2, avg.M3, hdg)
 		}
 
+		logger.Log(
+			float64(t),
+			avg.A1, avg.A2, avg.A3, avg.G1, avg.G2, avg.G3, avg.M1, avg.M2, avg.M3, avg.Temp)
 		/*
 		cur = <-mpu.C
 		fmt.Printf("Cur Gyro:   % +8.2f % +8.2f % +8.2f\n", cur.G1, cur.G2, cur.G3)
