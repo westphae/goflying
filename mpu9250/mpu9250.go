@@ -31,6 +31,7 @@ type MPUData struct {
 	G1, G2, G3        float64
 	A1, A2, A3        float64
 	M1, M2, M3        float64
+	Temp              float64
 	GAError, MagError error
 	N, NM             int
 	T, TM             time.Time
@@ -313,8 +314,8 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, enableMag boo
 // When Read is called, we will return the averages
 func (m *MPU9250) readSensors() {
 	var (
-		g1, g2, g3, a1, a2, a3, m1, m2, m3, m4               int16 // Current values
-		avg1, avg2, avg3, ava1, ava2, ava3                   float64 // Accumulators for averages
+		g1, g2, g3, a1, a2, a3, m1, m2, m3, m4, tmp          int16 // Current values
+		avg1, avg2, avg3, ava1, ava2, ava3, avtmp            float64 // Accumulators for averages
 		avm1, avm2, avm3                                     int32
 		g11, g12, g13, a11, a12, a13                         float64 // Accumulators for calculating mean drifts
 		g21, g22, g23, a21, a22, a23                         float64 // Accumulators for calculating stdev drifts
@@ -327,6 +328,7 @@ func (m *MPU9250) readSensors() {
 	acRegMap := map[*int16]byte{
 		&g1: MPUREG_GYRO_XOUT_H, &g2: MPUREG_GYRO_YOUT_H, &g3: MPUREG_GYRO_ZOUT_H,
 		&a1: MPUREG_ACCEL_XOUT_H, &a2: MPUREG_ACCEL_YOUT_H, &a3: MPUREG_ACCEL_ZOUT_H,
+		&tmp: MPUREG_TEMP_OUT_H,
 	}
 	magRegMap := map[*int16]byte{
 		&m1: MPUREG_EXT_SENS_DATA_00, &m2: MPUREG_EXT_SENS_DATA_02, &m3: MPUREG_EXT_SENS_DATA_04, &m4: MPUREG_EXT_SENS_DATA_06,
@@ -378,6 +380,7 @@ func (m *MPU9250) readSensors() {
 			M1: m.Ms11*mm1 + m.Ms12*mm2 + m.Ms13*mm3,
 			M2: m.Ms21*mm1 + m.Ms22*mm2 + m.Ms23*mm3,
 			M3: m.Ms31*mm1 + m.Ms32*mm2 + m.Ms33*mm3,
+			Temp: (float64(tmp)/340+36.53),
 			GAError: gaError, MagError: magError,
 			N: 1, NM: 1,
 			T: t, TM: tm,
@@ -404,6 +407,7 @@ func (m *MPU9250) readSensors() {
 			d.A1 = (ava1/n-m.A01) * m.scaleAccel
 			d.A2 = (ava2/n-m.A02) * m.scaleAccel
 			d.A3 = (ava3/n-m.A03) * m.scaleAccel
+			d.Temp = (float64(avtmp)/n)/340+36.53
 			d.N = int(n+0.5); d.T = t; d.DT = t.Sub(t0)
 		} else {
 			d.GAError = errors.New("MPU9250 Error: No new accel/gyro values")
@@ -431,6 +435,7 @@ func (m *MPU9250) readSensors() {
 			// Update accumulated values and increment count of gyro/accel readings
 			avg1 += float64(g1); avg2 += float64(g2); avg3 += float64(g3)
 			ava1 += float64(a1); ava2 += float64(a2); ava3 += float64(a3)
+			avtmp += float64(tmp)
 			avm1 += int32(m1); avm2 += int32(m2); avm3 += int32(m3)
 			n++
 			if i < nc-0.5 { // Then we're doing a calibration
@@ -443,10 +448,10 @@ func (m *MPU9250) readSensors() {
 				//TODO westphae: don't calibrate accel!
 				a11 += float64(a1)
 				a12 += float64(a2)
-				a13 += float64(a3) - 1/m.scaleAccel
+				a13 += float64(a3) + 1/m.scaleAccel
 				a21 += float64(a1) * float64(a1)
 				a22 += float64(a2) * float64(a2)
-				a23 += (float64(a3) - 1/m.scaleAccel) * (float64(a3) - 1/m.scaleAccel)
+				a23 += (float64(a3) + 1/m.scaleAccel) * (float64(a3) - 1/m.scaleAccel)
 				i++
 			} else if nc > 0.5 { // Then we're finished with a calibration
 				vg1 := (g21-g11*g11/nc) * m.scaleGyro * m.scaleGyro / nc
@@ -463,7 +468,7 @@ func (m *MPU9250) readSensors() {
 					a12/nc*m.scaleAccel > 0.5 || a12/nc*m.scaleAccel < -0.5 ||
 					a13/nc*m.scaleAccel > 0.5 || a13/nc*m.scaleAccel < -0.5 {
 					cCalResult<- fmt.Errorf("MPU9250 Calibration Error: accel is maxing out: %6f %6f %6f",
-						a11/nc*m.scaleAccel, a12/nc*m.scaleAccel, a12/nc*m.scaleAccel)
+						a11/nc*m.scaleAccel, a12/nc*m.scaleAccel, a13/nc*m.scaleAccel)
 				} else if vg1 > MAXGYROVAR || vg2 > MAXGYROVAR || vg3 > MAXGYROVAR ||
 					va1 > MAXACCELVAR || va2 > MAXACCELVAR || va3 > MAXACCELVAR {
 					cCalResult<- errors.New("MPU9250 Calibration Error: sensor was not inertial during calibration")
@@ -531,6 +536,7 @@ func (m *MPU9250) readSensors() {
 			avg1, avg2, avg3 = 0, 0, 0
 			ava1, ava2, ava3 = 0, 0, 0
 			avm1, avm2, avm3 = 0, 0, 0
+			avtmp = 0
 			n, nm = 0, 0
 			t0, t0m = t, tm
 		case dur := <-cCal:
