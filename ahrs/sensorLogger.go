@@ -1,16 +1,16 @@
 package ahrs
 
 import (
-	"os"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 )
 
 type SensorLogger struct {
-	f       *os.File
-	h       []string
-	fmt     string
+	f   *os.File
+	h   []string
+	fmt string
 }
 
 func NewSensorLogger(fn string, h ...string) (l SensorLogger) {

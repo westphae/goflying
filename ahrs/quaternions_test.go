@@ -24,20 +24,20 @@ func notSmall(x float64) bool {
 // checkQ checks the quaternion against specific roll, pitch and yaw values
 func checkQ(q quaternion.Quaternion, r, p, y float64) bool {
 	qr, qp, qy := FromQuaternion(q.W, q.X, q.Y, q.Z)
-	dqr := qr-r
+	dqr := qr - r
 	if dqr < -Pi {
-		dqr += 2*Pi
+		dqr += 2 * Pi
 	}
-	dqp := qp-p
+	dqp := qp - p
 	if dqp < -Pi {
-		dqp += 2*Pi
+		dqp += 2 * Pi
 	}
-	dqy := qy-y
+	dqy := qy - y
 	if dqy > Pi {
-		dqy -= 2*Pi
+		dqy -= 2 * Pi
 	}
 	if dqy < -Pi {
-		dqy += 2*Pi
+		dqy += 2 * Pi
 	}
 	wrong := (notSmall(dqr) || notSmall(dqp) || notSmall(dqy))
 	if wrong {
@@ -194,7 +194,7 @@ func TestYawRotationQuaternion(t *testing.T) {
 // Quickie half-angle formulae for quaternions works
 func TestQuaternionHalfAngles(t *testing.T) {
 
-	psis :=   []float64{ 0, Pi/2, Pi, 4*Pi/3, 3*Pi/2, Pi/2,   5*Pi/3,  Pi/2,    0,      Pi}
+	psis := []float64{0, Pi / 2, Pi, 4 * Pi / 3, 3 * Pi / 2, Pi / 2, 5 * Pi / 3, Pi / 2, 0, Pi}
 
 	var (
 		w1, w2, u, psi, e0, e3 float64
@@ -330,8 +330,8 @@ func TestMultipleRotations(t *testing.T) {
 func TestSmallCompositions(t *testing.T) {
 	// Starting orientation: nose pointing East, no roll
 	q0 := quaternion.Quaternion{1, 0, 0, 0}
-	n := 100 // Number of divisions for each rotation
-	dp := (Pi / 3) / float64(n)  // Pitch up 60°
+	n := 100                    // Number of divisions for each rotation
+	dp := (Pi / 3) / float64(n) // Pitch up 60°
 	dr := (Pi / 4) / float64(n) // Roll right 45°
 	dy := (Pi / 2) / float64(n) // Yaw left 90°
 
@@ -339,8 +339,8 @@ func TestSmallCompositions(t *testing.T) {
 	var qqs []quaternion.Quaternion = []quaternion.Quaternion{
 		quaternion.Quaternion{math.Cos(-dp / 2), 0, math.Sin(-dp / 2), 0}, // Pitch up
 		quaternion.Quaternion{math.Cos(-dr / 2), math.Sin(-dr / 2), 0, 0}, // Roll left (aircraft frame!)
-		quaternion.Quaternion{math.Cos(dy / 2), 0, 0, math.Sin(dy / 2)}, // Yaw left
-		quaternion.Quaternion{math.Cos(dr / 2), math.Sin(dr / 2), 0, 0}, // Roll right (aircraft frame!)
+		quaternion.Quaternion{math.Cos(dy / 2), 0, 0, math.Sin(dy / 2)},   // Yaw left
+		quaternion.Quaternion{math.Cos(dr / 2), math.Sin(dr / 2), 0, 0},   // Roll right (aircraft frame!)
 		quaternion.Quaternion{math.Cos(-dp / 2), math.Sin(-dp / 2), 0, 0}, // Pitch down
 	}
 
