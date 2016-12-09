@@ -38,13 +38,13 @@ type State struct {
 	// U, Z, E, H, N,
 	// V, C, F, D, L
 
-	e11, e12, e13 float64 // cached quaternion fragment
-	e21, e22, e23 float64 // cached quaternion fragment
-	e31, e32, e33 float64 // cached quaternion fragment
+	e11, e12, e13 float64 // cached earth-aircraft rotation matrix
+	e21, e22, e23 float64
+	e31, e32, e33 float64
 
-	f11, f12, f13 float64 // cached quaternion fragment
-	f21, f22, f23 float64 // cached quaternion fragment
-	f31, f32, f33 float64 // cached quaternion fragment
+	f11, f12, f13 float64 // cached sensor-aircraft rotation matrix
+	f21, f22, f23 float64
+	f31, f32, f33 float64
 }
 
 // Measurement holds the measurements used for updating the Kalman filter:
@@ -146,9 +146,50 @@ func (s *State) CalcRollPitchHeading() (roll float64, pitch float64, heading flo
 	return roll / Deg, pitch / Deg, heading / Deg
 }
 
+// Regularize ensures that roll, pitch, and heading are in the correct ranges.
+// All in radians.
+func Regularize(roll, pitch, heading float64) (float64, float64, float64) {
+	for pitch > Pi {
+		pitch -= 2*Pi
+	}
+	for pitch <= -Pi {
+		pitch += 2*Pi
+	}
+	if pitch > Pi / 2 {
+		pitch = Pi - pitch
+		roll -= Pi
+		heading += Pi
+	}
+	if pitch < -Pi / 2 {
+		pitch = -Pi - pitch
+		roll -= Pi
+		heading += Pi
+	}
+
+	for roll > Pi {
+		roll -= 2*Pi
+	}
+	for roll < -Pi {
+		roll += 2*Pi
+	}
+
+	for heading >= 2*Pi {
+		heading -= 2*Pi
+	}
+	for heading < 0 {
+		heading += 2*Pi
+	}
+	return roll, pitch, heading
+}
+
+
 // AHRSProvider defines an AHRS algorithm, such as ahrs_kalman, ahrs_simple, etc.
 type AHRSProvider interface {
+	GetState() *State
+	Predict(float64)
+	Update(*Measurement)
 	Compute(*Measurement)
+	PredictMeasurement() *Measurement
 	Valid() bool
 	CalcRollPitchHeading() (roll float64, pitch float64, heading float64)
 	CalcRollPitchHeadingUncertainty() (droll float64, dpitch float64, dheading float64)

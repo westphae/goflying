@@ -19,10 +19,19 @@ func (s *KalmanState) CalcRollPitchHeadingUncertainty() (droll float64, dpitch f
 	return
 }
 
+// GetState returns the current ahrs.State
+func (s *KalmanState) GetState() *State {
+	return &s.State
+}
+
 // Initialize the state at the start of the Kalman filter, based on current measurements
 func InitializeKalman(m *Measurement) (s *KalmanState) {
 	s = new(KalmanState)
+	s.init(m)
+	return
+}
 
+func (s *KalmanState) init(m *Measurement) {
 	// Diagonal matrix of initial state uncertainties, will be squared into covariance below
 	// Specifics here aren't too important--it will change very quickly
 	s.M = matrix.Diagonal([]float64{

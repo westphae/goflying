@@ -46,9 +46,19 @@ func (s *Kalman1State) CalcRollPitchHeadingUncertainty() (droll float64, dpitch 
 	return
 }
 
+// GetState returns the current ahrs.State
+func (s *Kalman1State) GetState() *State {
+	return &s.State
+}
+
 // Initialize the state at the start of the Kalman filter, based on current measurements
 func InitializeKalman1(m *Measurement) (s *Kalman1State) {
 	s = new(Kalman1State)
+	s.init(m)
+	return
+}
+
+func (s *Kalman1State) init(m *Measurement) {
 
 	s.E0 = 1 // Initial guess is East
 	s.F0 = 1 // Initial guess is that it's oriented pointing forward and level
