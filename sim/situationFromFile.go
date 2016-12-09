@@ -68,6 +68,13 @@ func NewSituationFromFile (fn string) (sit *SituationFromFile, err error) {
 	}
 
 	// Read the rest of the data into the situation
+	var (
+		j      int
+		t0     float64
+		ts0    float64
+		tw0    float64
+		ta0    float64
+	)
 	for {
 		rec, err = r.Read()
 		if err == io.EOF {
@@ -84,9 +91,15 @@ func NewSituationFromFile (fn string) (sit *SituationFromFile, err error) {
 			}
 			switch fields[i] {
 			case "T":
-				sit.t = expandAppend(&sit.t, v)
+				if j==0  {
+					t0 = v
+				}
+				sit.t = expandAppend(&sit.t, v-t0)
 			case "TS":
-				sit.ts = expandAppend(&sit.ts, v)
+				if j==0  {
+					ts0 = v
+				}
+				sit.ts = expandAppend(&sit.ts, v-ts0)
 			case "A1":
 				sit.a1 = expandAppend(&sit.a1, v)
 			case "A2":
@@ -106,7 +119,10 @@ func NewSituationFromFile (fn string) (sit *SituationFromFile, err error) {
 			case "M3":
 				sit.m3 = expandAppend(&sit.m3, v)
 			case "TW":
-				sit.tw = expandAppend(&sit.tw, v)
+				if j==0  {
+					tw0 = v
+				}
+				sit.tw = expandAppend(&sit.tw, v-tw0)
 			case "W1":
 				sit.w1 = expandAppend(&sit.w1, v)
 			case "W2":
@@ -114,15 +130,20 @@ func NewSituationFromFile (fn string) (sit *SituationFromFile, err error) {
 			case "W3":
 				sit.w3 = expandAppend(&sit.w3, v)
 			case "TA":
-				sit.ta = expandAppend(&sit.ta, v)
+				if j==0  {
+					ta0 = v
+				}
+				sit.ta = expandAppend(&sit.ta, v-ta0)
 			case "Alt":
 				sit.alt = expandAppend(&sit.alt, v)
 			default:
 				continue
 			}
 		}
+		j += 1
 	}
 	err = nil
+	log.Printf("Records read: %d\n", j)
 	return
 }
 
@@ -160,25 +181,25 @@ func (s *SituationFromFile) Measurement(t float64, m *ahrs.Measurement,
 
 	f := (s.t[ix+1] - t) / (s.t[ix+1] - s.t[ix])
 
-	m.UValid = false
 	m.U1 = 0
 	m.U2 = 0
 	m.U3 = 0
-	m.WValid = s.tw[ix] - s.ts[ix] < 5 // Arbitrary: allow up to 5 sec lag for GPS data (5s seems typical)
+	m.UValid = false
 	m.W1 = f*s.w1[ix] + (1-f)*s.w1[ix+1]
 	m.W2 = f*s.w2[ix] + (1-f)*s.w2[ix+1]
 	m.W3 = f*s.w3[ix] + (1-f)*s.w3[ix+1]
-	m.SValid = true
+	m.WValid = s.tw[ix] - s.ts[ix] < 5 // Arbitrary: allow up to 5 sec lag for GPS data (5s seems typical)
 	m.A1 = -(f*s.a1[ix] + (1-f)*s.a1[ix+1])
 	m.A2 = -(f*s.a2[ix] + (1-f)*s.a2[ix+1])
 	m.A3 = -(f*s.a3[ix] + (1-f)*s.a3[ix+1])
 	m.B1 = (f*s.h1[ix] + (1-f)*s.h1[ix+1])
 	m.B2 = (f*s.h2[ix] + (1-f)*s.h2[ix+1])
 	m.B3 = (f*s.h3[ix] + (1-f)*s.h3[ix+1])
-	m.MValid = false // For now, just invalidate it, can add back after magnetometer data is understood
+	m.SValid = true
 	m.M1 = f*s.m1[ix] + (1-f)*s.m1[ix+1]
 	m.M2 = f*s.m2[ix] + (1-f)*s.m2[ix+1]
 	m.M3 = f*s.m3[ix] + (1-f)*s.m3[ix+1]
+	m.MValid = m.M1 != 0 || m.M2 != 0 || m.M3 != 0
 
 	m.T  = t
 

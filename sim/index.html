@@ -72,8 +72,9 @@
 <body>
 <script src="http://d3js.org/d3.v3.min.js"></script>
 <script>
-    var actual, predict, kalman, variance, measure, pmeasure, kmeasure,
-            remaining = 7,
+    var actual, predict, kalman, variance, measure, pmeasure, kmeasure, kother,
+            kconfig,
+            remaining = 9,
             charts = [];
 
     d3.csv("k_state.csv", function (error, data) {
@@ -122,6 +123,20 @@
         if (error) throw error;
 
         kmeasure = data;
+        if (!--remaining) makeAll();
+    });
+
+    d3.csv("k_other.csv", function (error, data) {
+        if (error) throw error;
+
+        kother = data;
+        if (!--remaining) makeAll();
+    });
+
+    d3.json("k_config.json", function (error, data) {
+        if (error) throw error;
+
+        kconfig = data;
         if (!--remaining) makeAll();
     });
 
@@ -498,51 +513,14 @@
             return chart
         }
 
-        charts.push(MakeStateChart("U1"));
-        charts.push(MakeStateChart("U2"));
-        charts.push(MakeStateChart("U3"));
-        charts.push(MakeStateChart("Z1"));
-        charts.push(MakeStateChart("Z2"));
-        charts.push(MakeStateChart("Z3"));
-        charts.push(MakeStateChart("Phi"));
-        charts.push(MakeStateChart("Theta"));
-        charts.push(MakeStateChart("Psi"));
-        charts.push(MakeStateChart("H1"));
-        charts.push(MakeStateChart("H2"));
-        charts.push(MakeStateChart("H3"));
-        charts.push(MakeStateChart("N1"));
-        charts.push(MakeStateChart("N2"));
-        charts.push(MakeStateChart("N3"));
-        charts.push(MakeStateChart("V1"));
-        charts.push(MakeStateChart("V2"));
-        charts.push(MakeStateChart("V3"));
-        charts.push(MakeStateChart("C1"));
-        charts.push(MakeStateChart("C2"));
-        charts.push(MakeStateChart("C3"));
-        charts.push(MakeStateChart("Phi0"));
-        charts.push(MakeStateChart("Theta0"));
-        charts.push(MakeStateChart("Psi0"));
-        charts.push(MakeStateChart("D1"));
-        charts.push(MakeStateChart("D2"));
-        charts.push(MakeStateChart("D3"));
-        charts.push(MakeStateChart("L1"));
-        charts.push(MakeStateChart("L2"));
-        charts.push(MakeStateChart("L3"));
-        charts.push(MakeCMChart("U1"));
-        charts.push(MakeCMChart("U2"));
-        charts.push(MakeCMChart("U3"));
-        charts.push(MakeCMChart("W1"));
-        charts.push(MakeCMChart("W2"));
-        charts.push(MakeCMChart("W3"));
-        charts.push(MakeCMChart("A1"));
-        charts.push(MakeCMChart("A2"));
-        charts.push(MakeCMChart("A3"));
-        charts.push(MakeCMChart("B1"));
-        charts.push(MakeCMChart("B2"));
-        charts.push(MakeCMChart("B3"));
-        charts.push(MakeCMChart("M1"));
-        charts.push(MakeCMChart("M2"));
-        charts.push(MakeCMChart("M3"));
+
+        for (var i=0; i<kconfig.statevars.length; i++) {
+            charts.push(MakeStateChart(kconfig.statevars[i]));
+        }
+
+        for (var i=0; i<kconfig.cmvars.length; i++) {
+            charts.push(MakeCMChart(kconfig.cmvars[i]));
+        }
     }
 
 </script>

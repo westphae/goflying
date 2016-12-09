@@ -1,7 +1,10 @@
-// Test out the AHRS code in ahrs/ahrs.go.
-// Define a flight path/attitude in code, and then synthesize the matching GPS, gyro, accel (and other) data
-// Add some noise if desired.
-// Then see if the AHRS code can replicate the "true" attitude given the noisy and limited input data
+/*
+Test out the AHRS code in ahrs/ahrs.go.
+Define a flight path/attitude in code, and then synthesize the matching GPS, gyro, accel (and other) data
+Add some noise if desired.
+Then see if the AHRS code can replicate the "true" attitude given the noisy and limited input data
+*/
+
 package main
 
 import (
@@ -14,6 +17,7 @@ import (
 
 	"github.com/westphae/goflying/ahrs"
 	"strconv"
+	"io/ioutil"
 )
 
 func parseFloatArrayString(str string, a *[]float64) (err error) {
@@ -34,9 +38,13 @@ func main() {
 		gyroNoise, accelNoise, gpsNoise, asiNoise, magNoise	float64
 		asiBias							float64
 		gyroBias, accelBias, magBias				[]float64
-		gpsInop, magInop, asiInop				bool
+		gpsInop, magInop, asiInop       			bool
+		algo							string
+		s                                                       ahrs.AHRSProvider
+		st                                                      *ahrs.State
 		scenario						string
 		sit							Situation
+		kconfig                                                 string
 		err 							error
 	)
 	gyroBias = make([]float64, 3)
@@ -74,6 +82,8 @@ func main() {
 		magInopUsage = "Make the Magnetometer inoperative"
 		defaultScenario = "takeoff"
 		scenarioUsage = "Scenario to use: filename or \"takeoff\" or \"turn\""
+		defaultAlgo = "simple"
+		algoUsage = "Algo to use for AHRS: simple (default), heuristic, kalman, kalman1, kalman2"
 	)
 
 	flag.Float64Var(&pdt, "pdt", defaultPdt, pdtUsage)
@@ -101,19 +111,72 @@ func main() {
 	flag.BoolVar(&magInop, "m", defaultMagInop, magInopUsage)
 	flag.StringVar(&scenario, "scenario", defaultScenario, scenarioUsage)
 	flag.StringVar(&scenario, "s", defaultScenario, scenarioUsage)
+	flag.StringVar(&algo, "algo", defaultAlgo, algoUsage)
 	flag.Parse()
+
+	switch scenario {
+	case "takeoff":
+		sit = sitTakeoffDef
+	case "turn":
+		sit = sitTurnDef
+	default:
+		log.Printf("Loading data from %s\n", scenario)
+		sit, err = NewSituationFromFile(scenario)
+		if err != nil {
+			log.Fatalln(err)
+		}
+	}
+
+	s0 := new(ahrs.State)       // Actual state from simulation, for comparison
+	m  := ahrs.NewMeasurement() // Measurement from IMU
+	pm := ahrs.NewMeasurement() // Predicted Measurement
+
+	fmt.Println("Simulation parameters:")
+	switch strings.ToLower(algo) {
+	case "simple":
+		fmt.Println("Running simple AHRS")
+		kconfig = `{"statevars":["Phi","Theta","Psi","PhiGPS","ThetaGPS","PhiGPS","GS","TR"],
+		"cmvars":["W1","W2","W3","A1","A2","A3","B1","B2","B3","M1","M2","M3"]}`
+		s = ahrs.InitializeSimple(m)
+	case "heuristic":
+		fmt.Println("Running heuristic AHRS")
+		kconfig = ""
+		s = ahrs.InitializeHeuristic(m)
+	case "kalman":
+		fmt.Println("Running Kalman AHRS")
+		kconfig = `{"statevars":["U1","U2","U3","Z1","Z2","Z3","Phi","Theta","Psi","H1","H2","H3","N1","N2",
+		"N3","V1","V2","V3","C1","C2","C3","Phi0","Theta0","Psi0","D1","D2","D3","L1","L2","L3"],
+		"cmvars":["U1","U2","U3","W1","W2","W3","A1","A2","A3","B1","B2","B3","M1","M2","M3"]}`
+		s = ahrs.InitializeKalman(m)
+	case "kalman1":
+		fmt.Println("Running Kalman1 AHRS")
+		kconfig = `{"statevars":["Phi","Theta","Psi","H1","H2","H3","Phi0","Theta0","Psi0","D1","D2","D3"],
+		"cmvars":["A1","A2","A3","B1","B2","B3","M1","M2","M3"]}`
+		s = ahrs.InitializeKalman1(m)
+	case "kalman2":
+		fmt.Println("Running Kalman2 AHRS")
+		kconfig = `{"statevars":["U1","U2","U3","Z1","Z2","Z3","Phi","Theta","Psi",
+		"H1","H2","H3","C1","C2","C3","Phi0","Theta0","Psi0","D1","D2","D3"],
+		"cmvars":["A1","A2","A3","B1","B2","B3","M1","M2","M3"]}`
+		s = ahrs.InitializeKalman2(m)
+	default:
+		fmt.Printf("No such AHRS implementation: %s\n", algo)
+		return
+	}
 
 	if err := parseFloatArrayString(gyroBiasStr, &gyroBias); err != nil {
 		fmt.Printf("Error %v parsing %s\n", err, gyroBiasStr)
+		return
 	}
 	if err := parseFloatArrayString(accelBiasStr, &accelBias); err != nil {
 		fmt.Printf("Error %v parsing %s\n", err, accelBiasStr)
+		return
 	}
 	if err := parseFloatArrayString(magBiasStr, &magBias); err != nil {
 		fmt.Printf("Error %v parsing %s\n", err, magBiasStr)
+		return
 	}
 
-	fmt.Println("Simulation parameters:")
 	fmt.Println("Timing:")
 	fmt.Printf("\tPredict Freqency: %d Hz\n", int(1/pdt))
 	fmt.Printf("\tUpdate  Freqency: %d Hz\n", int(1/udt))
@@ -159,30 +222,13 @@ func main() {
 	lKMeas := ahrs.NewSensorLogger("./k_kalmeas.csv",
 		"T", "U1", "U2", "U3", "W1", "W2", "W3", "A1", "A2", "A3", "B1", "B2", "B3", "M1", "M2", "M3")
 
-	switch scenario {
-	case "takeoff":
-		sit = sitTakeoffDef
-	case "turn":
-		sit = sitTurnDef
-	default:
-		log.Printf("Loading data from %s\n", scenario)
-		sit, err = NewSituationFromFile(scenario)
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-	}
-
 	// This is where it all happens
 	fmt.Println("Running Simulation")
-	s0 := new(ahrs.State)       // Actual state from simulation, for comparison
-	m  := ahrs.NewMeasurement()
-	pm := ahrs.NewMeasurement()
 	t := sit.BeginTime()
 	tNextUpdate := t + udt
 	sit.Measurement(t, m, !asiInop, !gpsInop, true, !magInop,
 		asiNoise, gpsNoise, accelNoise, gyroNoise, magNoise,
 		uBias, accelBias, gyroBias, magBias)
-	s := ahrs.InitializeKalman(m)
 	// These next few just for testing with a correct starting state
 	//TODO testing
 	/*
@@ -230,6 +276,7 @@ func main() {
 
 		// Peek behind the curtain: the "actual" state, which the algorithm doesn't know
 		if err := sit.Interpolate(t, s0, accelBias, gyroBias, magBias); err != nil {
+			log.Printf("Interpolation error at time %f: %s\n", t, err)
 			break
 		}
 		phi, theta, psi := ahrs.FromQuaternion(s0.E0, s0.E1, s0.E2, s0.E3)
@@ -251,6 +298,7 @@ func main() {
 		if err := sit.Measurement(t, m, !asiInop, !gpsInop, true, !magInop,
 			asiNoise, gpsNoise, accelNoise, gyroNoise, magNoise,
 			uBias, accelBias, gyroBias, magBias); err != nil {
+			log.Printf("Measurement error at time %f: %s\n", t, err)
 			break
 		}
 		lMeas.Log(m.T,
@@ -263,19 +311,20 @@ func main() {
 
 		// Predict stage of Kalman filter
 		s.Predict(t)
-		phi, theta, psi = ahrs.FromQuaternion(s.E0, s.E1, s.E2, s.E3)
-		phi0, theta0, psi0 = ahrs.FromQuaternion(s.F0, s.F1, s.F2, s.F3)
-		lPredict.Log(s.T,
-			s.U1, s.U2, s.U3,
-			s.Z1, s.Z2, s.Z3,
+		st = s.GetState()
+		phi, theta, psi = ahrs.FromQuaternion(st.E0, st.E1, st.E2, st.E3)
+		phi0, theta0, psi0 = ahrs.FromQuaternion(st.F0, st.F1, st.F2, st.F3)
+		lPredict.Log(st.T,
+			st.U1, st.U2, st.U3,
+			st.Z1, st.Z2, st.Z3,
 			phi / Deg, theta / Deg, psi / Deg,
-			s.H1, s.H2, s.H3,
-			s.N1, s.N2, s.N3,
-			s.V1, s.V2, s.V3,
-			s.C1, s.C2, s.C3,
+			st.H1, st.H2, st.H3,
+			st.N1, st.N2, st.N3,
+			st.V1, st.V2, st.V3,
+			st.C1, st.C2, st.C3,
 			phi0 / Deg, theta0 / Deg, psi0 / Deg,
-			s.D1, s.D2, s.D3,
-			s.L1, s.L2, s.L3,
+			st.D1, st.D2, st.D3,
+			st.L1, st.L2, st.L3,
 		)
 
 		pm = s.PredictMeasurement()
@@ -291,6 +340,7 @@ func main() {
 		if t > tNextUpdate - 1e-9 {
 			tNextUpdate += udt
 			s.Update(m)
+			log.Printf("Time: %.2f\n", t)
 		}
 
 		pm = s.PredictMeasurement()
@@ -302,43 +352,39 @@ func main() {
 			pm.M1, pm.M2, pm.M3,
 		)
 
-		phi, theta, psi = ahrs.FromQuaternion(s.E0, s.E1, s.E2, s.E3)
-		phi0, theta0, psi0 = ahrs.FromQuaternion(s.F0, s.F1, s.F2, s.F3)
-		dphi, dtheta, dpsi := ahrs.VarFromQuaternion(s.E0, s.E1, s.E2, s.E3,
-			math.Sqrt(s.M.Get(6, 6)), math.Sqrt(s.M.Get(7, 7)),
-			math.Sqrt(s.M.Get(8, 8)), math.Sqrt(s.M.Get(9, 9)))
-		dphi0, dtheta0, dpsi0 := ahrs.VarFromQuaternion(s.F0, s.F1, s.F2, s.F3,
-			math.Sqrt(s.M.Get(22, 22)), math.Sqrt(s.M.Get(23, 23)),
-			math.Sqrt(s.M.Get(24, 24)), math.Sqrt(s.M.Get(25, 25)))
-		lKalman.Log(s.T,
-			s.U1, s.U2, s.U3,
-			s.Z1, s.Z2, s.Z3,
+		st = s.GetState()
+		phi, theta, psi = s.CalcRollPitchHeading()
+		phi0, theta0, psi0 = ahrs.FromQuaternion(st.F0, st.F1, st.F2, st.F3)
+		dphi, dtheta, dpsi := s.CalcRollPitchHeadingUncertainty()
+		dphi0, dtheta0, dpsi0 := ahrs.VarFromQuaternion(st.F0, st.F1, st.F2, st.F3,
+			math.Sqrt(st.M.Get(22, 22)), math.Sqrt(st.M.Get(23, 23)),
+			math.Sqrt(st.M.Get(24, 24)), math.Sqrt(st.M.Get(25, 25)))
+		lKalman.Log(st.T,
+			st.U1, st.U2, st.U3,
+			st.Z1, st.Z2, st.Z3,
 			phi / Deg, theta / Deg, psi / Deg,
-			s.H1, s.H2, s.H3,
-			s.N1, s.N2, s.N3,
-			s.V1, s.V2, s.V3,
-			s.C1, s.C2, s.C3,
+			st.H1, st.H2, st.H3,
+			st.N1, st.N2, st.N3,
+			st.V1, st.V2, st.V3,
+			st.C1, st.C2, st.C3,
 			phi0 / Deg, theta0 / Deg, psi0 / Deg,
-			s.D1, s.D2, s.D3,
-			s.L1, s.L2, s.L3,
+			st.D1, st.D2, st.D3,
+			st.L1, st.L2, st.L3,
 		)
-		lVar.Log(s.T,
-			math.Sqrt(s.M.Get(0, 0)), math.Sqrt(s.M.Get(1, 1)), math.Sqrt(s.M.Get(2, 2)),
-			math.Sqrt(s.M.Get(3, 3)), math.Sqrt(s.M.Get(4, 4)), math.Sqrt(s.M.Get(5, 5)),
+		lVar.Log(st.T,
+			math.Sqrt(st.M.Get(0, 0)), math.Sqrt(st.M.Get(1, 1)), math.Sqrt(st.M.Get(2, 2)),
+			math.Sqrt(st.M.Get(3, 3)), math.Sqrt(st.M.Get(4, 4)), math.Sqrt(st.M.Get(5, 5)),
 			dphi / Deg, dtheta / Deg, dpsi / Deg,
-			math.Sqrt(s.M.Get(10, 10)), math.Sqrt(s.M.Get(11, 11)), math.Sqrt(s.M.Get(12, 12)),
-			math.Sqrt(s.M.Get(13, 13)), math.Sqrt(s.M.Get(14, 14)), math.Sqrt(s.M.Get(15, 15)),
-			math.Sqrt(s.M.Get(16, 16)), math.Sqrt(s.M.Get(17, 17)), math.Sqrt(s.M.Get(18, 18)),
-			math.Sqrt(s.M.Get(19, 19)), math.Sqrt(s.M.Get(20, 20)), math.Sqrt(s.M.Get(21, 21)),
+			math.Sqrt(st.M.Get(10, 10)), math.Sqrt(st.M.Get(11, 11)), math.Sqrt(st.M.Get(12, 12)),
+			math.Sqrt(st.M.Get(13, 13)), math.Sqrt(st.M.Get(14, 14)), math.Sqrt(st.M.Get(15, 15)),
+			math.Sqrt(st.M.Get(16, 16)), math.Sqrt(st.M.Get(17, 17)), math.Sqrt(st.M.Get(18, 18)),
+			math.Sqrt(st.M.Get(19, 19)), math.Sqrt(st.M.Get(20, 20)), math.Sqrt(st.M.Get(21, 21)),
 			dphi0 / Deg, dtheta0 / Deg, dpsi0 / Deg,
-			math.Sqrt(s.M.Get(26, 26)), math.Sqrt(s.M.Get(27, 27)), math.Sqrt(s.M.Get(28, 28)),
-			math.Sqrt(s.M.Get(29, 29)), math.Sqrt(s.M.Get(30, 30)), math.Sqrt(s.M.Get(31, 31)),
+			math.Sqrt(st.M.Get(26, 26)), math.Sqrt(st.M.Get(27, 27)), math.Sqrt(st.M.Get(28, 28)),
+			math.Sqrt(st.M.Get(29, 29)), math.Sqrt(st.M.Get(30, 30)), math.Sqrt(st.M.Get(31, 31)),
 		)
 
 		t += pdt
-		if s.U1 < 0 {
-			s = ahrs.InitializeKalman(m)
-		}
 	}
 
 	// Clean up
@@ -349,6 +395,7 @@ func main() {
 	lVar.Close()
 	lMeas.Close()
 	lKMeas.Close()
+	ioutil.WriteFile("k_config.json", []byte(kconfig), 0644)
 
 	// Run analysis web server
 	fmt.Println("Serving charts")
