@@ -27,9 +27,9 @@ type HeuristicState struct {
 	M1L, M2L, M3L	float64
 }
 
-// GetState returns the current ahrs.State
-func (s *HeuristicState) GetState() *State {
-	return &s.State
+// GetStateMap returns the extra non-Kalman state information
+func (s *HeuristicState) GetStateMap() (dat *map[string]float64) {
+	return
 }
 
 func InitializeHeuristic(m *Measurement) (s *HeuristicState) {

@@ -378,6 +378,116 @@
             return chart
         }
 
+        function MakeOtherChart(v) {
+            var chart = {'type': 'other'};
+
+            chart.color = d3.scale.category10()
+                .domain( d3.keys(kother[0]).filter(function (key) {
+                    return key !== "T";
+                }));
+
+            chart.data = kother.map(function(d, i) {
+                return {T: +d.T, y: +d[v] };
+            });
+
+            chart.y0 = d3.min(chart.data, function(d) {
+                if (x(+d.T)>0 & x(+d.T)<width) {
+                    return +d.y;
+                }
+            });
+
+            chart.y1 = d3.max(chart.data, function(d) {
+                if (x(+d.T)>0 & x(+d.T)<width) {
+                    return +d.y;
+                }
+            });
+
+            chart.y = d3.scale.linear()
+                .range([height, 0]);
+
+            chart.set_y_domain = function(y0, y1) {
+                chart.y.domain([y0, y1]);
+            };
+
+            chart.set_y_domain(chart.y0, chart.y1);
+
+            chart.yAxis = d3.svg.axis()
+                .scale(chart.y)
+                .orient("left");
+
+            chart.line = d3.svg.line()
+                .interpolate("basis")
+                .x(function (d) { return x(d.T); })
+                .y(function (d) { return chart.y(d.y); });
+
+            chart.svg = d3.select("body").append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+            chart.svg.append("clipPath")
+                .attr("id", "clip-path-cm-" + v)
+                .append("rect")
+                .attr("x", -1)
+                .attr("y", -1)
+                .attr("width", width+2)
+                .attr("height", height+2);
+
+            chart.cursor = chart.svg.append("line")
+                .attr("class", "cursor")
+                .attr("x1", 0)
+                .attr("x2", 0)
+                .attr("y1", 0)
+                .attr("y2", height);
+
+            chart.lines = chart.svg.append("g")
+                .attr("clip-path", "url(#clip-path-cm-" + v + ")")
+                .selectAll(".lines")
+                .data([chart.data])
+                .enter().append("g")
+                .attr("class", "lines");
+
+            chart.lines.append("path")
+                .attr("class", "line")
+                .attr("d", chart.line)
+                .style("stroke", chart.color(v));
+
+            chart.brush = chart.svg.append("g")
+                .attr("class", "brush")
+                .call(brush)
+                .selectAll("rect")
+                .attr("y", 0)
+                .attr("height", height)
+                .on("mouseover", mousein)
+                .on("mouseout", mouseout)
+                .on("mousemove", mousemove);
+
+            chart.svg.append("g")
+                .attr("class", "x axis")
+                .attr("transform", "translate(0," + height + ")")
+                .call(xAxis);
+
+            chart.svg.append("g")
+                .attr("class", "y axis")
+                .call(chart.yAxis)
+                .append("text")
+                .attr("transform", "rotate(-90)")
+                .attr("y", 6)
+                .attr("dy", ".71em")
+                .style("text-anchor", "end");
+
+            chart.svg.append("text")
+                .attr("x", width/2)
+                .attr("y", margin.top)
+                .attr("text-anchor", "middle")
+                .attr("alignment-baseline", "hanging")
+                .style("font-size", "12px")
+                .text(v);
+
+            return chart
+        }
+
         function MakeCMChart(v) {
             var chart = {'type': 'cm'};
 
@@ -514,12 +624,17 @@
         }
 
 
-        for (var i=0; i<kconfig.statevars.length; i++) {
-            charts.push(MakeStateChart(kconfig.statevars[i]));
+        var i;
+        for (i=0; i<kconfig.StateVars.length; i++) {
+            charts.push(MakeStateChart(kconfig.StateVars[i]));
         }
 
-        for (var i=0; i<kconfig.cmvars.length; i++) {
-            charts.push(MakeCMChart(kconfig.cmvars[i]));
+        for (i=0; i<kconfig.OtherVars.length; i++) {
+            charts.push(MakeOtherChart(kconfig.OtherVars[i]));
+        }
+
+        for (i=0; i<kconfig.CMVars.length; i++) {
+            charts.push(MakeCMChart(kconfig.CMVars[i]));
         }
     }
 

@@ -19,9 +19,9 @@ func (s *KalmanState) CalcRollPitchHeadingUncertainty() (droll float64, dpitch f
 	return
 }
 
-// GetState returns the current ahrs.State
-func (s *KalmanState) GetState() *State {
-	return &s.State
+// GetStateMap returns the state information for analysis
+func (s *KalmanState) GetStateMap() (dat *map[string]float64) {
+	return
 }
 
 // Initialize the state at the start of the Kalman filter, based on current measurements

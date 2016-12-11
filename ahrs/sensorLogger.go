@@ -27,8 +27,12 @@ func NewSensorLogger(fn string, h ...string) (l SensorLogger) {
 	return
 }
 
-func (l *SensorLogger) Log(v ...interface{}) {
-	fmt.Fprintf(l.f, l.fmt, v...)
+func (l *SensorLogger) Log(v ...float64) {
+	o := make([]interface{}, len(v))
+	for i, x := range v {
+		o[i] = x
+	}
+	fmt.Fprintf(l.f, l.fmt, o...)
 }
 
 func (l *SensorLogger) Close() {

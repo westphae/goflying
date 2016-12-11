@@ -11,14 +11,20 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"math"
 	"net/http"
 	"strings"
 
 	"github.com/westphae/goflying/ahrs"
 	"strconv"
 	"io/ioutil"
+	"encoding/json"
 )
+
+type config struct{
+	StateVars []string // List of state variables to output
+	OtherVars []string // List of extra variables to output
+	CMVars    []string // List of control/measurement variables to output
+}
 
 func parseFloatArrayString(str string, a *[]float64) (err error) {
 	for i, s := range strings.Split(str, ",") {
@@ -41,11 +47,11 @@ func main() {
 		gpsInop, magInop, asiInop       			bool
 		algo							string
 		s                                                       ahrs.AHRSProvider
-		st                                                      *ahrs.State
 		scenario						string
 		sit							Situation
-		kconfig                                                 string
+		kconfig                                                 config
 		err 							error
+		st							map[string]float64
 	)
 	gyroBias = make([]float64, 3)
 	accelBias = make([]float64, 3)
@@ -135,29 +141,38 @@ func main() {
 	switch strings.ToLower(algo) {
 	case "simple":
 		fmt.Println("Running simple AHRS")
-		kconfig = `{"statevars":["Phi","Theta","Psi","PhiGPS","ThetaGPS","PhiGPS","GS","TR"],
-		"cmvars":["W1","W2","W3","A1","A2","A3","B1","B2","B3","M1","M2","M3"]}`
+		kconfig = config{
+			StateVars: []string{"Phi", "Theta", "Psi"},
+			OtherVars: []string{"rollGPS","pitchGPS","headingGPS","TR","GS","TR"},
+			CMVars: []string{"W1","W2","W3","A1","A2","A3","B1","B2","B3","M1","M2","M3"},
+		}
 		s = ahrs.InitializeSimple(m)
 	case "heuristic":
 		fmt.Println("Running heuristic AHRS")
-		kconfig = ""
+		kconfig = config{}
 		s = ahrs.InitializeHeuristic(m)
 	case "kalman":
 		fmt.Println("Running Kalman AHRS")
-		kconfig = `{"statevars":["U1","U2","U3","Z1","Z2","Z3","Phi","Theta","Psi","H1","H2","H3","N1","N2",
-		"N3","V1","V2","V3","C1","C2","C3","Phi0","Theta0","Psi0","D1","D2","D3","L1","L2","L3"],
-		"cmvars":["U1","U2","U3","W1","W2","W3","A1","A2","A3","B1","B2","B3","M1","M2","M3"]}`
+		kconfig = config{
+			StateVars: []string{"U1","U2","U3","Z1","Z2","Z3","Phi","Theta","Psi","H1","H2","H3","N1","N2",
+				"N3","V1","V2","V3","C1","C2","C3","Phi0","Theta0","Psi0","D1","D2","D3","L1","L2","L3"},
+			CMVars: []string{"U1","U2","U3","W1","W2","W3","A1","A2","A3","B1","B2","B3","M1","M2","M3"},
+		}
 		s = ahrs.InitializeKalman(m)
 	case "kalman1":
 		fmt.Println("Running Kalman1 AHRS")
-		kconfig = `{"statevars":["Phi","Theta","Psi","H1","H2","H3","Phi0","Theta0","Psi0","D1","D2","D3"],
-		"cmvars":["A1","A2","A3","B1","B2","B3","M1","M2","M3"]}`
+		kconfig = config{
+			StateVars: []string{"Phi","Theta","Psi","H1","H2","H3","Phi0","Theta0","Psi0","D1","D2","D3"},
+			CMVars: []string{"A1","A2","A3","B1","B2","B3","M1","M2","M3"},
+		}
 		s = ahrs.InitializeKalman1(m)
 	case "kalman2":
 		fmt.Println("Running Kalman2 AHRS")
-		kconfig = `{"statevars":["U1","U2","U3","Z1","Z2","Z3","Phi","Theta","Psi",
-		"H1","H2","H3","C1","C2","C3","Phi0","Theta0","Psi0","D1","D2","D3"],
-		"cmvars":["A1","A2","A3","B1","B2","B3","M1","M2","M3"]}`
+		kconfig = config{
+			StateVars: []string{"U1","U2","U3","Z1","Z2","Z3","Phi","Theta","Psi",
+				"H1","H2","H3","C1","C2","C3","Phi0","Theta0","Psi0","D1","D2","D3"},
+			CMVars: []string{"A1","A2","A3","B1","B2","B3","M1","M2","M3"},
+		}
 		s = ahrs.InitializeKalman2(m)
 	default:
 		fmt.Printf("No such AHRS implementation: %s\n", algo)
@@ -221,6 +236,7 @@ func main() {
 		"T", "U1", "U2", "U3", "W1", "W2", "W3", "A1", "A2", "A3", "B1", "B2", "B3", "M1", "M2", "M3")
 	lKMeas := ahrs.NewSensorLogger("./k_kalmeas.csv",
 		"T", "U1", "U2", "U3", "W1", "W2", "W3", "A1", "A2", "A3", "B1", "B2", "B3", "M1", "M2", "M3")
+	lKOther := ahrs.NewSensorLogger("./k_other.csv", append([]string{"T"}, kconfig.OtherVars...)...)
 
 	// This is where it all happens
 	fmt.Println("Running Simulation")
@@ -311,20 +327,18 @@ func main() {
 
 		// Predict stage of Kalman filter
 		s.Predict(t)
-		st = s.GetState()
-		phi, theta, psi = ahrs.FromQuaternion(st.E0, st.E1, st.E2, st.E3)
-		phi0, theta0, psi0 = ahrs.FromQuaternion(st.F0, st.F1, st.F2, st.F3)
-		lPredict.Log(st.T,
-			st.U1, st.U2, st.U3,
-			st.Z1, st.Z2, st.Z3,
-			phi / Deg, theta / Deg, psi / Deg,
-			st.H1, st.H2, st.H3,
-			st.N1, st.N2, st.N3,
-			st.V1, st.V2, st.V3,
-			st.C1, st.C2, st.C3,
-			phi0 / Deg, theta0 / Deg, psi0 / Deg,
-			st.D1, st.D2, st.D3,
-			st.L1, st.L2, st.L3,
+		st = *s.GetStateMap()
+		lPredict.Log(st["T"],
+			st["U1"], st["U2"], st["U3"],
+			st["Z1"], st["Z2"], st["Z3"],
+			st["Phi"], st["Theta"], st["Psi"],
+			st["H1"], st["H2"], st["H3"],
+			st["N1"], st["N2"], st["N3"],
+			st["V1"], st["V2"], st["V3"],
+			st["C1"], st["C2"], st["C3"],
+			st["Phi0"], st["Theta0"], st["Psi0"],
+			st["D1"], st["D2"], st["D3"],
+			st["L1"], st["L2"], st["L3"],
 		)
 
 		pm = s.PredictMeasurement()
@@ -352,37 +366,40 @@ func main() {
 			pm.M1, pm.M2, pm.M3,
 		)
 
-		st = s.GetState()
-		phi, theta, psi = s.CalcRollPitchHeading()
-		phi0, theta0, psi0 = ahrs.FromQuaternion(st.F0, st.F1, st.F2, st.F3)
-		dphi, dtheta, dpsi := s.CalcRollPitchHeadingUncertainty()
-		dphi0, dtheta0, dpsi0 := ahrs.VarFromQuaternion(st.F0, st.F1, st.F2, st.F3,
-			math.Sqrt(st.M.Get(22, 22)), math.Sqrt(st.M.Get(23, 23)),
-			math.Sqrt(st.M.Get(24, 24)), math.Sqrt(st.M.Get(25, 25)))
-		lKalman.Log(st.T,
-			st.U1, st.U2, st.U3,
-			st.Z1, st.Z2, st.Z3,
-			phi / Deg, theta / Deg, psi / Deg,
-			st.H1, st.H2, st.H3,
-			st.N1, st.N2, st.N3,
-			st.V1, st.V2, st.V3,
-			st.C1, st.C2, st.C3,
-			phi0 / Deg, theta0 / Deg, psi0 / Deg,
-			st.D1, st.D2, st.D3,
-			st.L1, st.L2, st.L3,
+		st = *s.GetStateMap()
+		lKalman.Log(st["T"],
+			st["U1"], st["U2"], st["U3"],
+			st["Z1"], st["Z2"], st["Z3"],
+			st["Phi"], st["Theta"], st["Psi"],
+			st["H1"], st["H2"], st["H3"],
+			st["N1"], st["N2"], st["N3"],
+			st["V1"], st["V2"], st["V3"],
+			st["C1"], st["C2"], st["C3"],
+			st["Phi0"], st["Theta0"], st["Psi0"],
+			st["D1"], st["D2"], st["D3"],
+			st["L1"], st["L2"], st["L3"],
 		)
-		lVar.Log(st.T,
-			math.Sqrt(st.M.Get(0, 0)), math.Sqrt(st.M.Get(1, 1)), math.Sqrt(st.M.Get(2, 2)),
-			math.Sqrt(st.M.Get(3, 3)), math.Sqrt(st.M.Get(4, 4)), math.Sqrt(st.M.Get(5, 5)),
-			dphi / Deg, dtheta / Deg, dpsi / Deg,
-			math.Sqrt(st.M.Get(10, 10)), math.Sqrt(st.M.Get(11, 11)), math.Sqrt(st.M.Get(12, 12)),
-			math.Sqrt(st.M.Get(13, 13)), math.Sqrt(st.M.Get(14, 14)), math.Sqrt(st.M.Get(15, 15)),
-			math.Sqrt(st.M.Get(16, 16)), math.Sqrt(st.M.Get(17, 17)), math.Sqrt(st.M.Get(18, 18)),
-			math.Sqrt(st.M.Get(19, 19)), math.Sqrt(st.M.Get(20, 20)), math.Sqrt(st.M.Get(21, 21)),
-			dphi0 / Deg, dtheta0 / Deg, dpsi0 / Deg,
-			math.Sqrt(st.M.Get(26, 26)), math.Sqrt(st.M.Get(27, 27)), math.Sqrt(st.M.Get(28, 28)),
-			math.Sqrt(st.M.Get(29, 29)), math.Sqrt(st.M.Get(30, 30)), math.Sqrt(st.M.Get(31, 31)),
+		lVar.Log(st["T"],
+			st["T"], st["dU1"], st["dU2"], st["dU3"], st["dZ1"], st["dZ2"], st["dZ3"],
+			st["dPhi"], st["dTheta"], st["dPsi"], st["dH1"], st["dH2"], st["dH3"],
+			st["dN1"], st["dN2"], st["dN3"], st["dV1"], st["dV2"], st["dV3"],
+			st["dC1"], st["dC2"], st["dC3"], st["dPhi0"], st["dTheta0"], st["dPsi0"],
+			st["dD1"], st["dD2"], st["dD3"], st["dL1"], st["dL2"], st["dL3"],
 		)
+
+		vals := func() (v []float64) {
+			v = make([]float64, len(kconfig.OtherVars) + 1)
+			v[0] = st["T"]
+			for i, k := range kconfig.OtherVars {
+				v[i+1] = st[k]
+				if (strings.HasPrefix(k, "roll") || strings.HasPrefix(k, "pitch") ||
+					strings.HasPrefix(k, "heading") || strings.HasPrefix(k, "TR")) {
+					v[i+1] /= Deg
+				}
+			}
+			return
+		}()
+		lKOther.Log(vals...)
 
 		t += pdt
 	}
@@ -395,7 +412,9 @@ func main() {
 	lVar.Close()
 	lMeas.Close()
 	lKMeas.Close()
-	ioutil.WriteFile("k_config.json", []byte(kconfig), 0644)
+	lKOther.Close()
+	js, err := json.Marshal(&kconfig)
+	ioutil.WriteFile("k_config.json", js, 0644)
 
 	// Run analysis web server
 	fmt.Println("Serving charts")

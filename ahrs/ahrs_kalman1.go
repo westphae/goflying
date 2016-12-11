@@ -46,9 +46,50 @@ func (s *Kalman1State) CalcRollPitchHeadingUncertainty() (droll float64, dpitch 
 	return
 }
 
-// GetState returns the current ahrs.State
-func (s *Kalman1State) GetState() *State {
-	return &s.State
+// GetStateMap returns the state information for analysis
+func (s *Kalman1State) GetStateMap() (dat *map[string]float64) {
+	phi, theta, psi := FromQuaternion(s.E0, s.E1, s.E2, s.E3)
+	phi0, theta0, psi0 := FromQuaternion(s.F0, s.F1, s.F2, s.F3)
+	dphi, dtheta, dpsi := s.CalcRollPitchHeadingUncertainty()
+	dphi0, dtheta0, dpsi0 := VarFromQuaternion(s.F0, s.F1, s.F2, s.F3,
+		math.Sqrt(s.M.Get(22, 22)), math.Sqrt(s.M.Get(23, 23)),
+		math.Sqrt(s.M.Get(24, 24)), math.Sqrt(s.M.Get(25, 25)))
+	dat = &map[string]float64{
+		"T":  s.T,
+		"E0": s.E0,
+		"E1": s.E1,
+		"E2": s.E2,
+		"E3": s.E3,
+		"Phi": phi / Deg,
+		"Theta": theta / Deg,
+		"Psi": psi / Deg,
+		"H1": s.H1,
+		"H2": s.H2,
+		"H3": s.H3,
+		"F0": s.F0,
+		"F1": s.F1,
+		"F2": s.F2,
+		"F3": s.F3,
+		"Phi0": phi0 / Deg,
+		"Theta0": theta0 / Deg,
+		"Psi0": psi0 / Deg,
+		"D1": s.D1,
+		"D2": s.D2,
+		"D3": s.D3,
+		"dPhi": dphi,
+		"dTheta": dtheta,
+		"dPsi": dpsi,
+		"dH1": math.Sqrt(s.M.Get(10, 10)),
+		"dH2": math.Sqrt(s.M.Get(11, 11)),
+		"dH3": math.Sqrt(s.M.Get(12, 12)),
+		"dPhi0": dphi0,
+		"dTheta0": dtheta0,
+		"dPsi0": dpsi0,
+		"dD1": math.Sqrt(s.M.Get(26, 26)),
+		"dD2": math.Sqrt(s.M.Get(27, 27)),
+		"dD3": math.Sqrt(s.M.Get(28, 28)),
+	}
+	return
 }
 
 // Initialize the state at the start of the Kalman filter, based on current measurements
