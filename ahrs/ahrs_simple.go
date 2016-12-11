@@ -7,10 +7,13 @@ import (
 )
 
 const (
-	MinDT float64 = 1e-6 // Below this time interval, don't recalculate
-	MaxDT float64 = 10   // Above this time interval, re-initialize--too stale
-	MinGS float64 = 10   // Below this GS, don't use any GPS data
-	K     float64 = 0.9  // Reversion constant
+	minDT        float64 = 1e-6 // Below this time interval, don't recalculate
+	maxDT        float64 = 10   // Above this time interval, re-initialize--too stale
+	minGS        float64 = 10   // Below this GS, don't use any GPS data
+	rollBand     float64 = 5 // Degrees by which roll can differ from pitchGPS
+	pitchBand    float64 = 5 // Degrees by which pitch can differ from pitchGPS
+	headingBand  float64 = 5 // Degrees by which heading can differ from pitchGPS
+	gpsTimeConst float64 = 15 // Seconds time constant for attitude to decay towards GPS value without gyro input
 )
 
 type SimpleState struct {
@@ -45,7 +48,7 @@ func (s *SimpleState) init(m *Measurement) {
 
 	s.tr = 0
 	s.rollGPS = 0
-	if s.gs > MinGS {
+	if s.gs > minGS {
 		s.headingGPS = math.Atan2(m.W1, m.W2)
 		s.pitchGPS = math.Atan2(m.W3, s.gs)
 	} else {
@@ -71,10 +74,10 @@ func (s *SimpleState) Predict(t float64) {
 
 func (s *SimpleState) Update(m *Measurement) {
 	dt := m.T - s.T
-	if dt < MinDT {
+	if dt < minDT {
 		return
 	}
-	if dt > MaxDT {
+	if dt > maxDT {
 		s.init(m)
 		return
 	}
@@ -83,7 +86,7 @@ func (s *SimpleState) Update(m *Measurement) {
 		s.gs = math.Hypot(m.W1, m.W2)
 	}
 
-	if m.WValid && s.gs > MinGS {
+	if m.WValid && s.gs > minGS {
 		s.tr = 0.9*s.tr + 0.1*(m.W2*(m.W1-s.w1)-m.W1*(m.W2-s.w2))/(s.gs*s.gs)/dt
 		s.rollGPS = math.Atan(s.gs*s.tr/G)
 		s.pitchGPS = math.Atan2(m.W3, s.gs)
@@ -110,43 +113,39 @@ func (s *SimpleState) Update(m *Measurement) {
 	dq1 -= q1
 	dq2 -= q2
 	dq3 -= q3
-	//log.Printf(" q: %1.4f, %1.4f, %1.4f, %1.4f\n", q0, q1, q2, q3)
-	//log.Printf("dq: %1.4f, %1.4f, %1.4f, %1.4f\n", dq0, dq1, dq2, dq3)
 
 	rx := 2 * (q0*q1 + q2*q3)
 	ry := q0*q0 - q1*q1 - q2*q2 + q3*q3
 	drx := 2 * (q1*dq0 + q0*dq1 + q3*dq2 + q2*dq3)
 	dry := 2 * (q0*dq0 - q1*dq1 - q2*dq2 + q3*dq3)
 	dr := (ry*drx - rx*dry) / (rx*rx + ry*ry)
-	//log.Printf(" rx,  ry: %f, %f\n", rx, ry)
-	//log.Printf("drx, dry: %f, %f\n", drx, dry)
-	//log.Printf("dr, db: %f, %f\n", dr, m.B1*dt)
 
 	px := -2 * (q0*q2 - q3*q1)
 	py := q0*q0 + q1*q1 + q2*q2 + q3*q3
 	dpx := -2 * (q2*dq0 - q3*dq1 + q0*dq2 - q1*dq3)
 	dpy := 2 * (q0*dq0 + q1*dq1 + q2*dq2 + q3*dq3)
 	dp := (py*dpx - px*dpy) / (py * math.Sqrt(py*py-px*px))
-	//log.Printf(" px,  py: %f, %f\n", px, py)
-	//log.Printf("dpx, dpy: %f, %f\n", dpx, dpy)
-	//log.Printf("dp, db: %f, %f\n", dp, -m.B2*dt)
 
 	hx := -2 * (q0*q3 - q1*q2)
 	hy := q0*q0 + q1*q1 - q2*q2 - q3*q3
 	dhx := -2 * (q3*dq0 - q2*dq1 - q1*dq2 + q0*dq3)
 	dhy := 2 * (q0*dq0 + q1*dq1 - q2*dq2 - q3*dq3)
 	dh := (hy*dhx - hx*dhy) / (hx*hx + hy*hy)
-	//log.Printf(" hx,  hy: %f, %f\n", hx, hy)
-	//log.Printf("dhx, dhy: %f, %f\n", dhx, dhy)
-	//log.Printf("dh, db: %f, %f\n", dh, -m.B3*dt)
 
-	// This won't work around the poles
+	// This won't work around the poles -- no hammerheads!
+	kp := 0.5 * (s.pitch - s.pitchGPS) / pitchBand + 0.5
+	// The idea of the simple AHRS is to bias the sensors to bring the estimated attitude
+	// in line with the GPS-derived attitude
 	if (s.pitch-s.pitchGPS)*dp > 0 {
-		dp *= K
+		dp *= kp
 	}
+
+	kr := 0.5 * (s.roll - s.rollGPS) / rollBand + 0.5
 	if (s.roll-s.rollGPS)*dr > 0 {
-		dr *= K
+		dr *= kr
 	}
+
+	kh := 0.5 * (s.heading - s.headingGPS) / headingBand + 0.5
 	ddh := s.heading - s.headingGPS
 	if ddh > Pi {
 		ddh -= 2*Pi
@@ -154,12 +153,12 @@ func (s *SimpleState) Update(m *Measurement) {
 		ddh += 2*Pi
 	}
 	if ddh*dh > 0 {
-		dh *= K
+		dh *= kh
 	}
 
-	s.pitch += dp
-	s.roll += dr
-	s.heading += dh
+	s.pitch += dp + (s.pitchGPS-s.pitch)*dt/gpsTimeConst
+	s.roll += dr + (s.rollGPS-s.roll)*dt/gpsTimeConst
+	s.heading += dh - ddh*dt/gpsTimeConst
 
 	s.roll, s.pitch, s.heading = Regularize(s.roll, s.pitch, s.heading)
 	s.rollGPS, s.pitchGPS, s.headingGPS = Regularize(s.rollGPS, s.pitchGPS, s.headingGPS)
