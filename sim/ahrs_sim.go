@@ -224,7 +224,6 @@ func main() {
 		if t > tNextUpdate - 1e-9 {
 			tNextUpdate += udt
 			s.Update(m)
-			log.Printf("Time: %.2f\n", t)
 		}
 
 		t += pdt

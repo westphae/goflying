@@ -3,16 +3,17 @@ package ahrs
 import (
 	"math"
 	"github.com/skelterjohn/go.matrix"
+	"log"
 )
 
 const (
 	minDT        float64 = 1e-6 // Below this time interval, don't recalculate
 	maxDT        float64 = 10   // Above this time interval, re-initialize--too stale
 	minGS        float64 = 10   // Below this GS, don't use any GPS data
-	rollBand     float64 = 5 // Degrees by which roll can differ from pitchGPS
-	pitchBand    float64 = 5 // Degrees by which pitch can differ from pitchGPS
-	headingBand  float64 = 5 // Degrees by which heading can differ from pitchGPS
-	gpsTimeConst float64 = 15 // Seconds time constant for attitude to decay towards GPS value without gyro input
+	rollBand     float64 = 10   // Degrees by which roll can differ from pitchGPS
+	pitchBand    float64 = 10   // Degrees by which pitch can differ from pitchGPS
+	headingBand  float64 = 10   // Degrees by which heading can differ from pitchGPS
+	gpsTimeConst float64 = 30   // Seconds time constant for attitude to decay towards GPS value without gyro input
 )
 
 type SimpleState struct {
@@ -87,7 +88,7 @@ func (s *SimpleState) init(m *Measurement) {
 
 func (s *SimpleState) Compute(m *Measurement) {
 	s.Predict(m.T)
-	s.Compute(m)
+	s.Update(m)
 }
 
 func (s *SimpleState) Predict(t float64) {
@@ -97,9 +98,11 @@ func (s *SimpleState) Predict(t float64) {
 func (s *SimpleState) Update(m *Measurement) {
 	dt := m.T - s.T
 	if dt < minDT {
+		log.Printf("Time interval too short at %f\n", m.T)
 		return
 	}
 	if dt > maxDT {
+		log.Printf("Reinitializing at %f\n", m.T)
 		s.init(m)
 		return
 	}
@@ -155,19 +158,19 @@ func (s *SimpleState) Update(m *Measurement) {
 	dh := (hy*dhx - hx*dhy) / (hx*hx + hy*hy)
 
 	// This won't work around the poles -- no hammerheads!
-	kp := 0.5 * (s.pitch - s.pitchGPS) / pitchBand + 0.5
+	kp := 1 - math.Abs((s.pitch - s.pitchGPS) / pitchBand) // linear
 	// The idea of the simple AHRS is to bias the sensors to bring the estimated attitude
 	// in line with the GPS-derived attitude
 	if (s.pitch-s.pitchGPS)*dp > 0 {
-		dp *= kp
+		dp *= math.Max(0, kp)
 	}
 
-	kr := 0.5 * (s.roll - s.rollGPS) / rollBand + 0.5
+	kr := 1 - math.Abs((s.roll - s.rollGPS) / rollBand) // linear
 	if (s.roll-s.rollGPS)*dr > 0 {
-		dr *= kr
+		dr *= math.Max(0, kr)
 	}
 
-	kh := 0.5 * (s.heading - s.headingGPS) / headingBand + 0.5
+	kh := 1 - math.Abs((s.heading - s.headingGPS) / headingBand) // linear
 	ddh := s.heading - s.headingGPS
 	if ddh > Pi {
 		ddh -= 2*Pi
@@ -175,7 +178,7 @@ func (s *SimpleState) Update(m *Measurement) {
 		ddh += 2*Pi
 	}
 	if ddh*dh > 0 {
-		dh *= kh
+		dh *= math.Max(0, kh)
 	}
 
 	s.pitch += dp + (s.pitchGPS-s.pitch)*dt/gpsTimeConst

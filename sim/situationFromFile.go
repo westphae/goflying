@@ -188,7 +188,7 @@ func (s *SituationFromFile) Measurement(t float64, m *ahrs.Measurement,
 	m.W1 = f*s.w1[ix] + (1-f)*s.w1[ix+1]
 	m.W2 = f*s.w2[ix] + (1-f)*s.w2[ix+1]
 	m.W3 = f*s.w3[ix] + (1-f)*s.w3[ix+1]
-	m.WValid = s.tw[ix] - s.ts[ix] < 5 // Arbitrary: allow up to 5 sec lag for GPS data (5s seems typical)
+	m.WValid = s.ts[ix] - s.tw[ix] < 5 // Arbitrary: allow up to 5 sec lag for GPS data (5s seems typical)
 	m.A1 = -(f*s.a1[ix] + (1-f)*s.a1[ix+1])
 	m.A2 = -(f*s.a2[ix] + (1-f)*s.a2[ix+1])
 	m.A3 = -(f*s.a3[ix] + (1-f)*s.a3[ix+1])
