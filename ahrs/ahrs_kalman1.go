@@ -323,3 +323,5 @@ func (s *Kalman1State) calcJacobianMeasurement() (jac *matrix.DenseMatrix) {
 
 	return
 }
+
+var Kalman1JSONConfig = ""

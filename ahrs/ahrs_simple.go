@@ -1,7 +1,6 @@
 package ahrs
 
 import (
-	_ "log"
 	"math"
 	"github.com/skelterjohn/go.matrix"
 )
@@ -22,10 +21,31 @@ type SimpleState struct {
 	roll, pitch, heading          float64 // Fused attitude, Deg
 	w1, w2, w3, gs                float64 // Groundspeed & ROC tracking, Kts
 	tr                            float64 // turn rate, Rad/s
+	analysisLogger                SensorLogger // Logger for analysis
+	loggerHeader		      []string // Header strings in order
 }
 
-func InitializeSimple(m *Measurement) (s *SimpleState) {
+func (s *SimpleState) log(m *Measurement) {
+	if s.loggerHeader != nil {
+		vals := make([]float64, len(s.loggerHeader))
+		for i, k := range s.loggerHeader {
+			vals[i] = simpleLogMap[k](s, m)
+		}
+		s.analysisLogger.Log(vals...)
+	}
+}
+
+func InitializeSimple(m *Measurement, analysisFilename string) (s *SimpleState) {
 	s = new(SimpleState)
+	if analysisFilename != "" {
+		s.loggerHeader = make([]string, len(simpleLogMap))
+		i := 0
+		for k, _ := range simpleLogMap {
+			s.loggerHeader[i] = k
+			i++
+		}
+		s.analysisLogger = NewSensorLogger(analysisFilename, s.loggerHeader...)
+	}
 	s.M = matrix.Zeros(32, 32)
 	s.N = matrix.Zeros(32, 32)
 	s.init(m)
@@ -61,11 +81,13 @@ func (s *SimpleState) init(m *Measurement) {
 	s.heading = s.headingGPS
 
 	s.E0, s.E1, s.E2, s.E3 = ToQuaternion(s.roll, s.pitch, s.heading)
+
+	s.log(m)
 }
 
 func (s *SimpleState) Compute(m *Measurement) {
 	s.Predict(m.T)
-	s.Update(m)
+	s.Compute(m)
 }
 
 func (s *SimpleState) Predict(t float64) {
@@ -165,6 +187,8 @@ func (s *SimpleState) Update(m *Measurement) {
 
 	s.E0, s.E1, s.E2, s.E3 = ToQuaternion(s.roll, s.pitch, s.heading)
 	s.T = m.T
+
+	s.log(m)
 }
 
 func (s *SimpleState) Valid() (ok bool) {
@@ -173,15 +197,6 @@ func (s *SimpleState) Valid() (ok bool) {
 
 func (s *SimpleState) CalcRollPitchHeading() (roll float64, pitch float64, heading float64) {
 	roll, pitch, heading = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
-	return
-}
-
-func (s *SimpleState) CalcGPSRollPitchHeading() (roll float64, pitch float64, heading float64) {
-	roll, pitch, heading = s.rollGPS, s.pitchGPS, s.headingGPS
-	return
-}
-
-func (s *SimpleState) CalcRollPitchHeadingUncertainty() (droll float64, dpitch float64, dheading float64) {
 	return
 }
 
@@ -216,3 +231,60 @@ func (s *SimpleState) GetStateMap() (dat *map[string]float64) {
 func (s *SimpleState) PredictMeasurement() *Measurement {
 	return NewMeasurement()
 }
+
+var simpleLogMap = map[string]func(s *SimpleState, m *Measurement)float64{
+	"T": func(s *SimpleState, m *Measurement) float64 {return s.T},
+	"Roll": func(s *SimpleState, m *Measurement) float64 {return s.roll / Deg},
+	"Pitch": func(s *SimpleState, m *Measurement) float64 {return s.pitch / Deg},
+	"Heading": func(s *SimpleState, m *Measurement) float64 {return s.heading / Deg},
+	"GPSRoll": func(s *SimpleState, m *Measurement) float64 {return s.rollGPS / Deg},
+	"GPSPitch": func(s *SimpleState, m *Measurement) float64 {return s.pitchGPS / Deg},
+	"GPSHeading": func(s *SimpleState, m *Measurement) float64 {return s.headingGPS / Deg},
+	"TurnRate": func(s *SimpleState, m *Measurement) float64 {return s.tr / Deg},
+	"GroundSpeed": func(s *SimpleState, m *Measurement) float64 {return s.gs},
+	"W1a": func(s *SimpleState, m *Measurement) float64 {return s.w1},
+	"W2a": func(s *SimpleState, m *Measurement) float64 {return s.w2},
+	"W3a": func(s *SimpleState, m *Measurement) float64 {return s.w3},
+	"dPitch": func(s *SimpleState, m *Measurement) float64 {return pitchBand},
+	"dRoll": func(s *SimpleState, m *Measurement) float64 {return rollBand},
+	"dHeading": func(s *SimpleState, m *Measurement) float64 {return headingBand},
+	"W1": func(s *SimpleState, m *Measurement) float64 {return m.W1},
+	"W2": func(s *SimpleState, m *Measurement) float64 {return m.W2},
+	"W3": func(s *SimpleState, m *Measurement) float64 {return m.W3},
+	"A1": func(s *SimpleState, m *Measurement) float64 {return m.A1},
+	"A2": func(s *SimpleState, m *Measurement) float64 {return m.A2},
+	"A3": func(s *SimpleState, m *Measurement) float64 {return m.A3},
+	"B1": func(s *SimpleState, m *Measurement) float64 {return m.B1},
+	"B2": func(s *SimpleState, m *Measurement) float64 {return m.B2},
+	"B3": func(s *SimpleState, m *Measurement) float64 {return m.B3},
+	"M1": func(s *SimpleState, m *Measurement) float64 {return m.M1},
+	"M2": func(s *SimpleState, m *Measurement) float64 {return m.M2},
+	"M3": func(s *SimpleState, m *Measurement) float64 {return m.M3},
+}
+
+var SimpleJSONConfig = `
+{
+  "State": [
+    {"pred": "GPSRoll", "updt": "Roll", "std": "dRoll"},
+    {"pred": "GPSPitch", "updt": "Pitch", "std": "dPitch"},
+    {"pred": "GPSHeading", "updt": "Heading", "std": "dHeading"},
+    {"updt": "TurnRate"},
+    {"updt": "GroundSpeed"},
+    {"updt": "T"}
+  ],
+  "Measurement": [
+    {"meas": "W1", "pred": "W1a"},
+    {"meas": "W2", "pred": "W2a"},
+    {"meas": "W3", "pred": "W3a"},
+    {"meas": "A1"},
+    {"meas": "A2"},
+    {"meas": "A3"},
+    {"meas": "B1"},
+    {"meas": "B2"},
+    {"meas": "B3"},
+    {"meas": "M1"},
+    {"meas": "M2"},
+    {"meas": "M3"}
+  ]
+}
+`

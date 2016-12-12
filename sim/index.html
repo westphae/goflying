@@ -37,7 +37,7 @@
             stroke: black;
         }
 
-        .predict {
+        .pred {
             stroke-dasharray: 3;
         }
 
@@ -49,13 +49,6 @@
             fill: none;
             stroke-width: 1px;
             stroke-dasharray: 3;
-            vector-effect: non-scaling-stroke;
-        }
-
-        .kline {
-            fill: none;
-            stroke-width: 1px;
-            stroke-dasharray: 2;
             vector-effect: non-scaling-stroke;
         }
 
@@ -72,71 +65,32 @@
 <body>
 <script src="http://d3js.org/d3.v3.min.js"></script>
 <script>
-    var actual, predict, kalman, variance, measure, pmeasure, kmeasure, kother,
-            kconfig,
-            remaining = 9,
-            charts = [];
+    var actual, ahrs, config,
+        remaining = 3,
+        plotActual,
+        charts = [];
 
-    d3.csv("k_state.csv", function (error, data) {
+    d3.json("config.json", function (error, data) {
         if (error) throw error;
 
-        actual = data;
+        config = data;
         if (!--remaining) makeAll();
     });
 
-    d3.csv("k_predict.csv", function (error, data) {
-        if (error) throw error;
-
-        predict = data;
+    d3.csv("actual.csv", function (error, data) {
+        if (error) {
+            plotActual = false;
+        } else {
+            plotActual = true;
+            actual = data;
+        }
         if (!--remaining) makeAll();
     });
 
-    d3.csv("k_kalman.csv", function (error, data) {
+    d3.csv("ahrs.csv", function (error, data) {
         if (error) throw error;
 
-        kalman = data;
-        if (!--remaining) makeAll();
-    });
-
-    d3.csv("k_var.csv", function (error, data) {
-        if (error) throw error;
-
-        variance = data;
-        if (!--remaining) makeAll();
-    });
-
-    d3.csv("k_meas.csv", function (error, data) {
-        if (error) throw error;
-
-        measure = data;
-        if (!--remaining) makeAll();
-    });
-
-    d3.csv("k_predmeas.csv", function (error, data) {
-        if (error) throw error;
-
-        pmeasure = data;
-        if (!--remaining) makeAll();
-    });
-
-    d3.csv("k_kalmeas.csv", function (error, data) {
-        if (error) throw error;
-
-        kmeasure = data;
-        if (!--remaining) makeAll();
-    });
-
-    d3.csv("k_other.csv", function (error, data) {
-        if (error) throw error;
-
-        kother = data;
-        if (!--remaining) makeAll();
-    });
-
-    d3.json("k_config.json", function (error, data) {
-        if (error) throw error;
-
-        kconfig = data;
+        ahrs = data;
         if (!--remaining) makeAll();
     });
 
@@ -146,7 +100,7 @@
                 height = 250 - margin.top - margin.bottom;
 
         // Common x-scaling and x-axis for all graphs
-        var x0 = d3.extent(actual, function(d) {
+        var x0 = d3.extent(ahrs, function(d) {
                     return +d.T;
                 }),
                 x = d3.scale.linear()
@@ -184,18 +138,18 @@
                         y0 = d3.min(c.data, function (v) {
                             if (+v.T >= xs[0] & +v.T <= xs[1]) {
                                 if (c.type == 'state') {
-                                    return d3.min([+v.lower, +v.actual]);
+                                    return d3.min([+v.lower, +v.pred]);
                                 } else {
-                                    return d3.min([+v.y, +v.py, +v.ky]);
+                                    return d3.min([+v.y, +v.py]);
                                 }
                             }
                         });
                         y1 = d3.max(c.data, function (v) {
                             if (+v.T > xs[0] & +v.T < xs[1]) {
                                 if (c.type == 'state') {
-                                    return d3.max([+v.upper, +v.actual]);
+                                    return d3.max([+v.upper, +v.pred]);
                                 } else {
-                                    return d3.max([+v.y, +v.py, +v.ky]);
+                                    return d3.max([+v.y, +v.py]);
                                 }
                             }
                         });
@@ -204,14 +158,13 @@
                     c.set_y_domain(y0, y1);
                     c.svg.select(".y.axis").call(c.yAxis);
                     if (c.type == 'state') {
-                        c.svg.select(".line.actual").attr("d", c.line('actual'));
-                        c.svg.select(".line.predict").attr("d", c.line('predict'));
-                        c.svg.select(".line.kalman").attr("d", c.line('kalman'));
+                        c.svg.select(".line.actual").attr("d", c.line("actual"));
+                        c.svg.select(".line.pred").attr("d", c.line("pred"));
+                        c.svg.select(".line.updt").attr("d", c.line("updt"));
                         c.svg.select(".area").attr("d", c.area);
                     } else {
                         c.svg.select(".line").attr("d", c.line);
                         c.svg.select(".pline").attr("d", c.pline);
-                        c.svg.select(".kline").attr("d", c.kline);
                     }
                     c.svg.select(".brush").call(brush);
                 });
@@ -239,33 +192,54 @@
         function MakeStateChart(v) {
 
             var chart = {
-                'var': v,
-                'type': 'state'
-            };
+                    'var': v.updt,
+                    'type': 'state'
+                },
+                plotPred = false, plotBand = false;
+
+            if ('pred' in v) {
+                plotPred = true;
+            }
+
+            if ('std' in v) {
+                plotBand = true;
+            }
 
             chart.color = d3.scale.category20()
-                    .domain(d3.keys(actual[0]).filter(function (key) {
-                        return key !== "T";
-                    }));
+                    .domain(d3.keys(ahrs[0]));
 
-            chart.data = actual.map(function(d, i) {
-                return {T: parseFloat(d.T),
-                    actual: parseFloat(d[v]),
-                    predict: parseFloat(predict[i][v]),
-                    kalman: parseFloat(kalman[i][v]),
-                    lower: parseFloat(kalman[i][v])-parseFloat(variance[i][v]),
-                    upper: parseFloat(kalman[i][v])+parseFloat(variance[i][v])
+            chart.data = ahrs.map(function(d, i) {
+                var r = {T: parseFloat(d.T),
+                    updt: parseFloat(d[v.updt]),
                 };
+                if (plotActual) {
+                    r.actual = parseFloat(actual[i][v]);
+                } else {
+                    r.actual = parseFloat(d[v.updt]);
+                }
+                if (plotPred) {
+                    r.pred = parseFloat(d[v.pred]);
+                } else {
+                    r.pred = r.updt;
+                }
+                if (plotBand) {
+                    r.lower = parseFloat(d[v.updt])-parseFloat(d[v.std]);
+                    r.upper = parseFloat(d[v.updt])+parseFloat(d[v.std]);
+                } else {
+                    r.lower = r.updt;
+                    r.upper = r.updt;
+                }
+                return r
             });
 
             chart.y0 = d3.min(chart.data, function(v) {
                 if (x(+v.T)>0 & x(+v.T)<width) {
-                    return d3.min([v.lower, v.actual, v.predict, v.kalman]);
+                    return d3.min([v.lower, v.actual, v.pred]);
                 }
             });
             chart.y1 = d3.max(chart.data, function (v) {
                 if (x(+v.T)>0 & x(+v.T)<width) {
-                    return d3.max([+v.upper, +v.actual, v.predict, v.kalman]);
+                    return d3.max([+v.upper, +v.actual, v.pred]);
                 }
             });
 
@@ -291,19 +265,19 @@
             };
 
             chart.area = d3.svg.area()
-                    .interpolate("basis")
-                    .x(function(d) { return x(d.T); })
-                    .y0(function(d) { return chart.y(d.lower); })
-                    .y1(function(d) { return chart.y(d.upper); });
+                .interpolate("basis")
+                .x(function (d) { return x(d.T); })
+                .y0(function (d) { return chart.y(d.lower); })
+                .y1(function (d) { return chart.y(d.upper); });
 
             chart.svg = d3.select("body").append("svg")
-                    .attr("width", width + margin.left + margin.right)
-                    .attr("height", height + margin.top + margin.bottom)
-                    .append("g")
-                    .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
 
             chart.svg.append("clipPath")
-                    .attr("id", "clip-path-state-" + v)
+                    .attr("id", "clip-path-state-" + v.updt)
                     .append("rect")
                     .attr("x", -1)
                     .attr("y", -1)
@@ -318,30 +292,36 @@
                     .attr("y2", height);
 
             chart.lines = chart.svg.append("g")
-                    .attr("clip-path", "url(#clip-path-state-" + v + ")")
+                    .attr("clip-path", "url(#clip-path-state-" + v.updt + ")")
                     .selectAll(".lines")
                     .data([chart.data])
                     .enter().append("g")
                     .attr("class", "lines");
 
-            chart.lines.append("path")
+            if (plotBand) {
+                chart.lines.append("path")
                     .attr("class", "area")
                     .attr("d", chart.area)
-                    .style("fill", chart.color(v));
+                    .style("fill", chart.color(v.updt));
+            }
 
-            chart.lines.append("path")
+            if (plotActual) {
+                chart.lines.append("path")
                     .attr("class", "line actual")
                     .attr("d", chart.line("actual"));
+            }
+
+            if (plotPred) {
+                chart.lines.append("path")
+                    .attr("class", "line pred")
+                    .attr("d", chart.line("pred"))
+                    .style("stroke", chart.color(v.updt));
+            }
 
             chart.lines.append("path")
-                    .attr("class", "line predict")
-                    .attr("d", chart.line("predict"))
-                    .style("stroke", chart.color(v));
-
-            chart.lines.append("path")
-                    .attr("class", "line kalman")
-                    .attr("d", chart.line("kalman"))
-                    .style("stroke", chart.color(v));
+                    .attr("class", "line updt")
+                    .attr("d", chart.line("updt"))
+                    .style("stroke", chart.color(v.updt));
 
             chart.brush = chart.svg.append("g")
                     .attr("class", "brush")
@@ -373,147 +353,42 @@
                     .attr("text-anchor", "middle")
                     .attr("alignment-baseline", "hanging")
                     .style("font-size", "12px")
-                    .text(v);
+                    .text(v.updt);
 
             return chart
         }
 
-        function MakeOtherChart(v) {
-            var chart = {'type': 'other'};
+        function MakeMeasurementChart(v) {
+            var chart = {'type': 'cm'},
+                plotPred;
 
             chart.color = d3.scale.category10()
-                .domain( d3.keys(kother[0]).filter(function (key) {
-                    return key !== "T";
-                }));
-
-            chart.data = kother.map(function(d, i) {
-                return {T: +d.T, y: +d[v] };
-            });
-
-            chart.y0 = d3.min(chart.data, function(d) {
-                if (x(+d.T)>0 & x(+d.T)<width) {
-                    return +d.y;
-                }
-            });
-
-            chart.y1 = d3.max(chart.data, function(d) {
-                if (x(+d.T)>0 & x(+d.T)<width) {
-                    return +d.y;
-                }
-            });
-
-            chart.y = d3.scale.linear()
-                .range([height, 0]);
-
-            chart.set_y_domain = function(y0, y1) {
-                chart.y.domain([y0, y1]);
-            };
-
-            chart.set_y_domain(chart.y0, chart.y1);
-
-            chart.yAxis = d3.svg.axis()
-                .scale(chart.y)
-                .orient("left");
-
-            chart.line = d3.svg.line()
-                .interpolate("basis")
-                .x(function (d) { return x(d.T); })
-                .y(function (d) { return chart.y(d.y); });
-
-            chart.svg = d3.select("body").append("svg")
-                .attr("width", width + margin.left + margin.right)
-                .attr("height", height + margin.top + margin.bottom)
-                .append("g")
-                .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
-
-            chart.svg.append("clipPath")
-                .attr("id", "clip-path-cm-" + v)
-                .append("rect")
-                .attr("x", -1)
-                .attr("y", -1)
-                .attr("width", width+2)
-                .attr("height", height+2);
-
-            chart.cursor = chart.svg.append("line")
-                .attr("class", "cursor")
-                .attr("x1", 0)
-                .attr("x2", 0)
-                .attr("y1", 0)
-                .attr("y2", height);
-
-            chart.lines = chart.svg.append("g")
-                .attr("clip-path", "url(#clip-path-cm-" + v + ")")
-                .selectAll(".lines")
-                .data([chart.data])
-                .enter().append("g")
-                .attr("class", "lines");
-
-            chart.lines.append("path")
-                .attr("class", "line")
-                .attr("d", chart.line)
-                .style("stroke", chart.color(v));
-
-            chart.brush = chart.svg.append("g")
-                .attr("class", "brush")
-                .call(brush)
-                .selectAll("rect")
-                .attr("y", 0)
-                .attr("height", height)
-                .on("mouseover", mousein)
-                .on("mouseout", mouseout)
-                .on("mousemove", mousemove);
-
-            chart.svg.append("g")
-                .attr("class", "x axis")
-                .attr("transform", "translate(0," + height + ")")
-                .call(xAxis);
-
-            chart.svg.append("g")
-                .attr("class", "y axis")
-                .call(chart.yAxis)
-                .append("text")
-                .attr("transform", "rotate(-90)")
-                .attr("y", 6)
-                .attr("dy", ".71em")
-                .style("text-anchor", "end");
-
-            chart.svg.append("text")
-                .attr("x", width/2)
-                .attr("y", margin.top)
-                .attr("text-anchor", "middle")
-                .attr("alignment-baseline", "hanging")
-                .style("font-size", "12px")
-                .text(v);
-
-            return chart
-        }
-
-        function MakeCMChart(v) {
-            var chart = {'type': 'cm'};
-
-            chart.color = d3.scale.category10()
-                    .domain( d3.keys(measure[0]).filter(function (key) {
+                    .domain( d3.keys(ahrs[0]).filter(function (key) {
                         return key !== "T";
                     }));
 
-            chart.data = measure.map(function(d, i) {
+            chart.data = ahrs.map(function(d, i) {
                 var r = {T: +d.T,
-                    y: +d[v],
-                };
-                r['py'] = +pmeasure[i][v];
-                r['ky'] = +kmeasure[i][v];
-                return r;
+                    y:  +d[v.meas]};
+                if ('pred' in v) {
+                    plotPred = true;
+                    r.py = +d[v.pred];
+                } else {
+                    plotPred = false;
+                    r.py = r.y;
+                }
+                return r
             });
 
             chart.y0 = d3.min(chart.data, function(d) {
                 if (x(+d.T)>0 & x(+d.T)<width) {
-                    return d3.min([+d.y, +d.py, +d.ky]);
+                    return d3.min([+d.y, +d.py]);
                 }
             });
 
             chart.y1 = d3.max(chart.data, function(d) {
                 if (x(+d.T)>0 & x(+d.T)<width) {
-                    return d3.max([+d.y, +d.py, +d.ky]);
+                    return d3.max([+d.y, +d.py]);
                 }
             });
 
@@ -535,15 +410,16 @@
                     .x(function (d) { return x(d.T); })
                     .y(function (d) { return chart.y(d.y); });
 
-            chart.pline = d3.svg.line()
+            if (plotPred) {
+                chart.pline = d3.svg.line()
                     .interpolate("basis")
-                    .x(function (d) { return x(d.T); })
-                    .y(function (d) { return chart.y(d.py); });
-
-            chart.kline = d3.svg.line()
-                    .interpolate("basis")
-                    .x(function (d) { return x(d.T); })
-                    .y(function (d) { return chart.y(d.ky); });
+                    .x(function (d) {
+                        return x(d.T);
+                    })
+                    .y(function (d) {
+                        return chart.y(d.py);
+                    });
+            }
 
             chart.svg = d3.select("body").append("svg")
                     .attr("width", width + margin.left + margin.right)
@@ -552,7 +428,7 @@
                     .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
 
             chart.svg.append("clipPath")
-                    .attr("id", "clip-path-cm-" + v)
+                    .attr("id", "clip-path-cm-" + v.meas)
                     .append("rect")
                     .attr("x", -1)
                     .attr("y", -1)
@@ -567,7 +443,7 @@
                     .attr("y2", height);
 
             chart.lines = chart.svg.append("g")
-                    .attr("clip-path", "url(#clip-path-cm-" + v + ")")
+                    .attr("clip-path", "url(#clip-path-cm-" + v.meas + ")")
                     .selectAll(".lines")
                     .data([chart.data])
                     .enter().append("g")
@@ -576,17 +452,12 @@
             chart.lines.append("path")
                     .attr("class", "line")
                     .attr("d", chart.line)
-                    .style("stroke", chart.color(v));
+                    .style("stroke", chart.color(v.meas));
 
             chart.lines.append("path")
                     .attr("class", "pline")
                     .attr("d", chart.pline)
-                    .style("stroke", chart.color(v));
-
-            chart.lines.append("path")
-                    .attr("class", "kline")
-                    .attr("d", chart.kline)
-                    .style("stroke", chart.color(v));
+                    .style("stroke", chart.color(v.pred));
 
             chart.brush = chart.svg.append("g")
                     .attr("class", "brush")
@@ -618,23 +489,19 @@
                     .attr("text-anchor", "middle")
                     .attr("alignment-baseline", "hanging")
                     .style("font-size", "12px")
-                    .text(v);
+                    .text(v.meas);
 
             return chart
         }
 
 
         var i;
-        for (i=0; i<kconfig.StateVars.length; i++) {
-            charts.push(MakeStateChart(kconfig.StateVars[i]));
+        for (i=0; i<config.State.length; i++) {
+            charts.push(MakeStateChart(config.State[i]));
         }
 
-        for (i=0; i<kconfig.OtherVars.length; i++) {
-            charts.push(MakeOtherChart(kconfig.OtherVars[i]));
-        }
-
-        for (i=0; i<kconfig.CMVars.length; i++) {
-            charts.push(MakeCMChart(kconfig.CMVars[i]));
+        for (i=0; i<config.Measurement.length; i++) {
+            charts.push(MakeMeasurementChart(config.Measurement[i]));
         }
     }
 

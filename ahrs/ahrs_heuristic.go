@@ -189,3 +189,4 @@ func (s *HeuristicState) PredictMeasurement() *Measurement {
 	return NewMeasurement()
 }
 
+var HeuristicJSONConfig = ""
