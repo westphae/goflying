@@ -200,6 +200,11 @@ func (s *SimpleState) CalcRollPitchHeading() (roll float64, pitch float64, headi
 	return
 }
 
+// GetState returns the Kalman state of the system
+func (s *SimpleState) GetState() *State {
+	return &s.State
+}
+
 // GetStateMap returns the state information for analysis
 func (s *SimpleState) GetStateMap() (dat *map[string]float64) {
 	phi, theta, psi := FromQuaternion(s.E0, s.E1, s.E2, s.E3)

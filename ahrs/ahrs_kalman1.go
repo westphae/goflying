@@ -46,6 +46,11 @@ func (s *Kalman1State) CalcRollPitchHeadingUncertainty() (droll float64, dpitch 
 	return
 }
 
+// GetState returns the Kalman state of the system
+func (s *Kalman1State) GetState() *State {
+	return &s.State
+}
+
 // GetStateMap returns the state information for analysis
 func (s *Kalman1State) GetStateMap() (dat *map[string]float64) {
 	phi, theta, psi := FromQuaternion(s.E0, s.E1, s.E2, s.E3)

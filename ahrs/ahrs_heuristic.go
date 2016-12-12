@@ -27,6 +27,11 @@ type HeuristicState struct {
 	M1L, M2L, M3L	float64
 }
 
+// GetState returns the Kalman state of the system
+func (s *HeuristicState) GetState() *State {
+	return &s.State
+}
+
 // GetStateMap returns the extra non-Kalman state information
 func (s *HeuristicState) GetStateMap() (dat *map[string]float64) {
 	return

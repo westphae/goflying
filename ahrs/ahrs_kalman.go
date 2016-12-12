@@ -19,6 +19,11 @@ func (s *KalmanState) CalcRollPitchHeadingUncertainty() (droll float64, dpitch f
 	return
 }
 
+// GetState returns the Kalman state of the system
+func (s *KalmanState) GetState() *State {
+	return &s.State
+}
+
 // GetStateMap returns the state information for analysis
 func (s *KalmanState) GetStateMap() (dat *map[string]float64) {
 	return
