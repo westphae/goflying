@@ -7,13 +7,17 @@ import (
 )
 
 const (
-	minDT        float64 = 1e-6 // Below this time interval, don't recalculate
-	maxDT        float64 = 10   // Above this time interval, re-initialize--too stale
-	minGS        float64 = 10   // Below this GS, don't use any GPS data
-	rollBand     float64 = 10   // Degrees by which roll can differ from pitchGPS
-	pitchBand    float64 = 10   // Degrees by which pitch can differ from pitchGPS
-	headingBand  float64 = 10   // Degrees by which heading can differ from pitchGPS
-	gpsTimeConst float64 = 30   // Seconds time constant for attitude to decay towards GPS value without gyro input
+	minDT         float64 = 1e-6 // Below this time interval, don't recalculate
+	maxDT         float64 = 10   // Above this time interval, re-initialize--too stale
+	minGS         float64 = 10   // Below this GS, don't use any GPS data
+	rollBand      float64 = 10   // Degrees by which roll can differ from pitchGPS
+	pitchBand     float64 = 10   // Degrees by which pitch can differ from pitchGPS
+	headingBand   float64 = 10   // Degrees by which heading can differ from pitchGPS
+	expPower      float64 = 5
+	gpsTimeConst  float64 = 5    // Seconds time constant for attitude to decay towards GPS value without gyro input
+	bCalTimeConst float64 = 600  // Time constant for calibrating gyro, s
+	trSmall       float64 = 0.25 * Deg  // Turn Rate that we will consider to be zero for gyro calibration
+	warmupTime    float64 = 60   // Time after beginning of flight to accumulate gyro calibration more quickly
 )
 
 type SimpleState struct {
@@ -22,6 +26,7 @@ type SimpleState struct {
 	roll, pitch, heading          float64 // Fused attitude, Deg
 	w1, w2, w3, gs                float64 // Groundspeed & ROC tracking, Kts
 	tr                            float64 // turn rate, Rad/s
+	calTime                       float64 // time since beginning of flight, s
 	analysisLogger                SensorLogger // Logger for analysis
 	loggerHeader		      []string // Header strings in order
 }
@@ -130,10 +135,12 @@ func (s *SimpleState) Update(m *Measurement) {
 		s.w1 = 0
 		s.w2 = 0
 		s.w3 = 0
+		s.calTime = 0
 	}
 
 	q0, q1, q2, q3 := s.E0, s.E1, s.E2, s.E3
-	dq0, dq1, dq2, dq3 := QuaternionRotate(q0, q1, q2, q3, m.B1*Deg*dt, m.B2*Deg*dt, m.B3*Deg*dt)
+	dq0, dq1, dq2, dq3 := QuaternionRotate(q0, q1, q2, q3,
+		(m.B1-s.D1)*Deg*dt, (m.B2-s.D2)*Deg*dt, (m.B3-s.D3)*Deg*dt)
 	dq0 -= q0
 	dq1 -= q1
 	dq2 -= q2
@@ -158,19 +165,19 @@ func (s *SimpleState) Update(m *Measurement) {
 	dh := (hy*dhx - hx*dhy) / (hx*hx + hy*hy)
 
 	// This won't work around the poles -- no hammerheads!
-	kp := 1 - math.Abs((s.pitch - s.pitchGPS) / pitchBand) // linear
+	kp := math.Exp(-math.Abs((s.pitch - s.pitchGPS) / pitchBand)*expPower) // linear
 	// The idea of the simple AHRS is to bias the sensors to bring the estimated attitude
 	// in line with the GPS-derived attitude
 	if (s.pitch-s.pitchGPS)*dp > 0 {
 		dp *= math.Max(0, kp)
 	}
 
-	kr := 1 - math.Abs((s.roll - s.rollGPS) / rollBand) // linear
+	kr := math.Exp(-math.Abs((s.roll - s.rollGPS) / rollBand)*expPower) // linear
 	if (s.roll-s.rollGPS)*dr > 0 {
 		dr *= math.Max(0, kr)
 	}
 
-	kh := 1 - math.Abs((s.heading - s.headingGPS) / headingBand) // linear
+	kh := math.Exp(-math.Abs((s.heading - s.headingGPS) / headingBand)*expPower) // linear
 	ddh := s.heading - s.headingGPS
 	if ddh > Pi {
 		ddh -= 2*Pi
@@ -190,6 +197,18 @@ func (s *SimpleState) Update(m *Measurement) {
 
 	s.E0, s.E1, s.E2, s.E3 = ToQuaternion(s.roll, s.pitch, s.heading)
 	s.T = m.T
+
+	// Recalibrate
+	if math.Abs(s.tr) < trSmall {
+		w := dt/bCalTimeConst
+		if s.calTime < warmupTime {
+			w *= 10 // Accumulate calibration values more quickly at beginning
+			s.calTime += dt
+		}
+		s.D1 = (1-w) * s.D1 + w * m.B1
+		s.D2 = (1-w) * s.D2 + w * m.B2
+		s.D3 = (1-w) * s.D3 + w * m.B3
+	}
 
 	s.log(m)
 }
@@ -268,31 +287,37 @@ var simpleLogMap = map[string]func(s *SimpleState, m *Measurement)float64{
 	"M1": func(s *SimpleState, m *Measurement) float64 {return m.M1},
 	"M2": func(s *SimpleState, m *Measurement) float64 {return m.M2},
 	"M3": func(s *SimpleState, m *Measurement) float64 {return m.M3},
+	"D1": func(s *SimpleState, m *Measurement) float64 {return s.D1},
+	"D2": func(s *SimpleState, m *Measurement) float64 {return s.D2},
+	"D3": func(s *SimpleState, m *Measurement) float64 {return s.D3},
 }
 
 var SimpleJSONConfig = `
 {
   "State": [
-    {"pred": "GPSRoll", "updt": "Roll", "std": "dRoll"},
-    {"pred": "GPSPitch", "updt": "Pitch", "std": "dPitch"},
+    {"pred": "GPSRoll", "updt": "Roll", "std": "dRoll", "baseline": 0},
+    {"pred": "GPSPitch", "updt": "Pitch", "std": "dPitch", "baseline": 0},
     {"pred": "GPSHeading", "updt": "Heading", "std": "dHeading"},
-    {"updt": "TurnRate"},
-    {"updt": "GroundSpeed"},
-    {"updt": "T"}
+    {"updt": "TurnRate", "baseline": 0},
+    {"updt": "GroundSpeed", "baseline": 0},
+    {"updt": "T"},
+    {"updt": "D1", "baseline": 0},
+    {"updt": "D2", "baseline": 0},
+    {"updt": "D3", "baseline": 0}
   ],
   "Measurement": [
-    {"meas": "W1", "pred": "W1a"},
-    {"meas": "W2", "pred": "W2a"},
-    {"meas": "W3", "pred": "W3a"},
-    {"meas": "A1"},
-    {"meas": "A2"},
-    {"meas": "A3"},
-    {"meas": "B1"},
-    {"meas": "B2"},
-    {"meas": "B3"},
-    {"meas": "M1"},
-    {"meas": "M2"},
-    {"meas": "M3"}
+    {"meas": "W1", "pred": "W1a", "baseline": 0},
+    {"meas": "W2", "pred": "W2a", "baseline": 0},
+    {"meas": "W3", "pred": "W3a", "baseline": 0},
+    {"meas": "A1", "baseline": 0},
+    {"meas": "A2", "baseline": 0},
+    {"meas": "A3", "baseline": 1},
+    {"meas": "B1", "baseline": 0},
+    {"meas": "B2", "baseline": 0},
+    {"meas": "B3", "baseline": 0},
+    {"meas": "M1", "baseline": 0},
+    {"meas": "M2", "baseline": 0},
+    {"meas": "M3", "baseline": 0}
   ]
 }
 `

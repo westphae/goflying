@@ -166,6 +166,7 @@
                         c.svg.select(".line").attr("d", c.line);
                         c.svg.select(".pline").attr("d", c.pline);
                     }
+                    c.svg.select(".line.baseline").attr({x1: 0, x2: width, y1: c.y(c.config.baseline), y2: c.y(c.config.baseline)})
                     c.svg.select(".brush").call(brush);
                 });
         }
@@ -193,7 +194,8 @@
 
             var chart = {
                     'var': v.updt,
-                    'type': 'state'
+                    'type': 'state',
+                    'config': v
                 },
                 plotPred = false, plotBand = false;
 
@@ -323,6 +325,13 @@
                     .attr("d", chart.line("updt"))
                     .style("stroke", chart.color(v.updt));
 
+            if ("baseline" in v) {
+                chart.lines.append("line")
+                    .attr("class", "line baseline")
+                    .attr({x1: 0, x2: width, y1: chart.y(v.baseline), y2: chart.y(v.baseline)})
+                    .style("stroke", "black");
+            }
+
             chart.brush = chart.svg.append("g")
                     .attr("class", "brush")
                     .call(brush)
@@ -359,7 +368,10 @@
         }
 
         function MakeMeasurementChart(v) {
-            var chart = {'type': 'cm'},
+            var chart = {
+                'type': 'cm',
+                    'config': v
+            },
                 plotPred;
 
             chart.color = d3.scale.category10()
@@ -458,6 +470,13 @@
                     .attr("class", "pline")
                     .attr("d", chart.pline)
                     .style("stroke", chart.color(v.pred));
+
+            if ("baseline" in v) {
+                chart.lines.append("line")
+                    .attr("class", "line baseline")
+                    .attr({x1: 0, x2: width, y1: chart.y(v.baseline), y2: chart.y(v.baseline)})
+                    .style("stroke", "black");
+            }
 
             chart.brush = chart.svg.append("g")
                     .attr("class", "brush")
