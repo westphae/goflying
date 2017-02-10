@@ -114,28 +114,32 @@ func (s *SimpleState) Update(m *Measurement) {
 
 	if m.WValid {
 		s.gs = math.Hypot(m.W1, m.W2)
+		s.w1 = m.W1
+		s.w2 = m.W2
+		s.w3 = m.W3
 	}
 
-	if m.WValid && s.gs > minGS {
+	var ep, tc float64
+	if s.gs > minGS {
 		s.tr = 0.9*s.tr + 0.1*(m.W2*(m.W1-s.w1)-m.W1*(m.W2-s.w2))/(s.gs*s.gs)/dt
 		s.rollGPS = math.Atan(s.gs*s.tr/G)
 		s.pitchGPS = math.Atan2(m.W3, s.gs)
 		s.headingGPS = math.Atan2(m.W1, m.W2)
-		s.w1 = m.W1
-		s.w2 = m.W2
-		s.w3 = m.W3
+		// Flight mode: bias gyros toward GPS values and quickly drift to level
+		ep = expPower
+		tc = gpsTimeConst
 	} else {
 		s.tr = 0
 		s.rollGPS = 0
 		s.pitchGPS = 0
 		s.headingGPS = Pi/2
-		s.roll = 0
-		s.pitch = 0
-		s.heading = Pi/2
 		s.w1 = 0
 		s.w2 = 0
 		s.w3 = 0
 		s.calTime = 0
+		// Static mode: don't bias gyro values and only slowly drift to level
+		ep = 0
+		tc = 60
 	}
 
 	q0, q1, q2, q3 := s.E0, s.E1, s.E2, s.E3
@@ -165,19 +169,19 @@ func (s *SimpleState) Update(m *Measurement) {
 	dh := (hy*dhx - hx*dhy) / (hx*hx + hy*hy)
 
 	// This won't work around the poles -- no hammerheads!
-	kp := math.Exp(-math.Abs((s.pitch - s.pitchGPS) / pitchBand)*expPower) // linear
+	kp := math.Exp(-math.Abs((s.pitch - s.pitchGPS) / pitchBand)*ep) // linear
 	// The idea of the simple AHRS is to bias the sensors to bring the estimated attitude
 	// in line with the GPS-derived attitude
 	if (s.pitch-s.pitchGPS)*dp > 0 {
 		dp *= math.Max(0, kp)
 	}
 
-	kr := math.Exp(-math.Abs((s.roll - s.rollGPS) / rollBand)*expPower) // linear
+	kr := math.Exp(-math.Abs((s.roll - s.rollGPS) / rollBand)*ep) // linear
 	if (s.roll-s.rollGPS)*dr > 0 {
 		dr *= math.Max(0, kr)
 	}
 
-	kh := math.Exp(-math.Abs((s.heading - s.headingGPS) / headingBand)*expPower) // linear
+	kh := math.Exp(-math.Abs((s.heading - s.headingGPS) / headingBand)*ep) // linear
 	ddh := s.heading - s.headingGPS
 	if ddh > Pi {
 		ddh -= 2*Pi
@@ -188,9 +192,9 @@ func (s *SimpleState) Update(m *Measurement) {
 		dh *= math.Max(0, kh)
 	}
 
-	s.pitch += dp + (s.pitchGPS-s.pitch)*dt/gpsTimeConst
-	s.roll += dr + (s.rollGPS-s.roll)*dt/gpsTimeConst
-	s.heading += dh - ddh*dt/gpsTimeConst
+	s.pitch += dp + (s.pitchGPS-s.pitch)*dt/tc
+	s.roll += dr + (s.rollGPS-s.roll)*dt/tc
+	s.heading += dh - ddh*dt/tc
 
 	s.roll, s.pitch, s.heading = Regularize(s.roll, s.pitch, s.heading)
 	s.rollGPS, s.pitchGPS, s.headingGPS = Regularize(s.rollGPS, s.pitchGPS, s.headingGPS)
