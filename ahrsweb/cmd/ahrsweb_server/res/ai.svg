@@ -16,7 +16,7 @@
             <polygon points="0 0, -200 -200, 200 -200" />
         </clipPath>
 
-        <clipPath id="yaw-clip">
+        <clipPath id="heading-clip">
             <rect x="-940" y="175" width="1880" height="3" stroke-width="0" />
             <rect x="-940" y="192" width="1880" height="3" stroke-width="0" />
         </clipPath>
@@ -46,7 +46,7 @@
             .marks {
                 fill: white;
                 stroke: white;
-                stroke-width: 3;
+                stroke-width: 2;
             }
 
             .markText {
@@ -54,7 +54,7 @@
                 font-family: sans-serif;
                 text-anchor: middle;
                 alignment-baseline: middle;
-                stroke-width: 1;
+                stroke-width: 0;
             }
         ]]></style>
     </defs>
@@ -247,10 +247,10 @@
             <rect x="-10" y="-158" width="20" height="6" stroke-width="0" class="slipSkid" />
         </g>
 
-        <!-- document.getElementsByClass("yaw")[0].setAttribute("transform", "translate(-yaw*2, 0)") -->
-        <g class="marks yaw">
+        <!-- document.getElementsByClass("heading")[0].setAttribute("transform", "translate(-heading*2, 0)") -->
+        <g class="marks heading">
 
-            <g clip-path="url(#yaw-clip)">
+            <g clip-path="url(#heading-clip)">
                 <line x1="-180" x2="-180" y1="175" y2="195" stroke-width="2"/>
                 <line x1="-120" x2="-120" y1="175" y2="195" stroke-width="2"/>
                 <line x1="-60"  x2="-60"  y1="175" y2="195" stroke-width="2"/>
