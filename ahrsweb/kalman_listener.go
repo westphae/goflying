@@ -20,9 +20,11 @@ type KalmanListener struct {
 func NewKalmanListener() (kl *KalmanListener, err error) {
 	kl = new(KalmanListener)
 	kl.data = new(AHRSData)
-	err = kl.connect()
+	if err = kl.connect(); err != nil {
+		return nil, err
+	}
 
-	return kl, err
+	return kl, nil
 }
 
 func (kl *KalmanListener) connect() (err error) {
