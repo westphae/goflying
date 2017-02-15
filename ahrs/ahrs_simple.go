@@ -22,11 +22,12 @@ const (
 
 type SimpleState struct {
 	State
+	TW                            float64 // Time of last GPS reading
 	rollGPS, pitchGPS, headingGPS float64 // GPS-derived attitude, Deg
 	roll, pitch, heading          float64 // Fused attitude, Deg
 	w1, w2, w3, gs                float64 // Groundspeed & ROC tracking, Kts
 	tr                            float64 // turn rate, Rad/s
-	calTime                       float64 // time since beginning of flight, s
+	calTime                       float64 // Time since beginning of flight, s
 	analysisLogger                SensorLogger // Logger for analysis
 	loggerHeader		      []string // Header strings in order
 }
@@ -60,6 +61,7 @@ func InitializeSimple(m *Measurement, analysisFilename string) (s *SimpleState) 
 
 func (s *SimpleState) init(m *Measurement) {
 	s.T = m.T
+	s.TW = m.TW
 	if m.WValid {
 		s.gs = math.Hypot(m.W1, m.W2)
 		s.w1 = m.W1
@@ -102,28 +104,28 @@ func (s *SimpleState) Predict(t float64) {
 
 func (s *SimpleState) Update(m *Measurement) {
 	dt := m.T - s.T
-	if dt < minDT {
-		log.Printf("Time interval too short at %f\n", m.T)
-		return
-	}
-	if dt > maxDT {
+	dtw := m.TW - s.TW
+
+	if dt > maxDT || dtw > maxDT {
 		log.Printf("Reinitializing at %f\n", m.T)
 		s.init(m)
 		return
 	}
 
-	if m.WValid {
+	if m.WValid && dtw > minDT {
 		s.gs = math.Hypot(m.W1, m.W2)
-		s.w1 = m.W1
-		s.w2 = m.W2
-		s.w3 = m.W3
 	}
 
 	if s.gs > minGS {
-		s.tr = 0.9*s.tr + 0.1*(m.W2*(m.W1-s.w1)-m.W1*(m.W2-s.w2))/(s.gs*s.gs)/dt
-		s.rollGPS = math.Atan(s.gs*s.tr/G)
-		s.pitchGPS = math.Atan2(m.W3, s.gs)
-		s.headingGPS = math.Atan2(m.W1, m.W2)
+		if dtw > minDT {
+			s.tr = 0.9*s.tr + 0.1*(m.W2*(m.W1-s.w1)-m.W1*(m.W2-s.w2))/(s.gs*s.gs)/dtw
+			s.rollGPS = math.Atan(s.gs * s.tr / G)
+			s.pitchGPS = math.Atan2(m.W3, s.gs)
+			s.headingGPS = math.Atan2(m.W1, m.W2)
+		} else {
+			log.Printf("GPS time interval too short at %f\n", m.T)
+
+		}
 	} else {
 		s.tr = 0
 		s.rollGPS = math.Atan2(-m.A2, -m.A3) // Needs to be different with pitch != 0
@@ -190,7 +192,6 @@ func (s *SimpleState) Update(m *Measurement) {
 	s.rollGPS, s.pitchGPS, s.headingGPS = Regularize(s.rollGPS, s.pitchGPS, s.headingGPS)
 
 	s.E0, s.E1, s.E2, s.E3 = ToQuaternion(s.roll, s.pitch, s.heading)
-	s.T = m.T
 
 	// Recalibrate
 	if math.Abs(s.tr) < trSmall {
@@ -205,6 +206,12 @@ func (s *SimpleState) Update(m *Measurement) {
 	}
 
 	s.log(m)
+
+	s.T = m.T
+	s.TW = m.TW
+	s.w1 = m.W1
+	s.w2 = m.W2
+	s.w3 = m.W3
 }
 
 func (s *SimpleState) Valid() (ok bool) {
@@ -258,7 +265,8 @@ func (s *SimpleState) PredictMeasurement() *Measurement {
 }
 
 var simpleLogMap = map[string]func(s *SimpleState, m *Measurement)float64{
-	"T": func(s *SimpleState, m *Measurement) float64 {return s.T},
+	"Ta": func(s *SimpleState, m *Measurement) float64 {return s.T},
+	"TWa": func(s *SimpleState, m *Measurement) float64 {return s.TW},
 	"calTime": func(s *SimpleState, m *Measurement) float64 {return s.calTime},
 	"Roll": func(s *SimpleState, m *Measurement) float64 {return s.roll / Deg},
 	"Pitch": func(s *SimpleState, m *Measurement) float64 {return s.pitch / Deg},
@@ -275,6 +283,8 @@ var simpleLogMap = map[string]func(s *SimpleState, m *Measurement)float64{
 	"dRoll": func(s *SimpleState, m *Measurement) float64 {return rollBand},
 	"dHeading": func(s *SimpleState, m *Measurement) float64 {return headingBand},
 	"WValid": func(s *SimpleState, m *Measurement) float64 {if m.WValid { return 1 } else { return 0 }},
+	"T": func(s *SimpleState, m *Measurement) float64 {return m.T},
+	"TW": func(s *SimpleState, m *Measurement) float64 {return m.TW},
 	"W1": func(s *SimpleState, m *Measurement) float64 {return m.W1},
 	"W2": func(s *SimpleState, m *Measurement) float64 {return m.W2},
 	"W3": func(s *SimpleState, m *Measurement) float64 {return m.W3},
