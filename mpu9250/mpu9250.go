@@ -20,8 +20,9 @@ import (
 const (
 	// Calibration variance tolerances
 	//TODO westphae: would be nice to have some mathematical reasoning for this
-	MAXGYROVAR  = 0.1
-	MAXACCELVAR = 0.1
+	//TODO westphae: not so sure that determining inertiality based on variance is best
+	MAXGYROVAR  = 0.2
+	MAXACCELVAR = 0.2
 	BUFSIZE     = 250
 	SCALEMAG    = 9830.0/65536
 	CALDATALOCATION = "/etc/mpu9250cal.json"
