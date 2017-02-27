@@ -223,6 +223,13 @@ func (s *SimpleState) CalcRollPitchHeading() (roll float64, pitch float64, headi
 	return
 }
 
+func (s *SimpleState) Reset() {
+	if s.analysisLogger != nil {
+		s.analysisLogger.Close()
+		s = nil
+	}
+}
+
 // GetState returns the Kalman state of the system
 func (s *SimpleState) GetState() *State {
 	return &s.State

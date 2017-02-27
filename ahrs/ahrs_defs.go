@@ -193,4 +193,5 @@ type AHRSProvider interface {
 	PredictMeasurement() *Measurement
 	Valid() bool
 	CalcRollPitchHeading() (roll float64, pitch float64, heading float64)
+	Reset()
 }
