@@ -28,7 +28,7 @@ type SimpleState struct {
 	w1, w2, w3, gs                float64 // Groundspeed & ROC tracking, Kts
 	tr                            float64 // turn rate, Rad/s
 	calTime                       float64 // Time since beginning of flight, s
-	analysisLogger                SensorLogger // Logger for analysis
+	analysisLogger                *SensorLogger // Logger for analysis
 	loggerHeader		      []string // Header strings in order
 }
 

@@ -13,7 +13,8 @@ type SensorLogger struct {
 	fmt string
 }
 
-func NewSensorLogger(fn string, h ...string) (l SensorLogger) {
+func NewSensorLogger(fn string, h ...string) (l *SensorLogger) {
+	l = new(SensorLogger)
 	l.h = h
 	f, err := os.Create(fn)
 	l.f = f
