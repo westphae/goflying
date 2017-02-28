@@ -92,6 +92,9 @@ func (s *SimpleState) init(m *Measurement) {
 
 	s.E0, s.E1, s.E2, s.E3 = ToQuaternion(s.roll, s.pitch, s.heading)
 
+	s.calTime = 0
+	s.D1, s.D2, s.D3 = 0, 0, 0
+
 	s.log(m)
 }
 
