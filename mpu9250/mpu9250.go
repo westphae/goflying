@@ -18,11 +18,6 @@ import (
 )
 
 const (
-	// Calibration variance tolerances
-	//TODO westphae: would be nice to have some mathematical reasoning for this
-	//TODO westphae: not so sure that determining inertiality based on variance is best
-	MAXGYROVAR  = 0.2
-	MAXACCELVAR = 0.2
 	BUFSIZE     = 250
 	SCALEMAG    = 9830.0/65536
 	CALDATALOCATION = "/etc/mpu9250cal.json"
@@ -465,26 +460,16 @@ func (m *MPU9250) readSensors() {
 				log.Printf("MPU9250 Calibration: gyro variance:  %f %f %f\n", vg1, vg2, vg3)
 				log.Printf("MPU9250 Calibration: accel variance: %f %f %f\n", va1, va2, va3)
 				// Could check that it's not nearly level here too
-				if      a11/nc*m.scaleAccel > 0.5 || a11/nc*m.scaleAccel < -0.5 ||
-					a12/nc*m.scaleAccel > 0.5 || a12/nc*m.scaleAccel < -0.5 ||
-					a13/nc*m.scaleAccel > 0.5 || a13/nc*m.scaleAccel < -0.5 {
-					cCalResult<- fmt.Errorf("MPU9250 Calibration Error: accel is maxing out: %6f %6f %6f",
-						a11/nc*m.scaleAccel, a12/nc*m.scaleAccel, a13/nc*m.scaleAccel)
-				} else if vg1 > MAXGYROVAR || vg2 > MAXGYROVAR || vg3 > MAXGYROVAR ||
-					va1 > MAXACCELVAR || va2 > MAXACCELVAR || va3 > MAXACCELVAR {
-					cCalResult<- errors.New("MPU9250 Calibration Error: sensor was not inertial during calibration")
-				} else {
-					m.G01 = g11 / nc
-					m.G02 = g12 / nc
-					m.G03 = g13 / nc
-					m.A01 = a11 / nc
-					m.A02 = a12 / nc
-					m.A03 = a13 / nc
+				m.G01 = g11 / nc
+				m.G02 = g12 / nc
+				m.G03 = g13 / nc
+				m.A01 = a11 / nc
+				m.A02 = a12 / nc
+				m.A03 = a13 / nc
 
-					log.Printf("MPU9250 Gyro Calibration: %6f, %6f, %6f\n", m.G01 *m.scaleGyro, m.G02 *m.scaleGyro, m.G03 *m.scaleGyro)
-					log.Printf("MPU9250 Accel Calibration: %6f, %6f, %6f\n", m.A01 *m.scaleAccel, m.A02 *m.scaleAccel, m.A03 *m.scaleAccel)
-					cCalResult <- nil
-				}
+				log.Printf("MPU9250 Gyro Calibration: %6f, %6f, %6f\n", m.G01 *m.scaleGyro, m.G02 *m.scaleGyro, m.G03 *m.scaleGyro)
+				log.Printf("MPU9250 Accel Calibration: %6f, %6f, %6f\n", m.A01 *m.scaleAccel, m.A02 *m.scaleAccel, m.A03 *m.scaleAccel)
+				cCalResult <- nil
 				g11, g12, g13, g21, g22, g23 = 0, 0, 0, 0, 0, 0
 				a11, a12, a13, a21, a22, a23 = 0, 0, 0, 0, 0, 0
 				nc = 0
