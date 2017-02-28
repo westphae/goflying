@@ -231,6 +231,10 @@ func (s *SimpleState) CalcRollPitchHeading() (roll float64, pitch float64, headi
 
 func (s *SimpleState) Reset() {
 	s.needsInitialization = true
+}
+
+func (s *SimpleState) Stop() {
+	s.needsInitialization = true
 	if s.analysisLogger != nil {
 		s.analysisLogger.Close()
 	}
