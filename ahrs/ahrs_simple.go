@@ -30,6 +30,7 @@ type SimpleState struct {
 	calTime                       float64 // Time since beginning of flight, s
 	analysisLogger                *SensorLogger // Logger for analysis
 	loggerHeader		      []string // Header strings in order
+	needsInitialization           bool    // Rather than computing, initialize
 }
 
 func (s *SimpleState) log(m *Measurement) {
@@ -42,8 +43,9 @@ func (s *SimpleState) log(m *Measurement) {
 	}
 }
 
-func InitializeSimple(m *Measurement, analysisFilename string) (s *SimpleState) {
+func InitializeSimple(analysisFilename string) (s *SimpleState) {
 	s = new(SimpleState)
+	s.needsInitialization = true
 	if analysisFilename != "" {
 		s.loggerHeader = make([]string, len(simpleLogMap))
 		i := 0
@@ -55,11 +57,11 @@ func InitializeSimple(m *Measurement, analysisFilename string) (s *SimpleState) 
 	}
 	s.M = matrix.Zeros(32, 32)
 	s.N = matrix.Zeros(32, 32)
-	s.init(m)
 	return
 }
 
 func (s *SimpleState) init(m *Measurement) {
+	s.needsInitialization = false
 	s.T = m.T
 	s.TW = m.TW
 	if m.WValid {
@@ -94,8 +96,12 @@ func (s *SimpleState) init(m *Measurement) {
 }
 
 func (s *SimpleState) Compute(m *Measurement) {
-	s.Predict(m.T)
-	s.Update(m)
+	if s.needsInitialization {
+		s.init(m)
+	} else {
+		s.Predict(m.T)
+		s.Update(m)
+	}
 }
 
 func (s *SimpleState) Predict(t float64) {
@@ -224,9 +230,9 @@ func (s *SimpleState) CalcRollPitchHeading() (roll float64, pitch float64, headi
 }
 
 func (s *SimpleState) Reset() {
+	s.needsInitialization = true
 	if s.analysisLogger != nil {
 		s.analysisLogger.Close()
-		s = nil
 	}
 }
 
