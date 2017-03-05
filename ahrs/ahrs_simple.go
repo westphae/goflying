@@ -19,6 +19,7 @@ const (
 	bCalTimeConst float64 = 600  // Time constant for calibrating gyro, s
 	trSmall       float64 = 0.25 * Deg  // Turn Rate that we will consider to be zero for gyro calibration
 	warmupTime    float64 = 60   // Time after beginning of flight to accumulate gyro calibration more quickly
+	gpsSmoothConst float64 = 0.1 // Multiplier for exponential smoothing of GPS-derived values
 )
 
 type SimpleState struct {
@@ -108,23 +109,29 @@ func (s *SimpleState) Update(m *Measurement) {
 		s.gs = math.Hypot(m.W1, m.W2)
 	}
 
+	var rollGPS, pitchGPS, headingGPS float64
 	if s.gs > minGS {
 		if dtw > minDT {
-			s.tr = 0.9*s.tr + 0.1*(m.W2*(m.W1-s.w1)-m.W1*(m.W2-s.w2))/(s.gs*s.gs)/dtw
-			s.rollGPS = math.Atan(s.gs * s.tr / G)
-			s.pitchGPS = math.Atan2(m.W3, s.gs)
-			s.headingGPS = math.Atan2(m.W1, m.W2)
+			s.tr = (m.W2*(m.W1-s.w1)-m.W1*(m.W2-s.w2))/(s.gs*s.gs)/dtw
+			rollGPS = math.Atan(s.gs * s.tr / G)
+			pitchGPS = math.Atan2(m.W3, s.gs)
+			headingGPS = math.Atan2(m.W1, m.W2)
 		} else {
 			log.Printf("GPS time interval too short at %f\n", m.T)
-
+			rollGPS = s.rollGPS
+			pitchGPS = s.pitchGPS
+			headingGPS = s.headingGPS
 		}
 	} else {
 		s.tr = 0
-		s.rollGPS = math.Atan2(-m.A2, -m.A3) // Needs to be different with pitch != 0
-		s.pitchGPS = math.Asin(-m.A1/math.Sqrt(m.A1*m.A1 + m.A2*m.A2 + m.A3*m.A3))
-		s.headingGPS = s.heading
+		rollGPS = math.Atan2(-m.A2, -m.A3) // Needs to be different with pitch != 0
+		pitchGPS = math.Asin(-m.A1/math.Sqrt(m.A1*m.A1 + m.A2*m.A2 + m.A3*m.A3))
+		headingGPS = s.heading
 		s.calTime = 0 // TODO westphae: need something more sophisticated with static mode?
 	}
+	s.rollGPS = gpsSmoothConst * s.rollGPS + (1-gpsSmoothConst) * rollGPS
+	s.pitchGPS = gpsSmoothConst * s.pitchGPS + (1-gpsSmoothConst) * pitchGPS
+	s.headingGPS = gpsSmoothConst * s.headingGPS + (1-gpsSmoothConst) * headingGPS
 
 	q0, q1, q2, q3 := s.E0, s.E1, s.E2, s.E3
 	dq0, dq1, dq2, dq3 := QuaternionRotate(q0, q1, q2, q3,
