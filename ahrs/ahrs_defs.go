@@ -193,6 +193,5 @@ type AHRSProvider interface {
 	Valid() bool
 	CalcRollPitchHeading() (roll float64, pitch float64, heading float64)
 	Reset()
-	Stop()
 	GetLogMap() map[string]interface{}
 }

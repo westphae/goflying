@@ -219,11 +219,9 @@ func (s *SimpleState) Reset() {
 	s.needsInitialization = true
 }
 
-func (s *SimpleState) Stop() {
-	s.needsInitialization = true
-	if s.analysisLogger != nil {
-		s.analysisLogger.Close()
-	}
+// PredictMeasurement doesn't do anything for the Simple method
+func (s *SimpleState) PredictMeasurement() *Measurement {
+	return NewMeasurement()
 }
 
 // GetState returns the Kalman state of the system
@@ -236,10 +234,6 @@ func (s *SimpleState) GetLogMap() (p map[string]interface{}) {
 	return s.logMap
 }
 
-// PredictMeasurement doesn't do anything for the Simple method
-func (s *SimpleState) PredictMeasurement() *Measurement {
-	return NewMeasurement()
-}
 func updateLogMap(s *SimpleState, m *Measurement, p map[string]interface{}) {
 	var simpleLogMap = map[string]func(s *SimpleState, m *Measurement) float64{
 		"Ta":          func(s *SimpleState, m *Measurement) float64 { return s.T },
