@@ -1,9 +1,10 @@
 package ahrs
 
 import (
-	"math"
-	"github.com/skelterjohn/go.matrix"
 	"log"
+	"math"
+
+	"github.com/skelterjohn/go.matrix"
 )
 
 const (
@@ -22,39 +23,21 @@ const (
 
 type SimpleState struct {
 	State
-	TW                            float64 // Time of last GPS reading
-	rollGPS, pitchGPS, headingGPS float64 // GPS-derived attitude, Deg
-	roll, pitch, heading          float64 // Fused attitude, Deg
-	w1, w2, w3, gs                float64 // Groundspeed & ROC tracking, Kts
-	tr                            float64 // turn rate, Rad/s
-	calTime                       float64 // Time since beginning of flight, s
-	analysisLogger                *SensorLogger // Logger for analysis
-	loggerHeader		      []string // Header strings in order
-	needsInitialization           bool    // Rather than computing, initialize
+	TW                            float64                // Time of last GPS reading
+	rollGPS, pitchGPS, headingGPS float64                // GPS-derived attitude, Deg
+	roll, pitch, heading          float64                // Fused attitude, Deg
+	w1, w2, w3, gs                float64                // Groundspeed & ROC tracking, Kts
+	tr                            float64                // turn rate, Rad/s
+	calTime                       float64                // Time since beginning of flight, s
+	needsInitialization           bool                   // Rather than computing, initialize
+	logMap                        map[string]interface{} // Map only for analysis/debugging
 }
 
-func (s *SimpleState) log(m *Measurement) {
-	if s.loggerHeader != nil {
-		vals := make([]float64, len(s.loggerHeader))
-		for i, k := range s.loggerHeader {
-			vals[i] = simpleLogMap[k](s, m)
-		}
-		s.analysisLogger.Log(vals...)
-	}
-}
-
-func InitializeSimple(analysisFilename string) (s *SimpleState) {
+func InitializeSimple() (s *SimpleState) {
 	s = new(SimpleState)
+	s.logMap = make(map[string]interface{})
+	updateLogMap(s, NewMeasurement(), s.logMap)
 	s.needsInitialization = true
-	if analysisFilename != "" {
-		s.loggerHeader = make([]string, len(simpleLogMap))
-		i := 0
-		for k, _ := range simpleLogMap {
-			s.loggerHeader[i] = k
-			i++
-		}
-		s.analysisLogger = NewSensorLogger(analysisFilename, s.loggerHeader...)
-	}
 	s.M = matrix.Zeros(32, 32)
 	s.N = matrix.Zeros(32, 32)
 	return
@@ -95,7 +78,7 @@ func (s *SimpleState) init(m *Measurement) {
 	s.calTime = 0
 	s.D1, s.D2, s.D3 = 0, 0, 0
 
-	s.log(m)
+	updateLogMap(s, m, s.logMap)
 }
 
 func (s *SimpleState) Compute(m *Measurement) {
@@ -116,7 +99,7 @@ func (s *SimpleState) Update(m *Measurement) {
 	dtw := m.TW - s.TW
 
 	if dt > maxDT || dtw > maxDT {
-		log.Printf("Reinitializing at %f\n", m.T)
+		log.Printf("AHRS Info: Reinitializing at %f\n", m.T)
 		s.init(m)
 		return
 	}
@@ -214,7 +197,7 @@ func (s *SimpleState) Update(m *Measurement) {
 		s.D3 = (1-w) * s.D3 + w * m.B3
 	}
 
-	s.log(m)
+	updateLogMap(s, m, s.logMap)
 
 	s.T = m.T
 	s.TW = m.TW
@@ -248,82 +231,61 @@ func (s *SimpleState) GetState() *State {
 	return &s.State
 }
 
-// GetStateMap returns the state information for analysis
-func (s *SimpleState) GetStateMap() (dat *map[string]float64) {
-	phi, theta, psi := FromQuaternion(s.E0, s.E1, s.E2, s.E3)
-	dat = &map[string]float64{
-		"T":  s.T,
-		"calTime": s.calTime,
-		"E0": s.E0,
-		"E1": s.E1,
-		"E2": s.E2,
-		"E3": s.E3,
-		"Phi": phi / Deg,
-		"Theta": theta / Deg,
-		"Psi": psi / Deg,
-		"rollGPS": s.rollGPS / Deg,
-		"pitchGPS": s.pitchGPS / Deg,
-		"headingGPS": s.headingGPS / Deg,
-		"roll": s.roll / Deg,
-		"pitch": s.pitch / Deg,
-		"heading": s.heading / Deg,
-		"W1": s.w1,
-		"W2": s.w2,
-		"W3": s.w3,
-		"GS": s.gs,
-		"TR": s.tr,
-		"D1": s.D1,
-		"D2": s.D2,
-		"D3": s.D3,
-	}
-	return
+// GetLogMap returns a map providing current state and measurement values for analysis
+func (s *SimpleState) GetLogMap() (p map[string]interface{}) {
+	return s.logMap
 }
 
 // PredictMeasurement doesn't do anything for the Simple method
 func (s *SimpleState) PredictMeasurement() *Measurement {
 	return NewMeasurement()
 }
+func updateLogMap(s *SimpleState, m *Measurement, p map[string]interface{}) {
+	var simpleLogMap = map[string]func(s *SimpleState, m *Measurement) float64{
+		"Ta":          func(s *SimpleState, m *Measurement) float64 { return s.T },
+		"TWa":         func(s *SimpleState, m *Measurement) float64 { return s.TW },
+		"calTime":     func(s *SimpleState, m *Measurement) float64 { return s.calTime },
+		"Roll":        func(s *SimpleState, m *Measurement) float64 { return s.roll / Deg },
+		"Pitch":       func(s *SimpleState, m *Measurement) float64 { return s.pitch / Deg },
+		"Heading":     func(s *SimpleState, m *Measurement) float64 { return s.heading / Deg },
+		"RollGPS":     func(s *SimpleState, m *Measurement) float64 { return s.rollGPS / Deg },
+		"PitchGPS":    func(s *SimpleState, m *Measurement) float64 { return s.pitchGPS / Deg },
+		"HeadingGPS":  func(s *SimpleState, m *Measurement) float64 { return s.headingGPS / Deg },
+		"TurnRate":    func(s *SimpleState, m *Measurement) float64 { return s.tr / Deg },
+		"GroundSpeed": func(s *SimpleState, m *Measurement) float64 { return s.gs },
+		"W1a":         func(s *SimpleState, m *Measurement) float64 { return s.w1 },
+		"W2a":         func(s *SimpleState, m *Measurement) float64 { return s.w2 },
+		"W3a":         func(s *SimpleState, m *Measurement) float64 { return s.w3 },
+		"dPitch":      func(s *SimpleState, m *Measurement) float64 { return pitchBand },
+		"dRoll":       func(s *SimpleState, m *Measurement) float64 { return rollBand },
+		"dHeading":    func(s *SimpleState, m *Measurement) float64 { return headingBand },
+		"WValid": func(s *SimpleState, m *Measurement) float64 { if m.WValid { return 1 }; return 0 },
+		"T":  func(s *SimpleState, m *Measurement) float64 { return m.T },
+		"TW": func(s *SimpleState, m *Measurement) float64 { return m.TW },
+		"W1": func(s *SimpleState, m *Measurement) float64 { return m.W1 },
+		"W2": func(s *SimpleState, m *Measurement) float64 { return m.W2 },
+		"W3": func(s *SimpleState, m *Measurement) float64 { return m.W3 },
+		"E0": func(s *SimpleState, m *Measurement) float64 { return s.E0 },
+		"E1": func(s *SimpleState, m *Measurement) float64 { return s.E1 },
+		"E2": func(s *SimpleState, m *Measurement) float64 { return s.E2 },
+		"E3": func(s *SimpleState, m *Measurement) float64 { return s.E3 },
+		"A1": func(s *SimpleState, m *Measurement) float64 { return m.A1 },
+		"A2": func(s *SimpleState, m *Measurement) float64 { return m.A2 },
+		"A3": func(s *SimpleState, m *Measurement) float64 { return m.A3 },
+		"B1": func(s *SimpleState, m *Measurement) float64 { return m.B1 },
+		"B2": func(s *SimpleState, m *Measurement) float64 { return m.B2 },
+		"B3": func(s *SimpleState, m *Measurement) float64 { return m.B3 },
+		"M1": func(s *SimpleState, m *Measurement) float64 { return m.M1 },
+		"M2": func(s *SimpleState, m *Measurement) float64 { return m.M2 },
+		"M3": func(s *SimpleState, m *Measurement) float64 { return m.M3 },
+		"D1": func(s *SimpleState, m *Measurement) float64 { return s.D1 },
+		"D2": func(s *SimpleState, m *Measurement) float64 { return s.D2 },
+		"D3": func(s *SimpleState, m *Measurement) float64 { return s.D3 },
+	}
 
-var simpleLogMap = map[string]func(s *SimpleState, m *Measurement)float64{
-	"Ta": func(s *SimpleState, m *Measurement) float64 {return s.T},
-	"TWa": func(s *SimpleState, m *Measurement) float64 {return s.TW},
-	"calTime": func(s *SimpleState, m *Measurement) float64 {return s.calTime},
-	"Roll": func(s *SimpleState, m *Measurement) float64 {return s.roll / Deg},
-	"Pitch": func(s *SimpleState, m *Measurement) float64 {return s.pitch / Deg},
-	"Heading": func(s *SimpleState, m *Measurement) float64 {return s.heading / Deg},
-	"RollGPS": func(s *SimpleState, m *Measurement) float64 {return s.rollGPS / Deg},
-	"PitchGPS": func(s *SimpleState, m *Measurement) float64 {return s.pitchGPS / Deg},
-	"HeadingGPS": func(s *SimpleState, m *Measurement) float64 {return s.headingGPS / Deg},
-	"TurnRate": func(s *SimpleState, m *Measurement) float64 {return s.tr / Deg},
-	"GroundSpeed": func(s *SimpleState, m *Measurement) float64 {return s.gs},
-	"W1a": func(s *SimpleState, m *Measurement) float64 {return s.w1},
-	"W2a": func(s *SimpleState, m *Measurement) float64 {return s.w2},
-	"W3a": func(s *SimpleState, m *Measurement) float64 {return s.w3},
-	"dPitch": func(s *SimpleState, m *Measurement) float64 {return pitchBand},
-	"dRoll": func(s *SimpleState, m *Measurement) float64 {return rollBand},
-	"dHeading": func(s *SimpleState, m *Measurement) float64 {return headingBand},
-	"WValid": func(s *SimpleState, m *Measurement) float64 {if m.WValid { return 1 } else { return 0 }},
-	"T": func(s *SimpleState, m *Measurement) float64 {return m.T},
-	"TW": func(s *SimpleState, m *Measurement) float64 {return m.TW},
-	"W1": func(s *SimpleState, m *Measurement) float64 {return m.W1},
-	"W2": func(s *SimpleState, m *Measurement) float64 {return m.W2},
-	"W3": func(s *SimpleState, m *Measurement) float64 {return m.W3},
-	"E0": func(s *SimpleState, m *Measurement) float64 {return s.E0},
-	"E1": func(s *SimpleState, m *Measurement) float64 {return s.E1},
-	"E2": func(s *SimpleState, m *Measurement) float64 {return s.E2},
-	"E3": func(s *SimpleState, m *Measurement) float64 {return s.E3},
-	"A1": func(s *SimpleState, m *Measurement) float64 {return m.A1},
-	"A2": func(s *SimpleState, m *Measurement) float64 {return m.A2},
-	"A3": func(s *SimpleState, m *Measurement) float64 {return m.A3},
-	"B1": func(s *SimpleState, m *Measurement) float64 {return m.B1},
-	"B2": func(s *SimpleState, m *Measurement) float64 {return m.B2},
-	"B3": func(s *SimpleState, m *Measurement) float64 {return m.B3},
-	"M1": func(s *SimpleState, m *Measurement) float64 {return m.M1},
-	"M2": func(s *SimpleState, m *Measurement) float64 {return m.M2},
-	"M3": func(s *SimpleState, m *Measurement) float64 {return m.M3},
-	"D1": func(s *SimpleState, m *Measurement) float64 {return s.D1},
-	"D2": func(s *SimpleState, m *Measurement) float64 {return s.D2},
-	"D3": func(s *SimpleState, m *Measurement) float64 {return s.D3},
+	for k := range simpleLogMap {
+		p[k] = simpleLogMap[k](s, m)
+	}
 }
 
 var SimpleJSONConfig = `

@@ -186,7 +186,6 @@ func Regularize(roll, pitch, heading float64) (float64, float64, float64) {
 // AHRSProvider defines an AHRS algorithm, such as ahrs_kalman, ahrs_simple, etc.
 type AHRSProvider interface {
 	GetState() *State
-	GetStateMap() *map[string]float64
 	Predict(float64)
 	Update(*Measurement)
 	Compute(*Measurement)
@@ -195,4 +194,5 @@ type AHRSProvider interface {
 	CalcRollPitchHeading() (roll float64, pitch float64, heading float64)
 	Reset()
 	Stop()
+	GetLogMap() map[string]interface{}
 }
