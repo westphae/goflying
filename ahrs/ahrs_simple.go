@@ -19,7 +19,7 @@ const (
 	bCalTimeConst float64 = 600  // Time constant for calibrating gyro, s
 	trSmall       float64 = 0.25 * Deg  // Turn Rate that we will consider to be zero for gyro calibration
 	warmupTime    float64 = 60   // Time after beginning of flight to accumulate gyro calibration more quickly
-	gpsSmoothConst float64 = 0.1 // Multiplier for exponential smoothing of GPS-derived values
+	gpsSmoothConst float64 = 0.7 // Multiplier for exponential smoothing of GPS-derived values
 )
 
 type SimpleState struct {
