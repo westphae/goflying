@@ -29,6 +29,10 @@ type SimpleState struct {
 	roll, pitch, heading          float64                // Fused attitude, Deg
 	w1, w2, w3, gs                float64                // Groundspeed & ROC tracking, Kts
 	tr                            float64                // turn rate, Rad/s
+	headingMag                    float64                // Magnetic heading, Rad (smoothed)
+	slipSkid                      float64                // Slip/Skid Angle, Rad (smoothed)
+	gLoad                         float64                // G Load, G vertical (smoothed)
+	turnRate                      float64                // turn rate, Rad/s (smoothed)
 	calTime                       float64                // Time since beginning of flight, s
 	needsInitialization           bool                   // Rather than computing, initialize
 	logMap                        map[string]interface{} // Map only for analysis/debugging
@@ -192,6 +196,28 @@ func (s *SimpleState) Update(m *Measurement) {
 
 	s.E0, s.E1, s.E2, s.E3 = ToQuaternion(s.roll, s.pitch, s.heading)
 
+	// Update Magnetic Heading
+	hM := math.Atan2(m.M1, -m.M2)
+	if hM-s.headingMag < -Pi {
+		hM += 2*Pi
+	}
+	s.headingMag = gpsSmoothConst * s.headingMag + (1-gpsSmoothConst) * hM
+	for s.headingMag < 0 {
+		s.headingMag += 2*Pi
+	}
+	for s.headingMag >= 2*Pi {
+		s.headingMag -= 2*Pi
+	}
+
+	// Update Slip/Skid
+	s.slipSkid = gpsSmoothConst * s.slipSkid + (1-gpsSmoothConst) * math.Atan2(m.A2, -m.A3)
+
+	// Update Rate of Turn
+	s.turnRate = gpsSmoothConst * s.turnRate + (1-gpsSmoothConst) * s.tr
+
+	// Update GLoad
+	s.gLoad = gpsSmoothConst * s.gLoad + (1-gpsSmoothConst) * -m.A3
+
 	// Recalibrate
 	if math.Abs(s.tr) < trSmall {
 		w := dt/bCalTimeConst
@@ -217,9 +243,29 @@ func (s *SimpleState) Valid() (ok bool) {
 	return true
 }
 
-func (s *SimpleState) CalcRollPitchHeading() (roll float64, pitch float64, heading float64) {
+func (s *SimpleState) RollPitchHeading() (roll float64, pitch float64, heading float64) {
 	roll, pitch, heading = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
 	return
+}
+
+// MagHeading returns the magnetic heading in degrees.
+func (s *SimpleState) MagHeading() (hdg float64) {
+	return s.headingMag / Deg
+}
+
+// SlipSkid returns the slip/skid angle in degrees.
+func (s *SimpleState) SlipSkid() (slipSkid float64) {
+	return s.slipSkid / Deg
+}
+
+// RateOfTurn returns the turn rate in degrees per second.
+func (s *SimpleState) RateOfTurn() (turnRate float64) {
+	return s.turnRate / Deg
+}
+
+// GLoad returns the current G load, in G's.
+func (s *SimpleState) GLoad() (gLoad float64) {
+	return s.gLoad
 }
 
 func (s *SimpleState) Reset() {
@@ -252,7 +298,7 @@ func updateLogMap(s *SimpleState, m *Measurement, p map[string]interface{}) {
 		"RollGPS":     func(s *SimpleState, m *Measurement) float64 { return s.rollGPS / Deg },
 		"PitchGPS":    func(s *SimpleState, m *Measurement) float64 { return s.pitchGPS / Deg },
 		"HeadingGPS":  func(s *SimpleState, m *Measurement) float64 { return s.headingGPS / Deg },
-		"TurnRate":    func(s *SimpleState, m *Measurement) float64 { return s.tr / Deg },
+		"tr":          func(s *SimpleState, m *Measurement) float64 { return s.tr },
 		"GroundSpeed": func(s *SimpleState, m *Measurement) float64 { return s.gs },
 		"W1a":         func(s *SimpleState, m *Measurement) float64 { return s.w1 },
 		"W2a":         func(s *SimpleState, m *Measurement) float64 { return s.w2 },
@@ -282,6 +328,10 @@ func updateLogMap(s *SimpleState, m *Measurement, p map[string]interface{}) {
 		"D1": func(s *SimpleState, m *Measurement) float64 { return s.D1 },
 		"D2": func(s *SimpleState, m *Measurement) float64 { return s.D2 },
 		"D3": func(s *SimpleState, m *Measurement) float64 { return s.D3 },
+		"headingMag": func(s *SimpleState, m *Measurement) float64 { return s.headingMag },
+		"slipSkid": func(s *SimpleState, m *Measurement) float64 { return s.slipSkid },
+		"gLoad": func(s *SimpleState, m *Measurement) float64 { return s.gLoad },
+		"turnRate": func(s *SimpleState, m *Measurement) float64 { return s.turnRate },
 	}
 
 	for k := range simpleLogMap {

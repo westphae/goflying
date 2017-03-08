@@ -139,7 +139,7 @@ func (s *State) calcRotationMatrices() {
 	s.f33 = (+s.F0*s.F0 - s.F1*s.F1 - s.F2*s.F2 + s.F3*s.F3)
 }
 
-// CalcRollPitchHeading returns the current roll, pitch and heading estimates
+// RollPitchHeading returns the current roll, pitch and heading estimates
 // for the State, in degrees
 func (s *State) CalcRollPitchHeading() (roll float64, pitch float64, heading float64) {
 	roll, pitch, heading = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
@@ -183,15 +183,34 @@ func Regularize(roll, pitch, heading float64) (float64, float64, float64) {
 }
 
 
-// AHRSProvider defines an AHRS algorithm, such as ahrs_kalman, ahrs_simple, etc.
+// AHRSProvider defines an AHRS (Kalman or other) algorithm, such as ahrs_kalman, ahrs_simple, etc.
 type AHRSProvider interface {
+	// GetState returns all the information about the current state.
 	GetState() *State
+	// Predict runs the "predict" stage of a Kalman algorithm, projecting forward based on the dynamic model.
 	Predict(float64)
+	// Update runs the "update" stage of a Kalman algorithm, correcting the predicted state using measurements.
 	Update(*Measurement)
+	// Compute runs both the "predict" and "update" stages of the algorithm, for convenience.
 	Compute(*Measurement)
+	// PredictMeasurement predicts what the current measurements should be given the state of the system.
+	// This is a critical part of the Kalman algorithm.
 	PredictMeasurement() *Measurement
+	// Valid returns whether the current state is a valid estimate or if something went wrong in the calculation.
 	Valid() bool
-	CalcRollPitchHeading() (roll float64, pitch float64, heading float64)
+	// Reset restarts the algorithm from scratch.
 	Reset()
+	// GetLogMap returns a map customized for each AHRSProvider algorithm to provide more detailed information
+	// for debugging and logging.
 	GetLogMap() map[string]interface{}
+	// RollPitchHeading returns the current attitude values as estimated by the Kalman algorithm.
+	RollPitchHeading() (roll float64, pitch float64, heading float64)
+	// MagHeading returns the current magnetic heading in degrees as estimated by the Kalman algorithm.
+	MagHeading() (hdg float64)
+	// SlipSkid returns the slip/skid angle in degrees as estimated by the Kalman algorithm.
+	SlipSkid() (slipSkid float64)
+	// RateOfTurn returns the turn rate in degrees per second as estimated by the Kalman algorithm.
+	RateOfTurn() (turnRate float64)
+	// GLoad returns the current G load, in G's as estimated by the Kalman algorithm.
+	GLoad() (gLoad float64)
 }
