@@ -441,13 +441,13 @@ func (m *MPU9250) readSensors() {
 				g21 += float64(g1) * float64(g1)
 				g22 += float64(g2) * float64(g2)
 				g23 += float64(g3) * float64(g3)
-				//TODO westphae: don't calibrate accel!
+				//TODO westphae: remove the a* if we don't use for calibration.
 				a11 += float64(a1)
 				a12 += float64(a2)
-				a13 += float64(a3) + 1/m.scaleAccel
+				a13 += float64(a3)
 				a21 += float64(a1) * float64(a1)
 				a22 += float64(a2) * float64(a2)
-				a23 += (float64(a3) + 1/m.scaleAccel) * (float64(a3) - 1/m.scaleAccel)
+				a23 += float64(a3) * float64(a3)
 				i++
 			} else if nc > 0.5 { // Then we're finished with a calibration
 				vg1 := (g21-g11*g11/nc) * m.scaleGyro * m.scaleGyro / nc
@@ -463,12 +463,8 @@ func (m *MPU9250) readSensors() {
 				m.G01 = g11 / nc
 				m.G02 = g12 / nc
 				m.G03 = g13 / nc
-				m.A01 = a11 / nc
-				m.A02 = a12 / nc
-				m.A03 = a13 / nc
 
 				log.Printf("MPU9250 Gyro Calibration: %6f, %6f, %6f\n", m.G01 *m.scaleGyro, m.G02 *m.scaleGyro, m.G03 *m.scaleGyro)
-				log.Printf("MPU9250 Accel Calibration: %6f, %6f, %6f\n", m.A01 *m.scaleAccel, m.A02 *m.scaleAccel, m.A03 *m.scaleAccel)
 				cCalResult <- nil
 				g11, g12, g13, g21, g22, g23 = 0, 0, 0, 0, 0, 0
 				a11, a12, a13, a21, a22, a23 = 0, 0, 0, 0, 0, 0
