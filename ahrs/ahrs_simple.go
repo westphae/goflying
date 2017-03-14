@@ -19,7 +19,7 @@ const (
 	bCalTimeConst float64 = 600  // Time constant for calibrating gyro, s
 	trSmall       float64 = 0.25 * Deg  // Turn Rate that we will consider to be zero for gyro calibration
 	warmupTime    float64 = 60   // Time after beginning of flight to accumulate gyro calibration more quickly
-	gpsSmoothConst float64 = 0.7 // Multiplier for exponential smoothing of GPS-derived values
+	gpsSmoothConst float64 = 0.3 // Multiplier for exponential smoothing of GPS-derived values
 )
 
 type SimpleState struct {
@@ -133,9 +133,9 @@ func (s *SimpleState) Update(m *Measurement) {
 		headingGPS = s.heading
 		s.calTime = 0 // TODO westphae: need something more sophisticated with static mode?
 	}
-	s.rollGPS = gpsSmoothConst * s.rollGPS + (1-gpsSmoothConst) * rollGPS
-	s.pitchGPS = gpsSmoothConst * s.pitchGPS + (1-gpsSmoothConst) * pitchGPS
-	s.headingGPS = gpsSmoothConst * s.headingGPS + (1-gpsSmoothConst) * headingGPS
+	s.rollGPS = s.rollGPS + gpsSmoothConst * angleDiff(rollGPS, s.rollGPS)
+	s.pitchGPS = s.pitchGPS + gpsSmoothConst * angleDiff(pitchGPS, s.pitchGPS)
+	s.headingGPS = s.headingGPS + gpsSmoothConst * angleDiff(headingGPS, s.headingGPS)
 
 	q0, q1, q2, q3 := s.E0, s.E1, s.E2, s.E3
 	dq0, dq1, dq2, dq3 := QuaternionRotate(q0, q1, q2, q3,
@@ -163,32 +163,28 @@ func (s *SimpleState) Update(m *Measurement) {
 	dhy := 2 * (q0*dq0 + q1*dq1 - q2*dq2 - q3*dq3)
 	dh := (hy*dhx - hx*dhy) / (hx*hx + hy*hy)
 
-	// This won't work around the poles -- no hammerheads!
-	kp := math.Exp(-math.Abs((s.pitch - s.pitchGPS) / pitchBand)*expPower) // linear
 	// The idea of the simple AHRS is to bias the sensors to bring the estimated attitude
 	// in line with the GPS-derived attitude
-	if (s.pitch-s.pitchGPS)*dp > 0 {
-		dp *= math.Max(0, kp)
-	}
-
-	kr := math.Exp(-math.Abs((s.roll - s.rollGPS) / rollBand)*expPower) // linear
-	if (s.roll-s.rollGPS)*dr > 0 {
+	// This won't work around the poles -- no hammerheads!
+	ddr := angleDiff(s.roll, s.rollGPS)
+	kr := math.Exp(-math.Abs(ddr/rollBand)*expPower) // linear
+	if ddr*dr > 0 {
 		dr *= math.Max(0, kr)
 	}
+	s.roll += dr - ddr*dt/gpsTimeConst
 
-	kh := math.Exp(-math.Abs((s.heading - s.headingGPS) / headingBand)*expPower) // linear
-	ddh := s.heading - s.headingGPS
-	if ddh > Pi {
-		ddh -= 2*Pi
-	} else if ddh < -Pi {
-		ddh += 2*Pi
+	ddp := angleDiff(s.pitch, s.pitchGPS)
+	kp := math.Exp(-math.Abs(ddp/pitchBand)*expPower) // linear
+	if ddp*dp > 0 {
+		dp *= math.Max(0, kp)
 	}
+	s.pitch += dp - ddp*dt/gpsTimeConst
+
+	ddh := angleDiff(s.heading, s.headingGPS)
+	kh := math.Exp(-math.Abs(ddh/headingBand)*expPower) // linear
 	if ddh*dh > 0 {
 		dh *= math.Max(0, kh)
 	}
-
-	s.pitch += dp + (s.pitchGPS-s.pitch)*dt/gpsTimeConst
-	s.roll += dr + (s.rollGPS-s.roll)*dt/gpsTimeConst
 	s.heading += dh - ddh*dt/gpsTimeConst
 
 	s.roll, s.pitch, s.heading = Regularize(s.roll, s.pitch, s.heading)
@@ -197,11 +193,8 @@ func (s *SimpleState) Update(m *Measurement) {
 	s.E0, s.E1, s.E2, s.E3 = ToQuaternion(s.roll, s.pitch, s.heading)
 
 	// Update Magnetic Heading
-	hM := math.Atan2(m.M1, -m.M2)
-	if hM-s.headingMag < -Pi {
-		hM += 2*Pi
-	}
-	s.headingMag = gpsSmoothConst * s.headingMag + (1-gpsSmoothConst) * hM
+	dhM := angleDiff(math.Atan2(m.M1, -m.M2), s.headingMag)
+	s.headingMag = s.headingMag + gpsSmoothConst * dhM
 	for s.headingMag < 0 {
 		s.headingMag += 2*Pi
 	}
@@ -210,13 +203,13 @@ func (s *SimpleState) Update(m *Measurement) {
 	}
 
 	// Update Slip/Skid
-	s.slipSkid = gpsSmoothConst * s.slipSkid + (1-gpsSmoothConst) * math.Atan2(m.A2, -m.A3)
+	s.slipSkid += gpsSmoothConst * (math.Atan2(m.A2, -m.A3) - s.slipSkid)
 
 	// Update Rate of Turn
-	s.turnRate = gpsSmoothConst * s.turnRate + (1-gpsSmoothConst) * s.tr
+	s.turnRate += gpsSmoothConst * (s.tr - s.turnRate)
 
 	// Update GLoad
-	s.gLoad = gpsSmoothConst * s.gLoad + (1-gpsSmoothConst) * -m.A3
+	s.gLoad += gpsSmoothConst * (-m.A3 - s.gLoad)
 
 	// Recalibrate
 	if math.Abs(s.tr) < trSmall {
@@ -368,3 +361,14 @@ var SimpleJSONConfig = `
   ]
 }
 `
+
+func angleDiff(a, b float64) (diff float64) {
+	diff = a - b
+	for diff > Pi {
+		diff -= 2*Pi
+	}
+	for diff < -Pi {
+		diff += 2*Pi
+	}
+	return
+}
