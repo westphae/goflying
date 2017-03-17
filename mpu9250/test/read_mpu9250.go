@@ -3,22 +3,22 @@ package main
 import (
 	"fmt"
 	"time"
-	"github.com/westphae/goflying/mpu9250"
-	"math"
+
 	"github.com/westphae/goflying/ahrs"
+	"github.com/westphae/goflying/mpu9250"
 )
 
 func main() {
-	clock := time.NewTicker(100 * time.Millisecond)
 	var (
 		mpu      *mpu9250.MPU9250
-		avg      *mpu9250.MPUData
-		//cur      *mpu9250.MPUData
+		cur      *mpu9250.MPUData
 		err      error
+		t0       time.Time
+		logMap   map[string]interface{} // Map only for analysis/debugging
 	)
 
 	for i:=0; i<10; i++ {
-		mpu, err = mpu9250.NewMPU9250(250, 4, 50, true, false)
+		mpu, err = mpu9250.NewMPU9250(250, 4, 1000, true, false)
 		if err != nil {
 			fmt.Printf("Error initializing MPU9250, attempt %d of 10\n", i)
 			time.Sleep(5 * time.Second)
@@ -43,47 +43,43 @@ func main() {
 		fmt.Println("Calibration succeeded")
 	}
 
-	logger := ahrs.NewSensorLogger(fmt.Sprintf("/var/log/mpucal_%s.csv", time.Now().Format("20060102_150405")),
-		"T", "A1", "A2", "A3", "H1", "H2", "H3", "M1", "M2", "M3", "Tmp")
+	t0 = time.Now()
+	logMap = make(map[string]interface{})
+	updateLogMap(t0, new(mpu9250.MPUData), logMap)
+	filename := fmt.Sprintf("/var/log/mpudata_%s.csv", time.Now().Format("20060102_150405"))
+	logger := ahrs.NewAHRSLogger(filename, logMap)
 	defer logger.Close()
 
 	for {
-		<-clock.C
-
-		avg = <-mpu.CAvg
-		t := float64(avg.DT.Nanoseconds()) / 1000000
-		fmt.Printf("\nTime:   %6.1f ms\n", t)
-		fmt.Printf("Number of Observations: %d\n", avg.N)
-		fmt.Printf("Avg Gyro:   % +8.2f % +8.2f % +8.2f\n", avg.G1, avg.G2, avg.G3)
-		fmt.Printf("Avg Accel:  % +8.2f % +8.2f % +8.2f\n", avg.A1, avg.A2, avg.A3)
-		fmt.Printf("Temperature: % +3.1f\n", avg.Temp)
-
-		if !mpu.MagEnabled() {
-			fmt.Println("Magnetometer disabled")
-		} else if avg.MagError != nil {
-			fmt.Println(avg.MagError.Error())
-		} else {
-			hdg := math.Atan2(avg.M2, avg.M1) * 180/math.Pi
-			if hdg < 0 {
-				hdg += 360
-			}
-			fmt.Printf("Mag:        % +8.0f % +8.0f % +8.0f:  %3.f\n", avg.M1, avg.M2, avg.M3, hdg)
-		}
-
-		logger.Log(
-			float64(t),
-			avg.A1, avg.A2, avg.A3, avg.G1, avg.G2, avg.G3, avg.M1, avg.M2, avg.M3, avg.Temp)
-		/*
-		cur = <-mpu.C
+		cur = <-mpu.CBuf
+		fmt.Printf("Time:       % +8.4f\n", float64(cur.T.Sub(t0).Nanoseconds()/1000)/1000)
 		fmt.Printf("Cur Gyro:   % +8.2f % +8.2f % +8.2f\n", cur.G1, cur.G2, cur.G3)
 		fmt.Printf("Cur Accel:  % +8.2f % +8.2f % +8.2f\n", cur.A1, cur.A2, cur.A3)
-
-		fmt.Printf("Length of buffered channel: %d\n", len(mpu.CBuf))
-		for i := 0; i<10; i++ {
-			d := <-mpu.CBuf
-			fmt.Printf("%6.3f ", float64(d.T.Nanosecond())/1000000000)
-		}
+		fmt.Printf("Cur Mag:    % +8.2f % +8.2f % +8.2f\n", cur.M1, cur.M2, cur.M3)
 		fmt.Println()
-		*/
+
+		updateLogMap(t0, cur, logMap)
+		logger.Log()
+	}
+}
+
+var sensorLogMap = map[string]func(t0 time.Time, m *mpu9250.MPUData) float64 {
+	"T":    func(t0 time.Time, m *mpu9250.MPUData) float64 { return float64(m.T.Sub(t0).Nanoseconds()/1000)/1000 },
+	"TM":   func(t0 time.Time, m *mpu9250.MPUData) float64 { return float64(m.TM.Sub(t0).Nanoseconds()/1000)/1000 },
+	"A1":   func(t0 time.Time, m *mpu9250.MPUData) float64 { return m.A1 },
+	"A2":   func(t0 time.Time, m *mpu9250.MPUData) float64 { return m.A2 },
+	"A3":   func(t0 time.Time, m *mpu9250.MPUData) float64 { return m.A3 },
+	"B1":   func(t0 time.Time, m *mpu9250.MPUData) float64 { return m.G1 },
+	"B2":   func(t0 time.Time, m *mpu9250.MPUData) float64 { return m.G2 },
+	"B3":   func(t0 time.Time, m *mpu9250.MPUData) float64 { return m.G3 },
+	"M1":   func(t0 time.Time, m *mpu9250.MPUData) float64 { return m.M1 },
+	"M2":   func(t0 time.Time, m *mpu9250.MPUData) float64 { return m.M2 },
+	"M3":   func(t0 time.Time, m *mpu9250.MPUData) float64 { return m.M3 },
+	"Temp": func(t0 time.Time, m *mpu9250.MPUData) float64 { return m.Temp },
+}
+
+func updateLogMap(t0 time.Time, m *mpu9250.MPUData, p map[string]interface{}) {
+	for k := range sensorLogMap {
+		p[k] = sensorLogMap[k](t0, m)
 	}
 }
