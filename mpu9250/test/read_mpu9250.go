@@ -34,6 +34,7 @@ func main() {
 		fmt.Println("MPU9250 initialized successfully")
 	}
 
+	/*
 	mpu.CCal<- 1
 	fmt.Println("Awaiting Calibration Result")
 	if err := <-mpu.CCalResult; err != nil {
@@ -42,6 +43,7 @@ func main() {
 	} else {
 		fmt.Println("Calibration succeeded")
 	}
+	*/
 
 	t0 = time.Now()
 	logMap = make(map[string]interface{})
@@ -50,14 +52,10 @@ func main() {
 	logger := ahrs.NewAHRSLogger(filename, logMap)
 	defer logger.Close()
 
+	fmt.Printf("Recording data log to %s\n", filename)
+	defer fmt.Println("Finished recording data log.")
 	for {
 		cur = <-mpu.CBuf
-		fmt.Printf("Time:       % +8.4f\n", float64(cur.T.Sub(t0).Nanoseconds()/1000)/1000)
-		fmt.Printf("Cur Gyro:   % +8.2f % +8.2f % +8.2f\n", cur.G1, cur.G2, cur.G3)
-		fmt.Printf("Cur Accel:  % +8.2f % +8.2f % +8.2f\n", cur.A1, cur.A2, cur.A3)
-		fmt.Printf("Cur Mag:    % +8.2f % +8.2f % +8.2f\n", cur.M1, cur.M2, cur.M3)
-		fmt.Println()
-
 		updateLogMap(t0, cur, logMap)
 		logger.Log()
 	}

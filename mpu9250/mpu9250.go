@@ -319,6 +319,7 @@ func (m *MPU9250) readSensors() {
 		gaError, magError                                    error
 		t0, t, t0m, tm                                       time.Time
 		magSampleRate                                        int
+		curdata                                              *MPUData
 	)
 
 	acRegMap := map[*int16]byte{
@@ -428,6 +429,7 @@ func (m *MPU9250) readSensors() {
 					log.Println("MPU9250 Warning: error reading gyro/accel")
 				}
 			}
+			curdata = makeMPUData()
 			// Update accumulated values and increment count of gyro/accel readings
 			avg1 += float64(g1); avg2 += float64(g2); avg3 += float64(g3)
 			ava1 += float64(a1); ava2 += float64(a2); ava3 += float64(a3)
@@ -470,6 +472,12 @@ func (m *MPU9250) readSensors() {
 				a11, a12, a13, a21, a22, a23 = 0, 0, 0, 0, 0, 0
 				nc = 0
 			}
+			select { // We update the buffer every time we read a new value.
+				case cBuf <- curdata:
+				default: // If buffer is full, remove oldest value and put in newest.
+					<- cBuf
+					cBuf <- curdata
+				}
 		case tm = <-clockMag.C: // Read magnetometer data:
 			if m.enableMag {
 				// Set AK8963 to slave0 for reading
@@ -513,7 +521,6 @@ func (m *MPU9250) readSensors() {
 				nm++
 			}
 		case cC<- makeMPUData(): // Send the latest values
-		case cBuf<- makeMPUData():
 		case cAvg<- makeAvgMPUData(): // Send the averages
 			avg1, avg2, avg3 = 0, 0, 0
 			ava1, ava2, ava3 = 0, 0, 0
