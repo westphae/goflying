@@ -254,7 +254,7 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, enableMag boo
 	if err := mpu.i2cWrite(MPUREG_PWR_MGMT_2, 0x63); err != nil {
 		return nil, errors.New("Error setting up MPU9250")
 	}
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 	// Turn on all gyro, all accel
 	if err := mpu.i2cWrite(MPUREG_PWR_MGMT_2, 0x00); err != nil {
 		return nil, errors.New("Error setting up MPU9250")
