@@ -117,7 +117,8 @@ type MPU9250 struct {
 }
 
 /*
-NewMPU9250 creates a new MPU9250 object according to the supplied parameters.
+NewMPU9250 creates a new MPU9250 object according to the supplied parameters.  If there is no MPU9250 available or there
+is an error creating the object, an error is returned.
 */
 func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, enableMag bool, applyHWOffsets bool) (*MPU9250, error) {
 	var mpu = new(MPU9250)
@@ -132,70 +133,31 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, enableMag boo
 	mpu.i2cbus = embd.NewI2CBus(1)
 
 	// Initialization of MPU
-	// Reset Device
+	// Reset device.
 	if err := mpu.i2cWrite(MPUREG_PWR_MGMT_1, BIT_H_RESET); err != nil {
 		return nil, errors.New("Error resetting MPU9250")
 	}
-	time.Sleep(100 * time.Millisecond) // As in inv_mpu
-	// Wake device
+
+	// Note: the following is in inv_mpu.c, but doesn't appear to be necessary from the MPU-9250 register map.
+	// Wake up chip.
+	time.Sleep(100 * time.Millisecond)
 	if err := mpu.i2cWrite(MPUREG_PWR_MGMT_1, 0x00); err != nil {
 		return nil, errors.New("Error waking MPU9250")
 	}
+
+	// Note: inv_mpu.c sets some registers here to allocate 1kB to the FIFO buffer and 3kB to the DMP.
+	// It doesn't seem to be supported in the 1.6 version of the register map and we're not using FIFO anyway,
+	// so we skip this.
 	// Don't let FIFO overwrite DMP data
 	if err := mpu.i2cWrite(MPUREG_ACCEL_CONFIG_2, BIT_FIFO_SIZE_1024|0x8); err != nil {
 		return nil, errors.New("Error setting up MPU9250")
 	}
 
-	/*
-		// Invalidate some registers
-		// This is done in DMP C drivers, not sure it's needed here
-		// Matches gyro_cfg >> 3 & 0x03
-		unsigned char gyro_fsr;
-		// Matches accel_cfg >> 3 & 0x03
-		unsigned char accel_fsr;
-		// Enabled sensors. Uses same masks as fifo_en, NOT pwr_mgmt_2.
-		unsigned char sensors;
-		// Matches config register.
-		unsigned char lpf;
-		unsigned char clk_src;
-		// Sample rate, NOT rate divider.
-		unsigned short sample_rate;
-		// Matches fifo_en register.
-		unsigned char fifo_enable;
-		// Matches int enable register.
-		unsigned char int_enable;
-		// 1 if devices on auxiliary I2C bus appear on the primary.
-		unsigned char bypass_mode;
-		// 1 if half-sensitivity.
-		// NOTE: This doesn't belong here, but everything else in hw_s is const,
-		// and this allows us to save some precious RAM.
-		 //
-		unsigned char accel_half;
-		// 1 if device in low-power accel-only mode.
-		unsigned char lp_accel_mode;
-		// 1 if interrupts are only triggered on motion events.
-		unsigned char int_motion_only;
-		struct motion_int_cache_s cache;
-		// 1 for active low interrupts.
-		unsigned char active_low_int;
-		// 1 for latched interrupts.
-		unsigned char latched_int;
-		// 1 if DMP is enabled.
-		unsigned char dmp_on;
-		// Ensures that DMP will only be loaded once.
-		unsigned char dmp_loaded;
-		// Sampling rate used when DMP is enabled.
-		unsigned short dmp_sample_rate;
-		// Compass sample rate.
-		unsigned short compass_sample_rate;
-		unsigned char compass_addr;
-		short mag_sens_adj[3];
-	*/
-
 	// Set Gyro and Accel sensitivities
 	if err := mpu.SetGyroSensitivity(sensitivityGyro); err != nil {
 		log.Println(err)
 	}
+
 	if err := mpu.SetAccelSensitivity(sensitivityAccel); err != nil {
 		log.Println(err)
 	}
@@ -205,14 +167,17 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, enableMag boo
 	if err := mpu.SetGyroLPF(sampRate >> 1); err != nil {
 		return nil, err
 	}
+
 	// Default: Set Accel LPF to half of sample rate
 	if err := mpu.SetAccelLPF(sampRate >> 1); err != nil {
 		return nil, err
 	}
+
 	// Set sample rate to chosen
 	if err := mpu.SetSampleRate(sampRate); err != nil {
 		return nil, err
 	}
+
 	// Turn off FIFO buffer
 	if err := mpu.i2cWrite(MPUREG_INT_ENABLE, 0x00); err != nil {
 		return nil, errors.New("Error setting up MPU9250")
