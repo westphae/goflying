@@ -179,11 +179,14 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, enableMag boo
 	}
 
 	// Turn off FIFO buffer
-	if err := mpu.i2cWrite(MPUREG_INT_ENABLE, 0x00); err != nil {
-		return nil, errors.New("Error setting up MPU9250")
+	if err := mpu.i2cWrite(MPUREG_FIFO_EN, 0x00); err != nil {
+		return nil, errors.New("MPU9250 Error: couldn't disable FIFO")
 	}
-	// Turn off FIFO buffer
-	//mpu.i2cWrite(MPUREG_FIFO_EN, 0x00)
+
+	// Turn off interrupts
+	if err := mpu.i2cWrite(MPUREG_INT_ENABLE, 0x00); err != nil {
+		return nil, errors.New("MPU9250 Error: couldn't disable interrupts")
+	}
 
 	// Set up magnetometer
 	if mpu.enableMag {
