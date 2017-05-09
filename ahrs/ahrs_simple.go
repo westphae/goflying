@@ -128,11 +128,15 @@ func (s *SimpleState) Update(m *Measurement) {
 		}
 	} else {
 		s.tr = 0
-		rollGPS = math.Atan2(-m.A2, -m.A3) // Needs to be different with pitch != 0
-		pitchGPS = math.Asin(-m.A1/math.Sqrt(m.A1*m.A1 + m.A2*m.A2 + m.A3*m.A3))
-		headingGPS = s.heading
 		s.calTime = 0 // TODO westphae: need something more sophisticated with static mode?
+		rollGPS = 0
+		pitchGPS = 0
+		headingGPS = s.heading
 	}
+
+	rollGPS += math.Atan2(-m.A2, -m.A3) // Needs to be different with pitch != 0
+	pitchGPS += math.Asin(-m.A1/math.Sqrt(m.A1*m.A1 + m.A2*m.A2 + m.A3*m.A3))
+
 	s.rollGPS = s.rollGPS + gpsSmoothConst * angleDiff(rollGPS, s.rollGPS)
 	s.pitchGPS = s.pitchGPS + gpsSmoothConst * angleDiff(pitchGPS, s.pitchGPS)
 	s.headingGPS = s.headingGPS + gpsSmoothConst * angleDiff(headingGPS, s.headingGPS)
