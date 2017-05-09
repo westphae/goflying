@@ -184,8 +184,8 @@ func Regularize(roll, pitch, heading float64) (float64, float64, float64) {
 	return roll, pitch, heading
 }
 
-// makeUnitVector re-scales the vector vec into a unit vector.
-func makeUnitVector(vec [3]float64) (res *[3]float64, err error) {
+// MakeUnitVector re-scales the vector vec into a unit vector.
+func MakeUnitVector(vec [3]float64) (res *[3]float64, err error) {
 	res = new([3]float64)
 	s := math.Sqrt(vec[0]*vec[0] + vec[1]*vec[1] + vec[2]*vec[2])
 	if s > 0 {
@@ -197,9 +197,9 @@ func makeUnitVector(vec [3]float64) (res *[3]float64, err error) {
 	return nil, fmt.Errorf("Error: vector is length zero")
 }
 
-// makeOrthogonal returns a vector close to the input target vector
+// MakeOrthogonal returns a vector close to the input target vector
 // but with the projection on the input ortho vector removed.
-func makeOrthogonal(target, ortho [3]float64) (res *[3]float64) {
+func MakeOrthogonal(target, ortho [3]float64) (res *[3]float64) {
 	res = new([3]float64)
 	f := target[0]*ortho[0] + target[1]*ortho[1] + target[2]*ortho[2]
 	for i:=0; i<3; i++ {
@@ -208,27 +208,27 @@ func makeOrthogonal(target, ortho [3]float64) (res *[3]float64) {
 	return
 }
 
-// makePerpendicular returns a vector that is perpendicular to both input vectors.
+// MakePerpendicular returns a vector that is perpendicular to both input vectors.
 // (Uses the cross product.)
-func makePerpendicular(vec1, vec2 [3]float64) (res *[3]float64, err error) {
+func MakePerpendicular(vec1, vec2 [3]float64) (res *[3]float64, err error) {
 	res = new([3]float64)
 	for i:=0; i < 3; i++ {
 		j := (i+1)%3
 		k := (i+2)%3
 		res[i] = vec1[j]*vec2[k] - vec1[k]*vec2[j]
 	}
-	res, err = makeUnitVector(*res)
+	res, err = MakeUnitVector(*res)
 	if err != nil {
 		return nil, fmt.Errorf("Error: vectors are parallel or length 0")
 	}
 	return res, nil
 }
 
-// makeHardSoftRotationMatrix constructs a rotation matrix that rotates the unit vector h1 exactly into the unit vector
+// MakeHardSoftRotationMatrix constructs a rotation matrix that rotates the unit vector h1 exactly into the unit vector
 // h2 and the unit vector s1 as nearly as possible into the unit vector s2.  h1 is "hard-mapped" into h2 and
 // s1 is "soft-mapped" into s2.
 // It is up to the caller to ensure that all vectors are unit vectors.
-func makeHardSoftRotationMatrix(h1, s1, h2, s2 [3]float64) (rotmat *[3][3]float64, err error) {
+func MakeHardSoftRotationMatrix(h1, s1, h2, s2 [3]float64) (rotmat *[3][3]float64, err error) {
 	rotmat = new([3][3]float64)
 	var (
 		v1, v2, w1, w2 *[3]float64
@@ -236,21 +236,21 @@ func makeHardSoftRotationMatrix(h1, s1, h2, s2 [3]float64) (rotmat *[3][3]float6
 
 	// The easiest way to "soft-rotate" s1 into s2 is by making s1 orthogonal to h1 and s2 orthogonal to h2
 	// and then mapping them exactly.
-	v1, err = makeUnitVector(*makeOrthogonal(s1, h1))
+	v1, err = MakeUnitVector(*MakeOrthogonal(s1, h1))
 	if err != nil {
 		return nil, err
 	}
-	v2, err = makeUnitVector(*makeOrthogonal(s2, h2))
+	v2, err = MakeUnitVector(*MakeOrthogonal(s2, h2))
 	if err != nil {
 		return nil, err
 	}
 
 	// Now construct a third unit vector orthogonal to h1, s1, and the same for h2, s2
-	w1, err = makePerpendicular(h1, s1)
+	w1, err = MakePerpendicular(h1, s1)
 	if err != nil {
 		return nil, err
 	}
-	w2, err = makePerpendicular(h2, s2)
+	w2, err = MakePerpendicular(h2, s2)
 	if err != nil {
 		return nil, err
 	}

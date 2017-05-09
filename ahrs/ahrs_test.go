@@ -235,7 +235,7 @@ func TestMakeUnitVector(t *testing.T) {
 		v[i] = 2*rand.Float64() - 1
 	}
 
-	w, _ = makeUnitVector(*v)
+	w, _ = MakeUnitVector(*v)
 
 	r := math.Sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2])
 	s := math.Sqrt(w[0]*w[0] + w[1]*w[1] + w[2]*w[2])
@@ -260,18 +260,18 @@ func TestMakeOrthogonal(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		u[i] = 2*rand.Float64() - 1
 	}
-	u, _ = makeUnitVector(*u)
+	u, _ = MakeUnitVector(*u)
 
 	v = new([3]float64)
 	for i := 0; i < 3; i++ {
 		v[i] = 2*rand.Float64() - 1
 	}
-	v, _ = makeUnitVector(*v)
+	v, _ = MakeUnitVector(*v)
 
-	w = makeOrthogonal(*u, *v)
+	w = MakeOrthogonal(*u, *v)
 
 	if math.Abs(w[0]*v[0] + w[1]*v[1] + w[2]*v[2]) > Small {
-		log.Printf("Error: out vector is not perpendicular to ortho vector")
+		log.Println("Error: out vector is not perpendicular to ortho vector")
 		log.Printf("u: %3f %3f %3f\n", u[0], u[1], u[2])
 		log.Printf("v: %3f %3f %3f\n", v[0], v[1], v[2])
 		log.Printf("w: %3f %3f %3f\n", w[0], w[1], w[2])
@@ -288,18 +288,18 @@ func TestMakePerpendicular(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		u[i] = 2*rand.Float64() - 1
 	}
-	u, _ = makeUnitVector(*u)
+	u, _ = MakeUnitVector(*u)
 
 	v = new([3]float64)
 	for i := 0; i < 3; i++ {
 		v[i] = 2*rand.Float64() - 1
 	}
-	v, _ = makeUnitVector(*v)
+	v, _ = MakeUnitVector(*v)
 
-	w, _ = makePerpendicular(*u, *v)
+	w, _ = MakePerpendicular(*u, *v)
 
 	if math.Abs(w[0]*u[0] + w[1]*u[1] + w[2]*u[2]) > Small {
-		log.Printf("Error: out vector is not perpendicular to first vector")
+		log.Println("Error: out vector is not perpendicular to first vector")
 		log.Printf("u: %3f %3f %3f\n", u[0], u[1], u[2])
 		log.Printf("v: %3f %3f %3f\n", v[0], v[1], v[2])
 		log.Printf("w: %3f %3f %3f\n", w[0], w[1], w[2])
@@ -307,7 +307,7 @@ func TestMakePerpendicular(t *testing.T) {
 	}
 
 	if math.Abs(w[0]*v[0] + w[1]*v[1] + w[2]*v[2]) > Small {
-		log.Printf("Error: out vector is not perpendicular to second vector")
+		log.Println("Error: out vector is not perpendicular to second vector")
 		log.Printf("u: %3f %3f %3f\n", u[0], u[1], u[2])
 		log.Printf("v: %3f %3f %3f\n", v[0], v[1], v[2])
 		log.Printf("w: %3f %3f %3f\n", w[0], w[1], w[2])
@@ -327,40 +327,40 @@ func TestMakeHardSoftRotationMatrix(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		h1[i] = 2*rand.Float64() - 1
 	}
-	h1, _ = makeUnitVector(*h1)
+	h1, _ = MakeUnitVector(*h1)
 
 	h2 = new([3]float64)
 	for i := 0; i < 3; i++ {
 		h2[i] = 2*rand.Float64() - 1
 	}
-	h2, _ = makeUnitVector(*h2)
+	h2, _ = MakeUnitVector(*h2)
 
 	s1 = new([3]float64)
 	for i := 0; i < 3; i++ {
 		s1[i] = 2*rand.Float64() - 1
 	}
-	s1, _ = makeUnitVector(*s1)
+	s1, _ = MakeUnitVector(*s1)
 
 	s2 = new([3]float64)
 	for i := 0; i < 3; i++ {
 		s2[i] = 2*rand.Float64() - 1
 	}
-	s2, _ = makeUnitVector(*s2)
+	s2, _ = MakeUnitVector(*s2)
 
-	w, _ = makeHardSoftRotationMatrix(*h1, *s1, *h2, *s2)
+	w, _ = MakeHardSoftRotationMatrix(*h1, *s1, *h2, *s2)
 
-	z1, _ = makePerpendicular(*h1, *s1)
-	z2, _ = makePerpendicular(*h2, *s2)
+	z1, _ = MakePerpendicular(*h1, *s1)
+	z2, _ = MakePerpendicular(*h2, *s2)
 
-	s1, _ = makePerpendicular(*h1, *z1)
-	s2, _ = makePerpendicular(*h2, *z2)
+	s1, _ = MakePerpendicular(*h1, *z1)
+	s2, _ = MakePerpendicular(*h2, *z2)
 
 	out = new([3]float64)
 	out[0] = w[0][0]*h1[0] + w[0][1]*h1[1] + w[0][2]*h1[2]
 	out[1] = w[1][0]*h1[0] + w[1][1]*h1[1] + w[1][2]*h1[2]
 	out[2] = w[2][0]*h1[0] + w[2][1]*h1[1] + w[2][2]*h1[2]
 	if math.Abs(out[0]-h2[0]) + math.Abs(out[1]-h2[1]) + math.Abs(out[2]-h2[2]) > Small {
-		log.Printf("Error: out vector is not mapped to first hard vector")
+		log.Println("Error: out vector is not mapped to first hard vector")
 		log.Printf("h2:  %3f %3f %3f\n", h2[0], h2[1], h2[2])
 		log.Printf("out: %3f %3f %3f\n", out[0], out[1], out[2])
 		t.Fail()
@@ -370,7 +370,7 @@ func TestMakeHardSoftRotationMatrix(t *testing.T) {
 	out[1] = w[1][0]*z1[0] + w[1][1]*z1[1] + w[1][2]*z1[2]
 	out[2] = w[2][0]*z1[0] + w[2][1]*z1[1] + w[2][2]*z1[2]
 	if math.Abs(out[0]-z2[0]) + math.Abs(out[1]-z2[1]) + math.Abs(out[2]-z2[2]) > Small {
-		log.Printf("Error: out vector is not mapped to perpendicular vector")
+		log.Println("Error: out vector is not mapped to perpendicular vector")
 		log.Printf("z2:  %3f %3f %3f\n", z2[0], z2[1], z2[2])
 		log.Printf("out: %3f %3f %3f\n", out[0], out[1], out[2])
 		t.Fail()
@@ -380,7 +380,7 @@ func TestMakeHardSoftRotationMatrix(t *testing.T) {
 	out[1] = w[1][0]*s1[0] + w[1][1]*s1[1] + w[1][2]*s1[2]
 	out[2] = w[2][0]*s1[0] + w[2][1]*s1[1] + w[2][2]*s1[2]
 	if math.Abs(out[0]-s2[0]) + math.Abs(out[1]-s2[1]) + math.Abs(out[2]-s2[2]) > Small {
-		log.Printf("Error: out vector is not mapped to perpendicular vector")
+		log.Println("Error: out vector is not mapped to perpendicular vector")
 		log.Printf("s2:  %3f %3f %3f\n", s2[0], s2[1], s2[2])
 		log.Printf("out: %3f %3f %3f\n", out[0], out[1], out[2])
 		t.Fail()
