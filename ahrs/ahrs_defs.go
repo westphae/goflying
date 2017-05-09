@@ -1,8 +1,10 @@
 package ahrs
 
 import (
-	"github.com/skelterjohn/go.matrix"
+	"fmt"
 	"math"
+
+	"github.com/skelterjohn/go.matrix"
 )
 
 const (
@@ -182,6 +184,90 @@ func Regularize(roll, pitch, heading float64) (float64, float64, float64) {
 	return roll, pitch, heading
 }
 
+// makeUnitVector re-scales the vector vec into a unit vector.
+func makeUnitVector(vec [3]float64) (res *[3]float64, err error) {
+	res = new([3]float64)
+	s := math.Sqrt(vec[0]*vec[0] + vec[1]*vec[1] + vec[2]*vec[2])
+	if s > 0 {
+		res[0] = vec[0] / s
+		res[1] = vec[1] / s
+		res[2] = vec[2] / s
+		return res, nil
+	}
+	return nil, fmt.Errorf("Error: vector is length zero")
+}
+
+// makeOrthogonal returns a vector close to the input target vector
+// but with the projection on the input ortho vector removed.
+func makeOrthogonal(target, ortho [3]float64) (res *[3]float64) {
+	res = new([3]float64)
+	f := target[0]*ortho[0] + target[1]*ortho[1] + target[2]*ortho[2]
+	for i:=0; i<3; i++ {
+		res[i] = target[i] - f * ortho[i]
+	}
+	return
+}
+
+// makePerpendicular returns a vector that is perpendicular to both input vectors.
+// (Uses the cross product.)
+func makePerpendicular(vec1, vec2 [3]float64) (res *[3]float64, err error) {
+	res = new([3]float64)
+	for i:=0; i < 3; i++ {
+		j := (i+1)%3
+		k := (i+2)%3
+		res[i] = vec1[j]*vec2[k] - vec1[k]*vec2[j]
+	}
+	res, err = makeUnitVector(*res)
+	if err != nil {
+		return nil, fmt.Errorf("Error: vectors are parallel or length 0")
+	}
+	return res, nil
+}
+
+// makeHardSoftRotationMatrix constructs a rotation matrix that rotates the unit vector h1 exactly into the unit vector
+// h2 and the unit vector s1 as nearly as possible into the unit vector s2.  h1 is "hard-mapped" into h2 and
+// s1 is "soft-mapped" into s2.
+// It is up to the caller to ensure that all vectors are unit vectors.
+func makeHardSoftRotationMatrix(h1, s1, h2, s2 [3]float64) (rotmat *[3][3]float64, err error) {
+	rotmat = new([3][3]float64)
+	var (
+		v1, v2, w1, w2 *[3]float64
+	)
+
+	// The easiest way to "soft-rotate" s1 into s2 is by making s1 orthogonal to h1 and s2 orthogonal to h2
+	// and then mapping them exactly.
+	v1, err = makeUnitVector(*makeOrthogonal(s1, h1))
+	if err != nil {
+		return nil, err
+	}
+	v2, err = makeUnitVector(*makeOrthogonal(s2, h2))
+	if err != nil {
+		return nil, err
+	}
+
+	// Now construct a third unit vector orthogonal to h1, s1, and the same for h2, s2
+	w1, err = makePerpendicular(h1, s1)
+	if err != nil {
+		return nil, err
+	}
+	w2, err = makePerpendicular(h2, s2)
+	if err != nil {
+		return nil, err
+	}
+
+	// rotmat = [h2 v2 w2] @ [h1 v1 w1].T
+	rotmat[0][0] = h2[0]*h1[0] + v2[0]*v1[0] + w2[0]*w1[0]
+	rotmat[0][1] = h2[0]*h1[1] + v2[0]*v1[1] + w2[0]*w1[1]
+	rotmat[0][2] = h2[0]*h1[2] + v2[0]*v1[2] + w2[0]*w1[2]
+	rotmat[1][0] = h2[1]*h1[0] + v2[1]*v1[0] + w2[1]*w1[0]
+	rotmat[1][1] = h2[1]*h1[1] + v2[1]*v1[1] + w2[1]*w1[1]
+	rotmat[1][2] = h2[1]*h1[2] + v2[1]*v1[2] + w2[1]*w1[2]
+	rotmat[2][0] = h2[2]*h1[0] + v2[2]*v1[0] + w2[2]*w1[0]
+	rotmat[2][1] = h2[2]*h1[1] + v2[2]*v1[1] + w2[2]*w1[1]
+	rotmat[2][2] = h2[2]*h1[2] + v2[2]*v1[2] + w2[2]*w1[2]
+
+	return rotmat, nil
+}
 
 // AHRSProvider defines an AHRS (Kalman or other) algorithm, such as ahrs_kalman, ahrs_simple, etc.
 type AHRSProvider interface {
