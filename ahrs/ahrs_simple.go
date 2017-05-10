@@ -11,29 +11,21 @@ const (
 	minDT         float64 = 1e-6 // Below this time interval, don't recalculate
 	maxDT         float64 = 10   // Above this time interval, re-initialize--too stale
 	minGS         float64 = 10   // Below this GS, don't use any GPS data
-	rollBand      float64 = 10   // Degrees by which roll can differ from pitchGPS
-	pitchBand     float64 = 10   // Degrees by which pitch can differ from pitchGPS
-	headingBand   float64 = 10   // Degrees by which heading can differ from pitchGPS
-	expPower      float64 = 5
-	gpsTimeConst  float64 = 5    // Seconds time constant for attitude to decay towards GPS value without gyro input
-	bCalTimeConst float64 = 600  // Time constant for calibrating gyro, s
-	trSmall       float64 = 0.25 * Deg  // Turn Rate that we will consider to be zero for gyro calibration
-	warmupTime    float64 = 60   // Time after beginning of flight to accumulate gyro calibration more quickly
-	gpsSmoothConst float64 = 0.3 // Multiplier for exponential smoothing of GPS-derived values
+	uiSmoothConst float64 = 1.0  // Decay constant for smoothing values reported to the user
+	gpsWeight     float64 = 0.1  // Weight given to GPS quaternion over gyro quaternion
 )
 
 type SimpleState struct {
 	State
 	TW                            float64                // Time of last GPS reading
-	rollGPS, pitchGPS, headingGPS float64                // GPS-derived attitude, Deg
-	roll, pitch, heading          float64                // Fused attitude, Deg
-	w1, w2, w3, gs                float64                // Groundspeed & ROC tracking, Kts
-	tr                            float64                // turn rate, Rad/s
+	EGPS0, EGPS1, EGPS2, EGPS3    float64                // GPS-derived orientation quaternion
+	roll, pitch, heading          float64                // Fused attitude, Rad
+	rollGPS, pitchGPS, headingGPS float64                // GPS/accel-based attitude, Rad
+	w1, w2, w3, gs                float64                // Groundspeed & ROC, Kts
 	headingMag                    float64                // Magnetic heading, Rad (smoothed)
 	slipSkid                      float64                // Slip/Skid Angle, Rad (smoothed)
 	gLoad                         float64                // G Load, G vertical (smoothed)
 	turnRate                      float64                // turn rate, Rad/s (smoothed)
-	calTime                       float64                // Time since beginning of flight, s
 	needsInitialization           bool                   // Rather than computing, initialize
 	logMap                        map[string]interface{} // Map only for analysis/debugging
 }
@@ -64,23 +56,21 @@ func (s *SimpleState) init(m *Measurement) {
 		s.w3 = 0
 	}
 
-	s.tr = 0
-	s.rollGPS = 0
+	s.roll = 0
+	s.pitch = 0
 	if s.gs > minGS {
-		s.headingGPS = math.Atan2(m.W1, m.W2)
-		s.pitchGPS = math.Atan2(m.W3, s.gs)
+		s.heading = math.Atan2(m.W1, m.W2)
 	} else {
-		s.headingGPS = Pi/2
-		s.pitchGPS = 0
+		s.heading = 0
 	}
 
-	s.roll = s.rollGPS
-	s.pitch = s.pitchGPS
-	s.heading = s.headingGPS
+	s.EGPS3 = math.Sin(s.heading/2)
+	s.EGPS2 = 0
+	s.EGPS1 = 0
+	s.EGPS0 = math.Sqrt(1 - s.EGPS3 * s.EGPS3)
 
-	s.E0, s.E1, s.E2, s.E3 = ToQuaternion(s.roll, s.pitch, s.heading)
+	s.E0, s.E1, s.E2, s.E3 = s.EGPS0, s.EGPS1, s.EGPS2, s.EGPS3
 
-	s.calTime = 0
 	s.D1, s.D2, s.D3 = 0, 0, 0
 
 	updateLogMap(s, m, s.logMap)
@@ -99,6 +89,15 @@ func (s *SimpleState) Predict(t float64) {
 	return
 }
 
+// Update performs the AHRSSimple AHRS computations.
+// The idea behind the Simple AHRS algorithm is to use the GPS to compute what the accelerometer should show
+// and then to create a rotation matrix to map the measured accelerometer vector onto this vector and the
+// speed vector (GPS Track) onto the sensor x-axis.  Then the gyro is used to further improve this estimate.
+// This is really a poor-man's sensor fusion algorithm.  The proper way to do this is with a Kalman Filter,
+// but this approach is simpler and easier to debug, and should be good enough for most flight conditions.
+//
+// It is a step on the way to the full Kalman Filter implementation, a bit more obvious what's going on so
+// the math and stratux integration can be more easily developed and debugged.
 func (s *SimpleState) Update(m *Measurement) {
 	dt := m.T - s.T
 	dtw := m.TW - s.TW
@@ -113,92 +112,60 @@ func (s *SimpleState) Update(m *Measurement) {
 		s.gs = math.Hypot(m.W1, m.W2)
 	}
 
-	var rollGPS, pitchGPS, headingGPS float64
+	ae := [3]float64{0, 0, -1} // Acceleration due to gravity in earth frame
+	ve := [3]float64{0, 1, 0} // Groundspeed in earth frame (default for desktop mode)
 	if s.gs > minGS {
-		if dtw > minDT {
-			s.tr = (m.W2*(m.W1-s.w1)-m.W1*(m.W2-s.w2))/(s.gs*s.gs)/dtw
-			rollGPS = math.Atan(s.gs * s.tr / G)
-			pitchGPS = math.Atan2(m.W3, s.gs)
-			headingGPS = math.Atan2(m.W1, m.W2)
-		} else {
-			log.Printf("GPS time interval too short at %f\n", m.T)
-			rollGPS = s.rollGPS
-			pitchGPS = s.pitchGPS
-			headingGPS = s.headingGPS
+		if dtw < minDT {
+			log.Printf("No GPS update at %f\n", m.T)
+			return
 		}
-	} else {
-		s.tr = 0
-		s.calTime = 0 // TODO westphae: need something more sophisticated with static mode?
-		rollGPS = 0
-		pitchGPS = 0
-		headingGPS = s.heading
+		ve = [3]float64{m.W1, m.W2, m.W3} // Instantaneous roundspeed in earth frame
+		// Instantaneous acceleration in earth frame based on change in GPS groundspeed
+		ae[0] -= (m.W1 - s.w1) / dtw
+		ae[1] -= (m.W2 - s.w2) / dtw
+		ae[2] -= (m.W3 - s.w3) / dtw
 	}
 
-	rollGPS += math.Atan2(-m.A2, -m.A3) // Needs to be different with pitch != 0
-	pitchGPS += math.Asin(-m.A1/math.Sqrt(m.A1*m.A1 + m.A2*m.A2 + m.A3*m.A3))
-
-	s.rollGPS = s.rollGPS + gpsSmoothConst * angleDiff(rollGPS, s.rollGPS)
-	s.pitchGPS = s.pitchGPS + gpsSmoothConst * angleDiff(pitchGPS, s.pitchGPS)
-	s.headingGPS = s.headingGPS + gpsSmoothConst * angleDiff(headingGPS, s.headingGPS)
-
-	q0, q1, q2, q3 := s.E0, s.E1, s.E2, s.E3
-	dq0, dq1, dq2, dq3 := QuaternionRotate(q0, q1, q2, q3,
-		(m.B1-s.D1)*Deg*dt, (m.B2-s.D2)*Deg*dt, (m.B3-s.D3)*Deg*dt)
-	dq0 -= q0
-	dq1 -= q1
-	dq2 -= q2
-	dq3 -= q3
-
-	rx := 2 * (q0*q1 + q2*q3)
-	ry := q0*q0 - q1*q1 - q2*q2 + q3*q3
-	drx := 2 * (q1*dq0 + q0*dq1 + q3*dq2 + q2*dq3)
-	dry := 2 * (q0*dq0 - q1*dq1 - q2*dq2 + q3*dq3)
-	dr := (ry*drx - rx*dry) / (rx*rx + ry*ry)
-
-	px := -2 * (q0*q2 - q3*q1)
-	py := q0*q0 + q1*q1 + q2*q2 + q3*q3
-	dpx := -2 * (q2*dq0 - q3*dq1 + q0*dq2 - q1*dq3)
-	dpy := 2 * (q0*dq0 + q1*dq1 + q2*dq2 + q3*dq3)
-	dp := (py*dpx - px*dpy) / (py * math.Sqrt(py*py-px*px))
-
-	hx := -2 * (q0*q3 - q1*q2)
-	hy := q0*q0 + q1*q1 - q2*q2 - q3*q3
-	dhx := -2 * (q3*dq0 - q2*dq1 - q1*dq2 + q0*dq3)
-	dhy := 2 * (q0*dq0 + q1*dq1 - q2*dq2 - q3*dq3)
-	dh := (hy*dhx - hx*dhy) / (hx*hx + hy*hy)
-
-	// The idea of the simple AHRS is to bias the sensors to bring the estimated attitude
-	// in line with the GPS-derived attitude
-	// This won't work around the poles -- no hammerheads!
-	ddr := angleDiff(s.roll, s.rollGPS)
-	kr := math.Exp(-math.Abs(ddr/rollBand)*expPower) // linear
-	if ddr*dr > 0 {
-		dr *= math.Max(0, kr)
+	ha, err := MakeUnitVector([3]float64{m.A1, m.A2, m.A3})
+	if err != nil {
+		log.Println("AHRS Error: IMU-measured acceleration was zero")
+		return
 	}
-	s.roll += dr - ddr*dt/gpsTimeConst
 
-	ddp := angleDiff(s.pitch, s.pitchGPS)
-	kp := math.Exp(-math.Abs(ddp/pitchBand)*expPower) // linear
-	if ddp*dp > 0 {
-		dp *= math.Max(0, kp)
+	he, _ := MakeUnitVector(ae)
+	se, _ := MakeUnitVector(ve)
+
+	// Left-multiplying a vector in the aircraft frame by rotmat will put it into the earth frame.
+	// rotmat maps the current IMU acceleration to the GPS-acceleration and the x-axis to the GPS-velocity.
+	rotmat, err := MakeHardSoftRotationMatrix(*ha, [3]float64{1, 0, 0}, *he, *se)
+	if err != nil {
+		log.Printf("AHRS Error: %s\n", err)
+		return
 	}
-	s.pitch += dp - ddp*dt/gpsTimeConst
 
-	ddh := angleDiff(s.heading, s.headingGPS)
-	kh := math.Exp(-math.Abs(ddh/headingBand)*expPower) // linear
-	if ddh*dh > 0 {
-		dh *= math.Max(0, kh)
-	}
-	s.heading += dh - ddh*dt/gpsTimeConst
+	// This orientation quaternion EGPS rotates from aircraft frame to earth frame at the current time,
+	// as estimated using GPS and accelerometer.
+	s.EGPS0, s.EGPS1, s.EGPS2, s.EGPS3 = RotationMatrixToQuaternion(*rotmat)
 
-	s.roll, s.pitch, s.heading = Regularize(s.roll, s.pitch, s.heading)
-	s.rollGPS, s.pitchGPS, s.headingGPS = Regularize(s.rollGPS, s.pitchGPS, s.headingGPS)
+	// By rotating the orientation quaternion at the last time step, s.E, by the measured gyro rates,
+	// we get another estimate of the current orientation quaternion using gyro.
+	e0, e1, e2, e3 := QuaternionRotate(s.E0, s.E1, s.E2, s.E3,
+		(m.B1-s.D1) * dt * Deg, (m.B2-s.D2) * dt * Deg, (m.B3-s.D3) * dt * Deg)
 
-	s.E0, s.E1, s.E2, s.E3 = ToQuaternion(s.roll, s.pitch, s.heading)
+	// Now fuse the GPS/Accelerometer and Gyro estimates, smooth the result and normalize.
+	s.E0, s.E1, s.E2, s.E3 = QuaternionNormalize(
+		(1-uiSmoothConst)*s.E0 + uiSmoothConst*(gpsWeight*s.EGPS0 + (1-gpsWeight)*e0),
+		(1-uiSmoothConst)*s.E1 + uiSmoothConst*(gpsWeight*s.EGPS1 + (1-gpsWeight)*e1),
+		(1-uiSmoothConst)*s.E2 + uiSmoothConst*(gpsWeight*s.EGPS2 + (1-gpsWeight)*e2),
+		(1-uiSmoothConst)*s.E3 + uiSmoothConst*(gpsWeight*s.EGPS3 + (1-gpsWeight)*e3),
+	)
+
+	s.roll, s.pitch, s.heading = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
+	s.rollGPS, s.pitchGPS, s.headingGPS = FromQuaternion(s.EGPS0, s.EGPS1, s.EGPS2, s.EGPS3)
 
 	// Update Magnetic Heading
-	dhM := angleDiff(math.Atan2(m.M1, -m.M2), s.headingMag)
-	s.headingMag = s.headingMag + gpsSmoothConst * dhM
+	dhM := AngleDiff(math.Atan2(m.M1, -m.M2), s.headingMag)
+	s.headingMag += uiSmoothConst * dhM
 	for s.headingMag < 0 {
 		s.headingMag += 2*Pi
 	}
@@ -207,25 +174,15 @@ func (s *SimpleState) Update(m *Measurement) {
 	}
 
 	// Update Slip/Skid
-	s.slipSkid += gpsSmoothConst * (math.Atan2(m.A2, -m.A3) - s.slipSkid)
+	s.slipSkid += uiSmoothConst * (math.Atan2(m.A2, -m.A3) - s.slipSkid)
 
 	// Update Rate of Turn
-	s.turnRate += gpsSmoothConst * (s.tr - s.turnRate)
+	if s.gs > 0 && dtw > 0 {
+		s.turnRate += uiSmoothConst * ((m.W2*(m.W1-s.w1) - m.W1*(m.W2-s.w2)) / (s.gs * s.gs) / dtw - s.turnRate)
+	}
 
 	// Update GLoad
-	s.gLoad += gpsSmoothConst * (-m.A3 - s.gLoad)
-
-	// Recalibrate
-	if math.Abs(s.tr) < trSmall {
-		w := dt/bCalTimeConst
-		if s.calTime < warmupTime {
-			w *= 10 // Accumulate calibration values more quickly at beginning
-			s.calTime += dt
-		}
-		s.D1 = (1-w) * s.D1 + w * m.B1
-		s.D2 = (1-w) * s.D2 + w * m.B2
-		s.D3 = (1-w) * s.D3 + w * m.B3
-	}
+	s.gLoad += uiSmoothConst * (-m.A3 - s.gLoad)
 
 	updateLogMap(s, m, s.logMap)
 
@@ -288,21 +245,16 @@ func updateLogMap(s *SimpleState, m *Measurement, p map[string]interface{}) {
 	var simpleLogMap = map[string]func(s *SimpleState, m *Measurement) float64{
 		"Ta":          func(s *SimpleState, m *Measurement) float64 { return s.T },
 		"TWa":         func(s *SimpleState, m *Measurement) float64 { return s.TW },
-		"calTime":     func(s *SimpleState, m *Measurement) float64 { return s.calTime },
 		"Roll":        func(s *SimpleState, m *Measurement) float64 { return s.roll / Deg },
 		"Pitch":       func(s *SimpleState, m *Measurement) float64 { return s.pitch / Deg },
 		"Heading":     func(s *SimpleState, m *Measurement) float64 { return s.heading / Deg },
 		"RollGPS":     func(s *SimpleState, m *Measurement) float64 { return s.rollGPS / Deg },
 		"PitchGPS":    func(s *SimpleState, m *Measurement) float64 { return s.pitchGPS / Deg },
 		"HeadingGPS":  func(s *SimpleState, m *Measurement) float64 { return s.headingGPS / Deg },
-		"tr":          func(s *SimpleState, m *Measurement) float64 { return s.tr },
 		"GroundSpeed": func(s *SimpleState, m *Measurement) float64 { return s.gs },
 		"W1a":         func(s *SimpleState, m *Measurement) float64 { return s.w1 },
 		"W2a":         func(s *SimpleState, m *Measurement) float64 { return s.w2 },
 		"W3a":         func(s *SimpleState, m *Measurement) float64 { return s.w3 },
-		"dPitch":      func(s *SimpleState, m *Measurement) float64 { return pitchBand },
-		"dRoll":       func(s *SimpleState, m *Measurement) float64 { return rollBand },
-		"dHeading":    func(s *SimpleState, m *Measurement) float64 { return headingBand },
 		"WValid": func(s *SimpleState, m *Measurement) float64 { if m.WValid { return 1 }; return 0 },
 		"T":  func(s *SimpleState, m *Measurement) float64 { return m.T },
 		"TW": func(s *SimpleState, m *Measurement) float64 { return m.TW },
@@ -313,6 +265,10 @@ func updateLogMap(s *SimpleState, m *Measurement, p map[string]interface{}) {
 		"E1": func(s *SimpleState, m *Measurement) float64 { return s.E1 },
 		"E2": func(s *SimpleState, m *Measurement) float64 { return s.E2 },
 		"E3": func(s *SimpleState, m *Measurement) float64 { return s.E3 },
+		"EGPS0": func(s *SimpleState, m *Measurement) float64 { return s.EGPS0 },
+		"EGPS1": func(s *SimpleState, m *Measurement) float64 { return s.EGPS1 },
+		"EGPS2": func(s *SimpleState, m *Measurement) float64 { return s.EGPS2 },
+		"EGPS3": func(s *SimpleState, m *Measurement) float64 { return s.EGPS3 },
 		"A1": func(s *SimpleState, m *Measurement) float64 { return m.A1 },
 		"A2": func(s *SimpleState, m *Measurement) float64 { return m.A2 },
 		"A3": func(s *SimpleState, m *Measurement) float64 { return m.A3 },
@@ -339,9 +295,9 @@ func updateLogMap(s *SimpleState, m *Measurement, p map[string]interface{}) {
 var SimpleJSONConfig = `
 {
   "State": [
-    {"pred": "GPSRoll", "updt": "Roll", "std": "dRoll", "baseline": 0},
-    {"pred": "GPSPitch", "updt": "Pitch", "std": "dPitch", "baseline": 0},
-    {"pred": "GPSHeading", "updt": "Heading", "std": "dHeading"},
+    {"pred": "GPSRoll", "updt": "Roll", "baseline": 0},
+    {"pred": "GPSPitch", "updt": "Pitch", "baseline": 0},
+    {"pred": "GPSHeading", "updt": "Heading"},
     {"updt": "TurnRate", "baseline": 0},
     {"updt": "GroundSpeed", "baseline": 0},
     {"updt": "T"},
@@ -365,14 +321,3 @@ var SimpleJSONConfig = `
   ]
 }
 `
-
-func angleDiff(a, b float64) (diff float64) {
-	diff = a - b
-	for diff > Pi {
-		diff -= 2*Pi
-	}
-	for diff < -Pi {
-		diff += 2*Pi
-	}
-	return
-}

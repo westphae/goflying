@@ -269,6 +269,17 @@ func MakeHardSoftRotationMatrix(h1, s1, h2, s2 [3]float64) (rotmat *[3][3]float6
 	return rotmat, nil
 }
 
+func AngleDiff(a, b float64) (diff float64) {
+	diff = a - b
+	for diff > Pi {
+		diff -= 2*Pi
+	}
+	for diff < -Pi {
+		diff += 2*Pi
+	}
+	return
+}
+
 // AHRSProvider defines an AHRS (Kalman or other) algorithm, such as ahrs_kalman, ahrs_simple, etc.
 type AHRSProvider interface {
 	// GetState returns all the information about the current state.

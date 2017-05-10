@@ -90,13 +90,7 @@ func QuaternionAToB(a1, a2, a3, b1, b2, b3 float64) (q0, q1, q2, q3 float64) {
 		q3 = a1*b2 - a2*b1
 	}
 
-	qq := math.Sqrt(q0*q0 + q1*q1 + q2*q2 + q3*q3)
-	q0 /= qq
-	q1 /= qq
-	q2 /= qq
-	q3 /= qq
-
-	return q0, q1, q2, q3
+	return QuaternionNormalize(q0, q1, q2, q3)
 }
 
 // QuaternionRotate rotates a quaternion Qea by a small rate-of-change vector Ha
@@ -106,12 +100,39 @@ func QuaternionRotate(q0, q1, q2, q3, h1, h2, h3 float64) (r0, r1, r2, r3 float6
 	r1 = q1 + 0.5*(q0*h1-q3*h2+q2*h3)
 	r2 = q2 + 0.5*(q3*h1+q0*h2-q1*h3)
 	r3 = q3 + 0.5*(-q2*h1+q1*h2+q0*h3)
+	return QuaternionNormalize(r0, r1, r2, r3)
+}
 
-	// Re-normalize
-	rr := math.Sqrt((q0*q0 + q1*q1 + q2*q2 + q3*q3) / (r0*r0 + r1*r1 + r2*r2 + r3*r3))
-	r0 *= rr
-	r1 *= rr
-	r2 *= rr
-	r3 *= rr
+// RotationMatrixToQuaternion computes the quaternion q corresponding to a rotation matrix r.
+func RotationMatrixToQuaternion(r [3][3]float64) (q0, q1, q2, q3 float64) {
+	q0 = math.Sqrt(1 + r[0][0] + r[1][1] + r[2][2])/2
+	q1 = (r[2][1] - r[1][2])/(4*q0)
+	q2 = (r[0][2] - r[2][0])/(4*q0)
+	q3 = (r[1][0] - r[0][1])/(4*q0)
+	return
+}
+
+// QuaternionToRotationMatrix computes the rotation matrix r corresponding to a quaternion q.
+func QuaternionToRotationMatrix(q0, q1, q2, q3 float64) (r *[3][3]float64) {
+	r = new([3][3]float64)
+	r[0][0] = +q0*q0 + q1*q1 - q2*q2 - q3*q3
+	r[0][1] = 2 * (-q0*q3 + q1*q2)
+	r[0][2] = 2 * (+q0*q2 + q1*q3)
+	r[1][0] = 2 * (+q0*q3 + q2*q1)
+	r[1][1] = +q0*q0 - q1*q1 + q2*q2 - q3*q3
+	r[1][2] = 2 * (-q0*q1 + q2*q3)
+	r[2][0] = 2 * (-q0*q2 + q3*q1)
+	r[2][1] = 2 * (+q0*q1 + q3*q2)
+	r[2][2] = +q0*q0 - q1*q1 - q2*q2 + q3*q3
+	return
+}
+
+//QuaternionNormalize re-scales the input quaternion to unit norm.
+func QuaternionNormalize(q0, q1, q2, q3 float64) (r0, r1, r2, r3 float64) {
+	qq := math.Sqrt(q0*q0 + q1*q1 + q2*q2 + q3*q3)
+	r0 = q0 / qq
+	r1 = q1 / qq
+	r2 = q2 / qq
+	r3 = q3 / qq
 	return
 }
