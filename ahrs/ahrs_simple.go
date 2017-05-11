@@ -121,9 +121,9 @@ func (s *SimpleState) Update(m *Measurement) {
 		}
 		ve = [3]float64{m.W1, m.W2, m.W3} // Instantaneous roundspeed in earth frame
 		// Instantaneous acceleration in earth frame based on change in GPS groundspeed
-		ae[0] -= (m.W1 - s.w1) / dtw
-		ae[1] -= (m.W2 - s.w2) / dtw
-		ae[2] -= (m.W3 - s.w3) / dtw
+		ae[0] -= (m.W1 - s.w1) / dtw / G
+		ae[1] -= (m.W2 - s.w2) / dtw / G
+		ae[2] -= (m.W3 - s.w3) / dtw / G
 	}
 
 	ha, err := MakeUnitVector([3]float64{m.A1, m.A2, m.A3})
