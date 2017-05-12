@@ -64,10 +64,10 @@ func (s *SimpleState) init(m *Measurement) {
 		s.heading = 0
 	}
 
-	s.EGPS3 = math.Sin(s.heading/2)
+	s.EGPS3 = math.Sin(s.heading / 2)
 	s.EGPS2 = 0
 	s.EGPS1 = 0
-	s.EGPS0 = math.Sqrt(1 - s.EGPS3 * s.EGPS3)
+	s.EGPS0 = math.Sqrt(1 - s.EGPS3*s.EGPS3)
 
 	s.E0, s.E1, s.E2, s.E3 = s.EGPS0, s.EGPS1, s.EGPS2, s.EGPS3
 
@@ -113,7 +113,7 @@ func (s *SimpleState) Update(m *Measurement) {
 	}
 
 	ae := [3]float64{0, 0, -1} // Acceleration due to gravity in earth frame
-	ve := [3]float64{0, 1, 0} // Groundspeed in earth frame (default for desktop mode)
+	ve := [3]float64{0, 1, 0}  // Groundspeed in earth frame (default for desktop mode)
 	if s.gs > minGS {
 		if dtw < minDT {
 			log.Printf("No GPS update at %f\n", m.T)
@@ -147,23 +147,23 @@ func (s *SimpleState) Update(m *Measurement) {
 	// as estimated using GPS and accelerometer.
 	e0, e1, e2, e3 := RotationMatrixToQuaternion(*rotmat)
 	s.EGPS0, s.EGPS1, s.EGPS2, s.EGPS3 = QuaternionNormalize(
-		s.EGPS0 + uiSmoothConst*(e0 - s.EGPS0),
-		s.EGPS1 + uiSmoothConst*(e1 - s.EGPS1),
-		s.EGPS2 + uiSmoothConst*(e2 - s.EGPS2),
-		s.EGPS3 + uiSmoothConst*(e3 - s.EGPS3),
+		s.EGPS0+uiSmoothConst*(e0-s.EGPS0),
+		s.EGPS1+uiSmoothConst*(e1-s.EGPS1),
+		s.EGPS2+uiSmoothConst*(e2-s.EGPS2),
+		s.EGPS3+uiSmoothConst*(e3-s.EGPS3),
 	)
 
 	// By rotating the orientation quaternion at the last time step, s.E, by the measured gyro rates,
 	// we get another estimate of the current orientation quaternion using gyro.
 	e0, e1, e2, e3 = QuaternionRotate(s.E0, s.E1, s.E2, s.E3,
-		(m.B1-s.D1) * dt * Deg, (m.B2-s.D2) * dt * Deg, (m.B3-s.D3) * dt * Deg)
+		(m.B1-s.D1)*dt*Deg, (m.B2-s.D2)*dt*Deg, (m.B3-s.D3)*dt*Deg)
 
 	// Now fuse the GPS/Accelerometer and Gyro estimates, smooth the result and normalize.
 	s.E0, s.E1, s.E2, s.E3 = QuaternionNormalize(
-		s.E0 + uiSmoothConst*(gpsWeight*s.EGPS0 + (1-gpsWeight)*e0 - s.E0),
-		s.E1 + uiSmoothConst*(gpsWeight*s.EGPS1 + (1-gpsWeight)*e1 - s.E1),
-		s.E2 + uiSmoothConst*(gpsWeight*s.EGPS2 + (1-gpsWeight)*e2 - s.E2),
-		s.E3 + uiSmoothConst*(gpsWeight*s.EGPS3 + (1-gpsWeight)*e3 - s.E3),
+		s.E0+uiSmoothConst*(gpsWeight*s.EGPS0+(1-gpsWeight)*e0-s.E0),
+		s.E1+uiSmoothConst*(gpsWeight*s.EGPS1+(1-gpsWeight)*e1-s.E1),
+		s.E2+uiSmoothConst*(gpsWeight*s.EGPS2+(1-gpsWeight)*e2-s.E2),
+		s.E3+uiSmoothConst*(gpsWeight*s.EGPS3+(1-gpsWeight)*e3-s.E3),
 	)
 
 	s.roll, s.pitch, s.heading = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
@@ -173,18 +173,19 @@ func (s *SimpleState) Update(m *Measurement) {
 	dhM := AngleDiff(math.Atan2(m.M1, -m.M2), s.headingMag)
 	s.headingMag += uiSmoothConst * dhM
 	for s.headingMag < 0 {
-		s.headingMag += 2*Pi
+		s.headingMag += 2 * Pi
 	}
 	for s.headingMag >= 2*Pi {
-		s.headingMag -= 2*Pi
+		s.headingMag -= 2 * Pi
 	}
 
 	// Update Slip/Skid
-	s.slipSkid += uiSmoothConst * (math.Atan2(m.A2, -m.A3) - s.slipSkid)
+	// Seems to need more smoothing than the others
+	s.slipSkid += uiSmoothConst / 2 * (math.Atan2(m.A2, -m.A3) - s.slipSkid)
 
 	// Update Rate of Turn
 	if s.gs > 0 && dtw > 0 {
-		s.turnRate += uiSmoothConst * ((m.W2*(m.W1-s.w1) - m.W1*(m.W2-s.w2)) / (s.gs * s.gs) / dtw - s.turnRate)
+		s.turnRate += uiSmoothConst * ((m.W2*(m.W1-s.w1)-m.W1*(m.W2-s.w2))/(s.gs*s.gs)/dtw - s.turnRate)
 	}
 
 	// Update GLoad
@@ -261,36 +262,41 @@ func updateLogMap(s *SimpleState, m *Measurement, p map[string]interface{}) {
 		"W1a":         func(s *SimpleState, m *Measurement) float64 { return s.w1 },
 		"W2a":         func(s *SimpleState, m *Measurement) float64 { return s.w2 },
 		"W3a":         func(s *SimpleState, m *Measurement) float64 { return s.w3 },
-		"WValid": func(s *SimpleState, m *Measurement) float64 { if m.WValid { return 1 }; return 0 },
-		"T":  func(s *SimpleState, m *Measurement) float64 { return m.T },
-		"TW": func(s *SimpleState, m *Measurement) float64 { return m.TW },
-		"W1": func(s *SimpleState, m *Measurement) float64 { return m.W1 },
-		"W2": func(s *SimpleState, m *Measurement) float64 { return m.W2 },
-		"W3": func(s *SimpleState, m *Measurement) float64 { return m.W3 },
-		"E0": func(s *SimpleState, m *Measurement) float64 { return s.E0 },
-		"E1": func(s *SimpleState, m *Measurement) float64 { return s.E1 },
-		"E2": func(s *SimpleState, m *Measurement) float64 { return s.E2 },
-		"E3": func(s *SimpleState, m *Measurement) float64 { return s.E3 },
-		"EGPS0": func(s *SimpleState, m *Measurement) float64 { return s.EGPS0 },
-		"EGPS1": func(s *SimpleState, m *Measurement) float64 { return s.EGPS1 },
-		"EGPS2": func(s *SimpleState, m *Measurement) float64 { return s.EGPS2 },
-		"EGPS3": func(s *SimpleState, m *Measurement) float64 { return s.EGPS3 },
-		"A1": func(s *SimpleState, m *Measurement) float64 { return m.A1 },
-		"A2": func(s *SimpleState, m *Measurement) float64 { return m.A2 },
-		"A3": func(s *SimpleState, m *Measurement) float64 { return m.A3 },
-		"B1": func(s *SimpleState, m *Measurement) float64 { return m.B1 },
-		"B2": func(s *SimpleState, m *Measurement) float64 { return m.B2 },
-		"B3": func(s *SimpleState, m *Measurement) float64 { return m.B3 },
-		"M1": func(s *SimpleState, m *Measurement) float64 { return m.M1 },
-		"M2": func(s *SimpleState, m *Measurement) float64 { return m.M2 },
-		"M3": func(s *SimpleState, m *Measurement) float64 { return m.M3 },
-		"D1": func(s *SimpleState, m *Measurement) float64 { return s.D1 },
-		"D2": func(s *SimpleState, m *Measurement) float64 { return s.D2 },
-		"D3": func(s *SimpleState, m *Measurement) float64 { return s.D3 },
+		"WValid": func(s *SimpleState, m *Measurement) float64 {
+			if m.WValid {
+				return 1
+			}
+			return 0
+		},
+		"T":          func(s *SimpleState, m *Measurement) float64 { return m.T },
+		"TW":         func(s *SimpleState, m *Measurement) float64 { return m.TW },
+		"W1":         func(s *SimpleState, m *Measurement) float64 { return m.W1 },
+		"W2":         func(s *SimpleState, m *Measurement) float64 { return m.W2 },
+		"W3":         func(s *SimpleState, m *Measurement) float64 { return m.W3 },
+		"E0":         func(s *SimpleState, m *Measurement) float64 { return s.E0 },
+		"E1":         func(s *SimpleState, m *Measurement) float64 { return s.E1 },
+		"E2":         func(s *SimpleState, m *Measurement) float64 { return s.E2 },
+		"E3":         func(s *SimpleState, m *Measurement) float64 { return s.E3 },
+		"EGPS0":      func(s *SimpleState, m *Measurement) float64 { return s.EGPS0 },
+		"EGPS1":      func(s *SimpleState, m *Measurement) float64 { return s.EGPS1 },
+		"EGPS2":      func(s *SimpleState, m *Measurement) float64 { return s.EGPS2 },
+		"EGPS3":      func(s *SimpleState, m *Measurement) float64 { return s.EGPS3 },
+		"A1":         func(s *SimpleState, m *Measurement) float64 { return m.A1 },
+		"A2":         func(s *SimpleState, m *Measurement) float64 { return m.A2 },
+		"A3":         func(s *SimpleState, m *Measurement) float64 { return m.A3 },
+		"B1":         func(s *SimpleState, m *Measurement) float64 { return m.B1 },
+		"B2":         func(s *SimpleState, m *Measurement) float64 { return m.B2 },
+		"B3":         func(s *SimpleState, m *Measurement) float64 { return m.B3 },
+		"M1":         func(s *SimpleState, m *Measurement) float64 { return m.M1 },
+		"M2":         func(s *SimpleState, m *Measurement) float64 { return m.M2 },
+		"M3":         func(s *SimpleState, m *Measurement) float64 { return m.M3 },
+		"D1":         func(s *SimpleState, m *Measurement) float64 { return s.D1 },
+		"D2":         func(s *SimpleState, m *Measurement) float64 { return s.D2 },
+		"D3":         func(s *SimpleState, m *Measurement) float64 { return s.D3 },
 		"headingMag": func(s *SimpleState, m *Measurement) float64 { return s.headingMag },
-		"slipSkid": func(s *SimpleState, m *Measurement) float64 { return s.slipSkid },
-		"gLoad": func(s *SimpleState, m *Measurement) float64 { return s.gLoad },
-		"turnRate": func(s *SimpleState, m *Measurement) float64 { return s.turnRate },
+		"slipSkid":   func(s *SimpleState, m *Measurement) float64 { return s.slipSkid },
+		"gLoad":      func(s *SimpleState, m *Measurement) float64 { return s.gLoad },
+		"turnRate":   func(s *SimpleState, m *Measurement) float64 { return s.turnRate },
 	}
 
 	for k := range simpleLogMap {
