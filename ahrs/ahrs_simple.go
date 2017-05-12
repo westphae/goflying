@@ -11,7 +11,7 @@ const (
 	minDT         float64 = 1e-6 // Below this time interval, don't recalculate
 	maxDT         float64 = 10   // Above this time interval, re-initialize--too stale
 	minGS         float64 = 10   // Below this GS, don't use any GPS data
-	uiSmoothConst float64 = 1.0  // Decay constant for smoothing values reported to the user
+	uiSmoothConst float64 = 0.5  // Decay constant for smoothing values reported to the user
 	gpsWeight     float64 = 0.1  // Weight given to GPS quaternion over gyro quaternion
 )
 
