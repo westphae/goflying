@@ -145,19 +145,25 @@ func (s *SimpleState) Update(m *Measurement) {
 
 	// This orientation quaternion EGPS rotates from aircraft frame to earth frame at the current time,
 	// as estimated using GPS and accelerometer.
-	s.EGPS0, s.EGPS1, s.EGPS2, s.EGPS3 = RotationMatrixToQuaternion(*rotmat)
+	e0, e1, e2, e3 := RotationMatrixToQuaternion(*rotmat)
+	s.EGPS0, s.EGPS1, s.EGPS2, s.EGPS3 = QuaternionNormalize(
+		s.EGPS0 + uiSmoothConst*(e0 - s.EGPS0),
+		s.EGPS1 + uiSmoothConst*(e1 - s.EGPS1),
+		s.EGPS2 + uiSmoothConst*(e2 - s.EGPS2),
+		s.EGPS3 + uiSmoothConst*(e3 - s.EGPS3),
+	)
 
 	// By rotating the orientation quaternion at the last time step, s.E, by the measured gyro rates,
 	// we get another estimate of the current orientation quaternion using gyro.
-	e0, e1, e2, e3 := QuaternionRotate(s.E0, s.E1, s.E2, s.E3,
+	e0, e1, e2, e3 = QuaternionRotate(s.E0, s.E1, s.E2, s.E3,
 		(m.B1-s.D1) * dt * Deg, (m.B2-s.D2) * dt * Deg, (m.B3-s.D3) * dt * Deg)
 
 	// Now fuse the GPS/Accelerometer and Gyro estimates, smooth the result and normalize.
 	s.E0, s.E1, s.E2, s.E3 = QuaternionNormalize(
-		(1-uiSmoothConst)*s.E0 + uiSmoothConst*(gpsWeight*s.EGPS0 + (1-gpsWeight)*e0),
-		(1-uiSmoothConst)*s.E1 + uiSmoothConst*(gpsWeight*s.EGPS1 + (1-gpsWeight)*e1),
-		(1-uiSmoothConst)*s.E2 + uiSmoothConst*(gpsWeight*s.EGPS2 + (1-gpsWeight)*e2),
-		(1-uiSmoothConst)*s.E3 + uiSmoothConst*(gpsWeight*s.EGPS3 + (1-gpsWeight)*e3),
+		s.E0 + uiSmoothConst*(gpsWeight*s.EGPS0 + (1-gpsWeight)*e0 - s.E0),
+		s.E1 + uiSmoothConst*(gpsWeight*s.EGPS1 + (1-gpsWeight)*e1 - s.E1),
+		s.E2 + uiSmoothConst*(gpsWeight*s.EGPS2 + (1-gpsWeight)*e2 - s.E2),
+		s.E3 + uiSmoothConst*(gpsWeight*s.EGPS3 + (1-gpsWeight)*e3 - s.E3),
 	)
 
 	s.roll, s.pitch, s.heading = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
