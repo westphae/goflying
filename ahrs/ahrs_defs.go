@@ -14,6 +14,7 @@ const (
 	Big     = 1e9
 	Deg     = Pi / 180
 	MMDecay = (1 - 1.0/50) // Exponential decay constant for measurement variances
+	Invalid float64  = 3276.7 // 2**15-1
 )
 
 // State holds the complete information describing the state of the aircraft

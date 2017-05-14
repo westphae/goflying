@@ -11,8 +11,8 @@ const (
 	minDT         float64 = 1e-6 // Below this time interval, don't recalculate
 	maxDT         float64 = 10   // Above this time interval, re-initialize--too stale
 	minGS         float64 = 10   // Below this GS, don't use any GPS data
-	uiSmoothConst float64 = 0.5  // Decay constant for smoothing values reported to the user
-	gpsWeight     float64 = 0.1  // Weight given to GPS quaternion over gyro quaternion
+	uiSmoothConst float64 = 0.8  // Decay constant for smoothing values reported to the user
+	gpsWeight     float64 = 0.05 // Weight given to GPS quaternion over gyro quaternion
 )
 
 type SimpleState struct {
@@ -27,6 +27,7 @@ type SimpleState struct {
 	gLoad                         float64                // G Load, G vertical (smoothed)
 	turnRate                      float64                // turn rate, Rad/s (smoothed)
 	needsInitialization           bool                   // Rather than computing, initialize
+	staticMode                    bool                   // For low groundspeed or invalid GPS
 	logMap                        map[string]interface{} // Map only for analysis/debugging
 }
 
@@ -114,7 +115,8 @@ func (s *SimpleState) Update(m *Measurement) {
 
 	ae := [3]float64{0, 0, -1} // Acceleration due to gravity in earth frame
 	ve := [3]float64{0, 1, 0}  // Groundspeed in earth frame (default for desktop mode)
-	if s.gs > minGS {
+	s.staticMode = s.gs < minGS
+	if !s.staticMode {
 		if dtw < minDT {
 			log.Printf("No GPS update at %f\n", m.T)
 			return
@@ -206,6 +208,10 @@ func (s *SimpleState) Valid() (ok bool) {
 
 func (s *SimpleState) RollPitchHeading() (roll float64, pitch float64, heading float64) {
 	roll, pitch, heading = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
+	if s.staticMode {
+		log.Println("AHRS Info: static mode")
+		heading = Invalid
+	}
 	return
 }
 
@@ -221,6 +227,9 @@ func (s *SimpleState) SlipSkid() (slipSkid float64) {
 
 // RateOfTurn returns the turn rate in degrees per second.
 func (s *SimpleState) RateOfTurn() (turnRate float64) {
+	if s.staticMode {
+		return Invalid
+	}
 	return s.turnRate / Deg
 }
 
