@@ -209,7 +209,6 @@ func (s *SimpleState) Valid() (ok bool) {
 func (s *SimpleState) RollPitchHeading() (roll float64, pitch float64, heading float64) {
 	roll, pitch, heading = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
 	if s.staticMode {
-		log.Println("AHRS Info: static mode")
 		heading = Invalid
 	}
 	return
