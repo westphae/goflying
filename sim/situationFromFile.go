@@ -1,39 +1,39 @@
 package main
 
 import (
+	"../ahrs"
 	"bufio"
 	"encoding/csv"
 	"errors"
+	"github.com/skelterjohn/go.matrix"
 	"io"
 	"log"
 	"os"
-	"strconv"
 	"sort"
-	"github.com/skelterjohn/go.matrix"
-	"github.com/westphae/goflying/ahrs"
+	"strconv"
 )
 
 type SituationFromFile struct {
-	t	[]float64
-	ts	[]float64
-	a1	[]float64
-	a2	[]float64
-	a3	[]float64
-	h1	[]float64
-	h2	[]float64
-	h3	[]float64
-	m1	[]float64
-	m2	[]float64
-	m3	[]float64
-	tw	[]float64
-	w1	[]float64
-	w2	[]float64
-	w3	[]float64
-	ta	[]float64
-	alt	[]float64
+	t   []float64
+	ts  []float64
+	a1  []float64
+	a2  []float64
+	a3  []float64
+	h1  []float64
+	h2  []float64
+	h3  []float64
+	m1  []float64
+	m2  []float64
+	m3  []float64
+	tw  []float64
+	w1  []float64
+	w2  []float64
+	w3  []float64
+	ta  []float64
+	alt []float64
 }
 
-func NewSituationFromFile (fn string) (sit *SituationFromFile, err error) {
+func NewSituationFromFile(fn string) (sit *SituationFromFile, err error) {
 	sit = new(SituationFromFile)
 	f, err := os.Open(fn)
 	if err != nil {
@@ -69,11 +69,11 @@ func NewSituationFromFile (fn string) (sit *SituationFromFile, err error) {
 
 	// Read the rest of the data into the situation
 	var (
-		j      int
-		t0     float64
-		ts0    float64
-		tw0    float64
-		ta0    float64
+		j   int
+		t0  float64
+		ts0 float64
+		tw0 float64
+		ta0 float64
 	)
 	for {
 		rec, err = r.Read()
@@ -91,12 +91,12 @@ func NewSituationFromFile (fn string) (sit *SituationFromFile, err error) {
 			}
 			switch fields[i] {
 			case "T":
-				if j==0  {
+				if j == 0 {
 					t0 = v
 				}
 				sit.t = expandAppend(&sit.t, v-t0)
 			case "TS":
-				if j==0  {
+				if j == 0 {
 					ts0 = v
 				}
 				sit.ts = expandAppend(&sit.ts, v-ts0)
@@ -119,7 +119,7 @@ func NewSituationFromFile (fn string) (sit *SituationFromFile, err error) {
 			case "M3":
 				sit.m3 = expandAppend(&sit.m3, v)
 			case "TW":
-				if j==0  {
+				if j == 0 {
 					tw0 = v
 				}
 				sit.tw = expandAppend(&sit.tw, v-tw0)
@@ -130,7 +130,7 @@ func NewSituationFromFile (fn string) (sit *SituationFromFile, err error) {
 			case "W3":
 				sit.w3 = expandAppend(&sit.w3, v)
 			case "TA":
-				if j==0  {
+				if j == 0 {
 					ta0 = v
 				}
 				sit.ta = expandAppend(&sit.ta, v-ta0)
@@ -148,12 +148,12 @@ func NewSituationFromFile (fn string) (sit *SituationFromFile, err error) {
 }
 
 // BeginTime returns the time stamp when the records begin
-func (s *SituationFromFile) BeginTime() (float64) {
+func (s *SituationFromFile) BeginTime() float64 {
 	return s.t[0]
 }
 
 // Interpolate is only filler for reading from a sensor file: we don't know the "actual" situation since it was reality!
-func (s *SituationFromFile) Interpolate(t float64, st *ahrs.State, aBias, bBias, mBias []float64) (error) {
+func (s *SituationFromFile) Interpolate(t float64, st *ahrs.State, aBias, bBias, mBias []float64) error {
 	if t < s.t[0] || t > s.t[len(s.t)-1] {
 		st = new(ahrs.State)
 		return errors.New("sim: requested time is outside of recorded data")
@@ -166,10 +166,10 @@ func (s *SituationFromFile) Interpolate(t float64, st *ahrs.State, aBias, bBias,
 }
 
 func (s *SituationFromFile) Measurement(t float64, m *ahrs.Measurement,
-		uValid, wValid, sValid, mValid bool,
-		uNoise, wNoise, aNoise, bNoise, mNoise float64,
-		uBias, aBias, bBias, mBias []float64,
-	) (error) {
+	uValid, wValid, sValid, mValid bool,
+	uNoise, wNoise, aNoise, bNoise, mNoise float64,
+	uBias, aBias, bBias, mBias []float64,
+) error {
 	if t < s.t[0] || t > s.t[len(s.t)-1] {
 		m = new(ahrs.Measurement)
 		return errors.New("sim: requested time is outside of recorded data")
@@ -188,7 +188,7 @@ func (s *SituationFromFile) Measurement(t float64, m *ahrs.Measurement,
 	m.W1 = f*s.w1[ix] + (1-f)*s.w1[ix+1]
 	m.W2 = f*s.w2[ix] + (1-f)*s.w2[ix+1]
 	m.W3 = f*s.w3[ix] + (1-f)*s.w3[ix+1]
-	m.WValid = s.ts[ix] - s.tw[ix] < 5 // Arbitrary: allow up to 5 sec lag for GPS data (5s seems typical)
+	m.WValid = s.ts[ix]-s.tw[ix] < 5 // Arbitrary: allow up to 5 sec lag for GPS data (5s seems typical)
 	m.A1 = -(f*s.a1[ix] + (1-f)*s.a1[ix+1])
 	m.A2 = -(f*s.a2[ix] + (1-f)*s.a2[ix+1])
 	m.A3 = -(f*s.a3[ix] + (1-f)*s.a3[ix+1])
@@ -201,7 +201,7 @@ func (s *SituationFromFile) Measurement(t float64, m *ahrs.Measurement,
 	m.M3 = f*s.m3[ix] + (1-f)*s.m3[ix+1]
 	m.MValid = m.M1 != 0 || m.M2 != 0 || m.M3 != 0
 
-	m.T  = t
+	m.T = t
 
 	m.M = matrix.Zeros(15, 15)
 	return nil

@@ -1,14 +1,14 @@
 package main
 
 import (
+	"../../bmp280"
 	"fmt"
-	"time"
-	"github.com/westphae/goflying/bmp280"
 	"github.com/kidoman/embd"
+	"time"
 )
 
 func main() {
-	var cur      *bmp280.BMPData
+	var cur *bmp280.BMPData
 
 	i2cbus := embd.NewI2CBus(1)
 	bmp, err := bmp280.NewBMP280(&i2cbus, bmp280.Address1,

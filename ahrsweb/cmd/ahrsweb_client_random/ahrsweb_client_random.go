@@ -8,22 +8,22 @@ import (
 	"encoding/json"
 	"flag"
 	"log"
+	"math"
 	"math/rand"
 	"os"
 	"time"
-	"math"
 
-	"github.com/gorilla/websocket"
-	"github.com/westphae/goflying/ahrsweb"
-	"os/signal"
-	"net/url"
+	"../../ahrsweb"
 	"fmt"
+	"github.com/gorilla/websocket"
+	"net/url"
+	"os/signal"
 )
 
 func update(data *ahrsweb.AHRSData) {
 	log.Println("Making up some AHRS data")
 
-	data.T = float64(time.Now().UnixNano()/1000)/1e6
+	data.T = float64(time.Now().UnixNano()/1000) / 1e6
 
 	data.U1 = 0.9*data.U1 + 0.1*(80*rand.Float64())
 	data.U2 = 0.9*data.U2 + 0.1*(80*rand.Float64())
@@ -103,23 +103,23 @@ func update(data *ahrsweb.AHRSData) {
 	data.L2 = 0.99*data.L2 + 0.01*(50*rand.Float64())
 	data.L3 = 0.99*data.L3 + 0.01*(50*rand.Float64())
 
-	data.Pitch = 20*math.Sin(data.T/60*math.Pi)
-	data.Roll = 55*math.Sin(data.T/60*math.Pi)
+	data.Pitch = 20 * math.Sin(data.T/60*math.Pi)
+	data.Roll = 55 * math.Sin(data.T/60*math.Pi)
 	data.Heading = math.Mod(data.T/60*720, 360)
 
-	if m := rand.Intn(100); m<90 {
+	if m := rand.Intn(100); m < 90 {
 		data.UValid = !data.UValid
 	}
 
-	if m := rand.Intn(100); m<90 {
+	if m := rand.Intn(100); m < 90 {
 		data.WValid = !data.WValid
 	}
 
-	if m := rand.Intn(100); m<90 {
+	if m := rand.Intn(100); m < 90 {
 		data.SValid = !data.SValid
 	}
 
-	if m := rand.Intn(100); m<90 {
+	if m := rand.Intn(100); m < 90 {
 		data.MValid = !data.MValid
 	}
 

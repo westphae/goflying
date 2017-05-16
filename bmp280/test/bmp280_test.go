@@ -1,12 +1,12 @@
 package main
 
 import (
-	"testing"
-	"github.com/westphae/goflying/bmp280"
-	"log"
-	"math"
+	"../../bmp280"
 	"fmt"
 	"github.com/kidoman/embd"
+	"log"
+	"math"
+	"testing"
 )
 
 func TestBMP280Math(t *testing.T) {
@@ -21,7 +21,7 @@ func TestBMP280Math(t *testing.T) {
 			2: -10685,
 			3: 3024,
 			4: 2855,
-			5:140,
+			5: 140,
 			6: -7,
 			7: 15500,
 			8: -14600,
@@ -43,7 +43,7 @@ func TestBMP280Math(t *testing.T) {
 	}
 
 	calc_temp := 25.08
-	if math.Abs(temp - calc_temp) > 0.01 {
+	if math.Abs(temp-calc_temp) > 0.01 {
 		log.Printf("temp mismatch:   calculated %f, should be %f\n", temp, calc_temp)
 		t.Fail()
 	} else {
@@ -51,7 +51,7 @@ func TestBMP280Math(t *testing.T) {
 	}
 
 	calc_press := 1006.5327
-	if math.Abs(press - calc_press) > 0.001 {
+	if math.Abs(press-calc_press) > 0.001 {
 		log.Printf("press mismatch:  calculated %f, should be %f\n", press, calc_press)
 		t.Fail()
 	} else {
@@ -67,16 +67,15 @@ func TestBMP280Setup(t *testing.T) {
 		filterCoeff   = bmp280.FilterCoeff8
 		oversampTemp  = bmp280.Oversamp16x
 		oversampPress = bmp280.Oversamp16x
-
 	)
 
 	var (
-		modes         = []byte{
+		modes = []byte{
 			bmp280.SleepMode,
 			//bmp280.ForcedMode,
 			bmp280.NormalMode,
 		}
-		standbyTimes  = []byte{
+		standbyTimes = []byte{
 			bmp280.StandbyTime1ms,
 			bmp280.StandbyTime63ms,
 			bmp280.StandbyTime125ms,
@@ -86,14 +85,14 @@ func TestBMP280Setup(t *testing.T) {
 			bmp280.StandbyTime2000ms,
 			bmp280.StandbyTime4000ms,
 		}
-		filterCoeffs  = []byte{
+		filterCoeffs = []byte{
 			bmp280.FilterCoeffOff,
 			bmp280.FilterCoeff2,
 			bmp280.FilterCoeff4,
 			bmp280.FilterCoeff8,
 			bmp280.FilterCoeff16,
 		}
-		oversamps     = []byte{
+		oversamps = []byte{
 			bmp280.OversampSkipped,
 			bmp280.Oversamp1x,
 			bmp280.Oversamp2x,
@@ -108,7 +107,7 @@ func TestBMP280Setup(t *testing.T) {
 	var checkAll = func(newMode, newStandbyTime, newFilterCoeff, newOversampTemp, newOversampPress byte) {
 		var (
 			curMode, curStandbyTime, curFilterCoeff, curOversampTemp, curOversampPress byte
-			err           error
+			err                                                                        error
 		)
 		curMode, err = bmp.GetPowerMode()
 		if err != nil {

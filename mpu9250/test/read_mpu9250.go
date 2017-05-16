@@ -4,20 +4,20 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/westphae/goflying/ahrs"
-	"github.com/westphae/goflying/mpu9250"
+	"../../ahrs"
+	"../../mpu9250"
 )
 
 func main() {
 	var (
-		mpu      *mpu9250.MPU9250
-		cur      *mpu9250.MPUData
-		err      error
-		t0       time.Time
-		logMap   map[string]interface{} // Map only for analysis/debugging
+		mpu    *mpu9250.MPU9250
+		cur    *mpu9250.MPUData
+		err    error
+		t0     time.Time
+		logMap map[string]interface{} // Map only for analysis/debugging
 	)
 
-	for i:=0; i<10; i++ {
+	for i := 0; i < 10; i++ {
 		mpu, err = mpu9250.NewMPU9250(250, 4, 1000, true, false)
 		if err != nil {
 			fmt.Printf("Error initializing MPU9250, attempt %d of 10\n", i)
@@ -35,14 +35,14 @@ func main() {
 	}
 
 	/*
-	mpu.CCal<- 1
-	fmt.Println("Awaiting Calibration Result")
-	if err := <-mpu.CCalResult; err != nil {
-		fmt.Println(err.Error())
-		return
-	} else {
-		fmt.Println("Calibration succeeded")
-	}
+		mpu.CCal<- 1
+		fmt.Println("Awaiting Calibration Result")
+		if err := <-mpu.CCalResult; err != nil {
+			fmt.Println(err.Error())
+			return
+		} else {
+			fmt.Println("Calibration succeeded")
+		}
 	*/
 
 	t0 = time.Now()
@@ -61,9 +61,9 @@ func main() {
 	}
 }
 
-var sensorLogMap = map[string]func(t0 time.Time, m *mpu9250.MPUData) float64 {
-	"T":    func(t0 time.Time, m *mpu9250.MPUData) float64 { return float64(m.T.Sub(t0).Nanoseconds()/1000)/1000 },
-	"TM":   func(t0 time.Time, m *mpu9250.MPUData) float64 { return float64(m.TM.Sub(t0).Nanoseconds()/1000)/1000 },
+var sensorLogMap = map[string]func(t0 time.Time, m *mpu9250.MPUData) float64{
+	"T":    func(t0 time.Time, m *mpu9250.MPUData) float64 { return float64(m.T.Sub(t0).Nanoseconds()/1000) / 1000 },
+	"TM":   func(t0 time.Time, m *mpu9250.MPUData) float64 { return float64(m.TM.Sub(t0).Nanoseconds()/1000) / 1000 },
 	"A1":   func(t0 time.Time, m *mpu9250.MPUData) float64 { return m.A1 },
 	"A2":   func(t0 time.Time, m *mpu9250.MPUData) float64 { return m.A2 },
 	"A3":   func(t0 time.Time, m *mpu9250.MPUData) float64 { return m.A3 },

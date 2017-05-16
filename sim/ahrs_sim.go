@@ -14,9 +14,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/westphae/goflying/ahrs"
-	"strconv"
+	"../ahrs"
 	"io/ioutil"
+	"strconv"
 )
 
 func parseFloatArrayString(str string, a *[]float64) (err error) {
@@ -32,55 +32,55 @@ func parseFloatArrayString(str string, a *[]float64) (err error) {
 func main() {
 	// Handle some shell arguments
 	var (
-		pdt, udt 						float64
-		gyroBiasStr, accelBiasStr, magBiasStr			string
-		gyroNoise, accelNoise, gpsNoise, asiNoise, magNoise	float64
-		asiBias							float64
-		gyroBias, accelBias, magBias				[]float64
-		gpsInop, magInop, asiInop       			bool
-		algo							string
-		s                                                       ahrs.AHRSProvider
-		scenario						string
-		sit							Situation
-		err 							error
+		pdt, udt                                            float64
+		gyroBiasStr, accelBiasStr, magBiasStr               string
+		gyroNoise, accelNoise, gpsNoise, asiNoise, magNoise float64
+		asiBias                                             float64
+		gyroBias, accelBias, magBias                        []float64
+		gpsInop, magInop, asiInop                           bool
+		algo                                                string
+		s                                                   ahrs.AHRSProvider
+		scenario                                            string
+		sit                                                 Situation
+		err                                                 error
 	)
 	gyroBias = make([]float64, 3)
 	accelBias = make([]float64, 3)
 	magBias = make([]float64, 3)
 
 	const (
-		defaultPdt = 0.1
-		pdtUsage = "Kalman filter predict period, seconds"
-		defaultUdt = 0.1
-		udtUsage = "Kalman filter update period, seconds"
-		defaultGyroNoise = 0.0
-		gyroNoiseUsage = "Amount of noise to add to gyro measurements, °/s"
-		defaultGyroBias = "0,0,0"
-		gyroBiasUsage = "Amount of bias to add to gyro measurements, \"x,y,z\" °/s"
+		defaultPdt        = 0.1
+		pdtUsage          = "Kalman filter predict period, seconds"
+		defaultUdt        = 0.1
+		udtUsage          = "Kalman filter update period, seconds"
+		defaultGyroNoise  = 0.0
+		gyroNoiseUsage    = "Amount of noise to add to gyro measurements, °/s"
+		defaultGyroBias   = "0,0,0"
+		gyroBiasUsage     = "Amount of bias to add to gyro measurements, \"x,y,z\" °/s"
 		defaultAccelNoise = 0.0
-		accelNoiseUsage = "Amount of noise to add to accel measurements, G"
-		defaultAccelBias = "0,0,0"
-		accelBiasUsage = "Amount of bias to add to accel measurements, \"x,y,z\" G"
-		defaultGPSNoise = 0.0
-		gpsNoiseUsage = "Amount of noise to add to GPS speed measurements, kt"
-		defaultASINoise = 0.0
-		asiNoiseUsage = "Amount of noise to add to airspeed measurements, kt"
-		defaultASIBias = 0.0
-		asiBiasUsage = "Amount of bias to add to airspeed measurements, kt"
-		defaultMagNoise = 0.0
-		magNoiseUsage = "Amount of noise to add to magnetometer measurements, μT"
-		defaultMagBias = "0,0,0"
-		magBiasUsage = "Amount of bias to add to magnetometer measurements, \"x,y,z\" μT"
-		defaultGPSInop = false
-		gpsInopUsage = "Make the GPS inoperative"
-		defaultASIInop = true
-		asiInopUsage = "Make the Airspeed sensor inoperative"
-		defaultMagInop = false
-		magInopUsage = "Make the Magnetometer inoperative"
-		defaultScenario = "takeoff"
-		scenarioUsage = "Scenario to use: filename or \"takeoff\" or \"turn\""
-		defaultAlgo = "simple"
-		algoUsage = "Algo to use for AHRS: simple (default), heuristic, kalman, kalman1, kalman2"
+		accelNoiseUsage   = "Amount of noise to add to accel measurements, G"
+		defaultAccelBias  = "0,0,0"
+		accelBiasUsage    = "Amount of bias to add to accel measurements, \"x,y,z\" G"
+		defaultGPSNoise   = 0.0
+		gpsNoiseUsage     = "Amount of noise to add to GPS speed measurements, kt"
+		defaultASINoise   = 0.0
+		asiNoiseUsage     = "Amount of noise to add to airspeed measurements, kt"
+		defaultASIBias    = 0.0
+		asiBiasUsage      = "Amount of bias to add to airspeed measurements, kt"
+		defaultMagNoise   = 0.0
+		magNoiseUsage     = "Amount of noise to add to magnetometer measurements, μT"
+		defaultMagBias    = "0,0,0"
+		magBiasUsage      = "Amount of bias to add to magnetometer measurements, \"x,y,z\" μT"
+		defaultGPSInop    = false
+		gpsInopUsage      = "Make the GPS inoperative"
+		defaultASIInop    = true
+		asiInopUsage      = "Make the Airspeed sensor inoperative"
+		defaultMagInop    = false
+		magInopUsage      = "Make the Magnetometer inoperative"
+		defaultScenario   = "takeoff"
+		scenarioUsage     = "Scenario to use: filename or \"takeoff\" or \"turn\""
+		defaultAlgo       = "simple"
+		algoUsage         = "Algo to use for AHRS: simple (default), heuristic, kalman, kalman1, kalman2"
 	)
 
 	flag.Float64Var(&pdt, "pdt", defaultPdt, pdtUsage)
@@ -124,8 +124,8 @@ func main() {
 		}
 	}
 
-	s0 := new(ahrs.State)       // Actual state from simulation, for comparison
-	m  := ahrs.NewMeasurement() // Measurement from IMU
+	s0 := new(ahrs.State)      // Actual state from simulation, for comparison
+	m := ahrs.NewMeasurement() // Measurement from IMU
 
 	fmt.Println("Simulation parameters:")
 	switch strings.ToLower(algo) {
@@ -198,7 +198,7 @@ func main() {
 		uBias, accelBias, gyroBias, magBias)
 
 	for {
-		if t>tNextUpdate-1e-9 {
+		if t > tNextUpdate-1e-9 {
 			t = tNextUpdate
 		}
 
@@ -221,7 +221,7 @@ func main() {
 		s.Predict(t)
 
 		// Update stage of Kalman filter
-		if t > tNextUpdate - 1e-9 {
+		if t > tNextUpdate-1e-9 {
 			tNextUpdate += udt
 			s.Update(m)
 		}

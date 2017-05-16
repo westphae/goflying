@@ -7,14 +7,14 @@ import (
 	//"math"
 	"net/url"
 
-	"github.com/gorilla/websocket"
-	"github.com/westphae/goflying/ahrs"
+	"..//ahrs"
 	"fmt"
+	"github.com/gorilla/websocket"
 )
 
 type KalmanListener struct {
-	data 	*AHRSData
-	c	*websocket.Conn
+	data *AHRSData
+	c    *websocket.Conn
 }
 
 func NewKalmanListener() (kl *KalmanListener, err error) {
@@ -34,7 +34,7 @@ func (kl *KalmanListener) connect() (err error) {
 }
 
 func (kl *KalmanListener) update(s *ahrs.State, m *ahrs.Measurement) {
-	kl.data.T = float64(time.Now().UnixNano()/1000)/1e6
+	kl.data.T = float64(time.Now().UnixNano()/1000) / 1e6
 
 	if s != nil {
 		kl.data.U1 = s.U1

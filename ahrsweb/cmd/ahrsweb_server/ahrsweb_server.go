@@ -7,14 +7,14 @@ This book is highly recommended!
 package main
 
 import (
+	"../../ahrsweb"
 	"flag"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
 	"path/filepath"
 	"sync"
-	"github.com/westphae/goflying/ahrsweb"
-	"fmt"
 )
 
 // templ represents a single template

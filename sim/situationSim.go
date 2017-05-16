@@ -1,17 +1,17 @@
 package main
 
 import (
+	"../ahrs"
 	"errors"
+	"github.com/skelterjohn/go.matrix"
 	"math"
 	"math/rand"
 	"sort"
-	"github.com/skelterjohn/go.matrix"
-	"github.com/westphae/goflying/ahrs"
 )
 
 const (
-	Pi = math.Pi
-	Deg = Pi / 180
+	Pi    = math.Pi
+	Deg   = Pi / 180
 	Small = 1e-6
 )
 
@@ -28,12 +28,12 @@ type SituationSim struct {
 }
 
 // BeginTime returns the time stamp when the simulation begins
-func (s *SituationSim) BeginTime() (float64) {
+func (s *SituationSim) BeginTime() float64 {
 	return s.t[0]
 }
 
 // Interpolate an ahrs.State from a Situation definition at a given time
-func (s *SituationSim) Interpolate(t float64, st *ahrs.State, aBias, bBias, mBias []float64) (error) {
+func (s *SituationSim) Interpolate(t float64, st *ahrs.State, aBias, bBias, mBias []float64) error {
 	if t < s.t[0] || t > s.t[len(s.t)-1] {
 		st = new(ahrs.State)
 		return TimeError
@@ -59,17 +59,17 @@ func (s *SituationSim) Interpolate(t float64, st *ahrs.State, aBias, bBias, mBia
 	st.Z3 = (s.u3[ix+1] - s.u3[ix]) / ddt / ahrs.G
 
 	st.E0, st.E1, st.E2, st.E3 = ahrs.ToQuaternion(
-		(f*s.phi[ix]   + (1-f)*s.phi[ix+1]  ) * Deg,
-		(f*s.theta[ix] + (1-f)*s.theta[ix+1]) * Deg,
-		(f*s.psi[ix]   + (1-f)*s.psi[ix+1]  ) * Deg)
+		(f*s.phi[ix]+(1-f)*s.phi[ix+1])*Deg,
+		(f*s.theta[ix]+(1-f)*s.theta[ix+1])*Deg,
+		(f*s.psi[ix]+(1-f)*s.psi[ix+1])*Deg)
 
 	// For calculating the Hx, we need to calculate the Ex a small time from now to find their derivatives
 	tz := Small
-	fz := (s.t[ix+1] - (t+tz)) / ddt
+	fz := (s.t[ix+1] - (t + tz)) / ddt
 	ez0, ez1, ez2, ez3 := ahrs.ToQuaternion(
-		(fz*s.phi[ix]   + (1-fz)*s.phi[ix+1])   * Deg,
-		(fz*s.theta[ix] + (1-fz)*s.theta[ix+1]) * Deg,
-		(fz*s.psi[ix]   + (1-fz)*s.psi[ix+1])   * Deg)
+		(fz*s.phi[ix]+(1-fz)*s.phi[ix+1])*Deg,
+		(fz*s.theta[ix]+(1-fz)*s.theta[ix+1])*Deg,
+		(fz*s.psi[ix]+(1-fz)*s.psi[ix+1])*Deg)
 
 	// dEx are Ex derivatives
 	dE0 := +(ez0 - st.E0) / tz
@@ -77,9 +77,9 @@ func (s *SituationSim) Interpolate(t float64, st *ahrs.State, aBias, bBias, mBia
 	dE2 := -(ez2 - st.E2) / tz
 	dE3 := -(ez3 - st.E3) / tz
 
-	st.H1 = -2*(st.E0*dE1 + st.E1*dE0 + st.E2*dE3 - st.E3*dE2) / Deg
-	st.H2 = -2*(st.E0*dE2 - st.E1*dE3 + st.E2*dE0 + st.E3*dE1) / Deg
-	st.H3 = -2*(st.E0*dE3 + st.E1*dE2 - st.E2*dE1 + st.E3*dE0) / Deg
+	st.H1 = -2 * (st.E0*dE1 + st.E1*dE0 + st.E2*dE3 - st.E3*dE2) / Deg
+	st.H2 = -2 * (st.E0*dE2 - st.E1*dE3 + st.E2*dE0 + st.E3*dE1) / Deg
+	st.H3 = -2 * (st.E0*dE3 + st.E1*dE2 - st.E2*dE1 + st.E3*dE0) / Deg
 
 	st.N1 = f*s.m1[ix] + (1-f)*s.m1[ix+1]
 	st.N2 = f*s.m2[ix] + (1-f)*s.m2[ix+1]
@@ -94,9 +94,9 @@ func (s *SituationSim) Interpolate(t float64, st *ahrs.State, aBias, bBias, mBia
 	st.C3 = aBias[2]
 
 	st.F0, st.F1, st.F2, st.F3 = ahrs.ToQuaternion(
-		(f*s.phi0[ix]+(1-f)*s.phi0[ix+1]) * Deg,
-		(f*s.theta0[ix]+(1-f)*s.theta0[ix+1]) * Deg,
-		(f*s.psi0[ix]+(1-f)*s.psi0[ix+1]) * Deg)
+		(f*s.phi0[ix]+(1-f)*s.phi0[ix+1])*Deg,
+		(f*s.theta0[ix]+(1-f)*s.theta0[ix+1])*Deg,
+		(f*s.psi0[ix]+(1-f)*s.psi0[ix+1])*Deg)
 
 	st.D1 = bBias[0]
 	st.D2 = bBias[1]
@@ -106,10 +106,10 @@ func (s *SituationSim) Interpolate(t float64, st *ahrs.State, aBias, bBias, mBia
 	st.L2 = mBias[1]
 	st.L3 = mBias[2]
 
-	st.T =  t
+	st.T = t
 
-	st.M =  matrix.Zeros(32, 32)
-	st.N =  matrix.Zeros(32, 32)
+	st.M = matrix.Zeros(32, 32)
+	st.N = matrix.Zeros(32, 32)
 
 	return nil
 }
@@ -121,10 +121,10 @@ func (s *SituationSim) Interpolate(t float64, st *ahrs.State, aBias, bBias, mBia
 // gyro noise and bias are in °/s
 // magnetometer noise and bias are in μT
 func (s *SituationSim) Measurement(t float64, m *ahrs.Measurement,
-		uValid, wValid, sValid, mValid bool,
-		uNoise, wNoise, aNoise, bNoise, mNoise float64,
-		uBias, aBias, bBias, mBias []float64,
-	) (error) {
+	uValid, wValid, sValid, mValid bool,
+	uNoise, wNoise, aNoise, bNoise, mNoise float64,
+	uBias, aBias, bBias, mBias []float64,
+) error {
 	if t < s.t[0] || t > s.t[len(s.t)-1] {
 		m = new(ahrs.Measurement)
 		return TimeError
@@ -135,39 +135,39 @@ func (s *SituationSim) Measurement(t float64, m *ahrs.Measurement,
 	s.Interpolate(t, &x, aBias, bBias, mBias)
 	s.Interpolate(t+tz, &z, aBias, bBias, mBias)
 
-	dU1 :=  (z.U1-x.U1)/tz
-	dU2 :=  (z.U2-x.U2)/tz
-	dU3 :=  (z.U3-x.U3)/tz
-	dE0 :=  (z.E0-x.E0)/tz
-	dE1 := -(z.E1-x.E1)/tz
-	dE2 := -(z.E2-x.E2)/tz
-	dE3 := -(z.E3-x.E3)/tz
+	dU1 := (z.U1 - x.U1) / tz
+	dU2 := (z.U2 - x.U2) / tz
+	dU3 := (z.U3 - x.U3) / tz
+	dE0 := (z.E0 - x.E0) / tz
+	dE1 := -(z.E1 - x.E1) / tz
+	dE2 := -(z.E2 - x.E2) / tz
+	dE3 := -(z.E3 - x.E3) / tz
 
 	// eij rotates between earth frame i component and aircraft frame j component
-	e11 := (+x.E0 * x.E0 + x.E1 * x.E1 - x.E2 * x.E2 - x.E3 * x.E3)
-	e12 := 2*(-x.E0 * x.E3 + x.E1 * x.E2)
-	e13 := 2*(+x.E0 * x.E2 + x.E1 * x.E3)
-	e21 := 2*(+x.E0 * x.E3 + x.E2 * x.E1)
-	e22 := (+x.E0 * x.E0 - x.E1 * x.E1 + x.E2 * x.E2 - x.E3 * x.E3)
-	e23 := 2*(-x.E0 * x.E1 + x.E2 * x.E3)
-	e31 := 2*(-x.E0 * x.E2 + x.E3 * x.E1)
-	e32 := 2*(+x.E0 * x.E1 + x.E3 * x.E2)
-	e33 := (+x.E0 * x.E0 - x.E1 * x.E1 - x.E2 * x.E2 + x.E3 * x.E3)
+	e11 := (+x.E0*x.E0 + x.E1*x.E1 - x.E2*x.E2 - x.E3*x.E3)
+	e12 := 2 * (-x.E0*x.E3 + x.E1*x.E2)
+	e13 := 2 * (+x.E0*x.E2 + x.E1*x.E3)
+	e21 := 2 * (+x.E0*x.E3 + x.E2*x.E1)
+	e22 := (+x.E0*x.E0 - x.E1*x.E1 + x.E2*x.E2 - x.E3*x.E3)
+	e23 := 2 * (-x.E0*x.E1 + x.E2*x.E3)
+	e31 := 2 * (-x.E0*x.E2 + x.E3*x.E1)
+	e32 := 2 * (+x.E0*x.E1 + x.E3*x.E2)
+	e33 := (+x.E0*x.E0 - x.E1*x.E1 - x.E2*x.E2 + x.E3*x.E3)
 
 	// fij rotates between sensor frame i component and aircraft frame j component
-	f11 := (+x.F0 * x.F0 + x.F1 * x.F1 - x.F2 * x.F2 - x.F3 * x.F3)
-	f12 := 2*(-x.F0 * x.F3 + x.F1 * x.F2)
-	f13 := 2*(+x.F0 * x.F2 + x.F1 * x.F3)
-	f21 := 2*(+x.F0 * x.F3 + x.F2 * x.F1)
-	f22 := (+x.F0 * x.F0 - x.F1 * x.F1 + x.F2 * x.F2 - x.F3 * x.F3)
-	f23 := 2*(-x.F0 * x.F1 + x.F2 * x.F3)
-	f31 := 2*(-x.F0 * x.F2 + x.F3 * x.F1)
-	f32 := 2*(+x.F0 * x.F1 + x.F3 * x.F2)
-	f33 := (+x.F0 * x.F0 - x.F1 * x.F1 - x.F2 * x.F2 + x.F3 * x.F3)
+	f11 := (+x.F0*x.F0 + x.F1*x.F1 - x.F2*x.F2 - x.F3*x.F3)
+	f12 := 2 * (-x.F0*x.F3 + x.F1*x.F2)
+	f13 := 2 * (+x.F0*x.F2 + x.F1*x.F3)
+	f21 := 2 * (+x.F0*x.F3 + x.F2*x.F1)
+	f22 := (+x.F0*x.F0 - x.F1*x.F1 + x.F2*x.F2 - x.F3*x.F3)
+	f23 := 2 * (-x.F0*x.F1 + x.F2*x.F3)
+	f31 := 2 * (-x.F0*x.F2 + x.F3*x.F1)
+	f32 := 2 * (+x.F0*x.F1 + x.F3*x.F2)
+	f33 := (+x.F0*x.F0 - x.F1*x.F1 - x.F2*x.F2 + x.F3*x.F3)
 
 	if uValid { // ASI doesn't read U2 or U3
 		m.UValid = true
-		m.U1 = x.U1 + uBias[0] + uNoise * rand.NormFloat64()
+		m.U1 = x.U1 + uBias[0] + uNoise*rand.NormFloat64()
 	}
 
 	if wValid {
@@ -180,22 +180,22 @@ func (s *SituationSim) Measurement(t float64, m *ahrs.Measurement,
 	if sValid {
 		m.SValid = true
 		// These are in aircraft frame
-		h1 := -2*(dE1*x.E0 + dE0*x.E1 - dE3*x.E2 + dE2*x.E3)
-		h2 := -2*(dE2*x.E0 + dE3*x.E1 + dE0*x.E2 - dE1*x.E3)
-		h3 := -2*(dE3*x.E0 - dE2*x.E1 + dE1*x.E2 + dE0*x.E3)
+		h1 := -2 * (dE1*x.E0 + dE0*x.E1 - dE3*x.E2 + dE2*x.E3)
+		h2 := -2 * (dE2*x.E0 + dE3*x.E1 + dE0*x.E2 - dE1*x.E3)
+		h3 := -2 * (dE3*x.E0 - dE2*x.E1 + dE1*x.E2 + dE0*x.E3)
 
-		y1 := (-dU1 - h2*x.U3 + h3*x.U2)/ahrs.G - e31
-		y2 := (-dU2 - h3*x.U1 + h1*x.U3)/ahrs.G - e32
-		y3 := (-dU3 - h1*x.U2 + h2*x.U1)/ahrs.G - e33
+		y1 := (-dU1-h2*x.U3+h3*x.U2)/ahrs.G - e31
+		y2 := (-dU2-h3*x.U1+h1*x.U3)/ahrs.G - e32
+		y3 := (-dU3-h1*x.U2+h2*x.U1)/ahrs.G - e33
 
 		// Rotate into sensor frame
 		m.A1 = f11*y1 + f12*y2 + f13*y3 + aBias[0] + aNoise*rand.NormFloat64()
 		m.A2 = f21*y1 + f22*y2 + f23*y3 + aBias[1] + aNoise*rand.NormFloat64()
 		m.A3 = f31*y1 + f32*y2 + f33*y3 + aBias[2] + aNoise*rand.NormFloat64()
 
-		m.B1 = (f11*h1 + f12*h2 + f13*h3) / Deg + (bBias[0] + bNoise*rand.NormFloat64())
-		m.B2 = (f21*h1 + f22*h2 + f23*h3) / Deg + (bBias[1] + bNoise*rand.NormFloat64())
-		m.B3 = (f31*h1 + f32*h2 + f33*h3) / Deg + (bBias[2] + bNoise*rand.NormFloat64())
+		m.B1 = (f11*h1+f12*h2+f13*h3)/Deg + (bBias[0] + bNoise*rand.NormFloat64())
+		m.B2 = (f21*h1+f22*h2+f23*h3)/Deg + (bBias[1] + bNoise*rand.NormFloat64())
+		m.B3 = (f31*h1+f32*h2+f33*h3)/Deg + (bBias[2] + bNoise*rand.NormFloat64())
 	}
 
 	if mValid {
@@ -214,16 +214,16 @@ func (s *SituationSim) Measurement(t float64, m *ahrs.Measurement,
 }
 
 // Data to define a piecewise-linear turn, with entry and exit
-var airspeed = 120.0                                            // Nice airspeed for maneuvers, kts
-var bank = math.Atan((2 * Pi * airspeed) / (ahrs.G * 120)) / Deg        // Bank angle for std rate turn at given airspeed
-var mush = airspeed*math.Sin(Pi /90)/math.Cos(bank * Deg)		// Mush in a turn to maintain altitude
+var airspeed = 120.0                                       // Nice airspeed for maneuvers, kts
+var bank = math.Atan((2*Pi*airspeed)/(ahrs.G*120)) / Deg   // Bank angle for std rate turn at given airspeed
+var mush = airspeed * math.Sin(Pi/90) / math.Cos(bank*Deg) // Mush in a turn to maintain altitude
 // start, initiate roll-in, end roll-in, initiate roll-out, end roll-out, end
 var sitTurnDef = &SituationSim{
-	t:      []float64{0, 10, 15, 255, 260, 270},
-	u1:     []float64{airspeed, airspeed, airspeed, airspeed, airspeed, airspeed},
-	u2:     []float64{0, 0, 0, 0, 0, 0},
-	u3:     []float64{0, 0, mush, mush, 0, 0},
-	phi:    []float64{0, 0, bank, bank, 0, 0},
+	t:   []float64{0, 10, 15, 255, 260, 270},
+	u1:  []float64{airspeed, airspeed, airspeed, airspeed, airspeed, airspeed},
+	u2:  []float64{0, 0, 0, 0, 0, 0},
+	u3:  []float64{0, 0, mush, mush, 0, 0},
+	phi: []float64{0, 0, bank, bank, 0, 0},
 	//theta:  []float64{0, 0, 2, 2, 0, 0},
 	theta:  []float64{0, 0, 0, 0, 0, 0},
 	psi:    []float64{0, 0, 0, 720, 720, 720},
@@ -238,25 +238,23 @@ var sitTurnDef = &SituationSim{
 	m3:     []float64{-1, -1, -1, -1, -1, -1},
 }
 
-var bank1 = math.Atan((2* Pi *95) / (ahrs.G * 120)) / Deg
-var bank2 = math.Atan((2* Pi *120) / (ahrs.G * 120)) / Deg
+var bank1 = math.Atan((2*Pi*95)/(ahrs.G*120)) / Deg
+var bank2 = math.Atan((2*Pi*120)/(ahrs.G*120)) / Deg
 var sitTakeoffDef = &SituationSim{
-	t:	[]float64{ 0, 10, 30, 35, 55, 115,    120,    150, 155, 175,    180,    210,  215,  230},
-	u1:	[]float64{ 9,  9, 68, 83, 95,  95,     95,     95,  95, 120,    120,    120,  120,  140},
-	u2:	[]float64{ 0,  0,  0,  0,  0,   0,      0,      0,   0,   0,      0,      0,    0,    0},
-	u3:	[]float64{ 0,  0,  0, -3, -3,  -3,     -2,     -2,  -2,   0,      0,      0,    0,    0},
-	phi:	[]float64{ 0,  0,  0,  0,  0,   0, -bank1, -bank1,   0,   0, -bank2, -bank2,    0,    0},
-	theta:	[]float64{ 0,  0,  0, 10, 10,  10,      5,      5,   5,   2,      2,      2,    0,    0},
-	psi:	[]float64{ 0,  0,  0,  0,  0,   0,      0,    -90, -90, -90,    -90,   -180, -180, -180},
-	phi0:	[]float64{ 0,  0,  0,  0,  0,   0,      0,      0,   0,   0,      0,      0,    0,    0},
-	theta0:	[]float64{ 0,  0,  0,  0,  0,   0,      0,      0,   0,   0,      0,      0,    0,    0},
-	psi0:	[]float64{90, 90, 90, 90, 90,  90,     90,     90,  90,  90,     90,     90,   90,   90},
-	v1:	[]float64{ 0,  0,  0,  0,  0,   0,      0,      0,   0,   0,      0,      0,    0,    0},
-	v2:	[]float64{-8, -8, -8, -8, -8,  -8,    -10,    -10, -10, -12,    -12,    -12,  -12,  -12},
-	v3:	[]float64{ 0,  0,  0,  0,  0,   0,      0,      0,   0,   0,      0,      0,    0,    0},
-	m1:	[]float64{ 0,  0,  0,  0,  0,   0,      0,      0,   0,   0,      0,      0,    0,    0},
-	m2:	[]float64{ 1,  1,  1,  1,  1,   1,      1,      1,   1,   1,      1,      1,    1,    1},
-	m3:	[]float64{-1, -1, -1, -1, -1,  -1,     -1,     -1,  -1,  -1,     -1,     -1,   -1,   -1},
+	t:      []float64{0, 10, 30, 35, 55, 115, 120, 150, 155, 175, 180, 210, 215, 230},
+	u1:     []float64{9, 9, 68, 83, 95, 95, 95, 95, 95, 120, 120, 120, 120, 140},
+	u2:     []float64{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	u3:     []float64{0, 0, 0, -3, -3, -3, -2, -2, -2, 0, 0, 0, 0, 0},
+	phi:    []float64{0, 0, 0, 0, 0, 0, -bank1, -bank1, 0, 0, -bank2, -bank2, 0, 0},
+	theta:  []float64{0, 0, 0, 10, 10, 10, 5, 5, 5, 2, 2, 2, 0, 0},
+	psi:    []float64{0, 0, 0, 0, 0, 0, 0, -90, -90, -90, -90, -180, -180, -180},
+	phi0:   []float64{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	theta0: []float64{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	psi0:   []float64{90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90},
+	v1:     []float64{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	v2:     []float64{-8, -8, -8, -8, -8, -8, -10, -10, -10, -12, -12, -12, -12, -12},
+	v3:     []float64{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	m1:     []float64{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	m2:     []float64{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+	m3:     []float64{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
 }
-
-

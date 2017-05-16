@@ -1,9 +1,9 @@
 package main
 
-import "github.com/westphae/goflying/ahrs"
+import "../ahrs"
 
 type Situation interface {
-	BeginTime() (float64)
+	BeginTime() float64
 	Interpolate(t float64, s *ahrs.State, aBias, bBias, mBias []float64) (err error)
 	Measurement(t float64, m *ahrs.Measurement,
 		uValid, wValid, sValid, mValid bool,
