@@ -8,11 +8,14 @@ import (
 )
 
 const (
-	minDT         float64 = 1e-6 // Below this time interval, don't recalculate
-	maxDT         float64 = 10   // Above this time interval, re-initialize--too stale
-	minGS         float64 = 10   // Below this GS, don't use any GPS data
-	uiSmoothConst float64 = 0.8  // Decay constant for smoothing values reported to the user
-	gpsWeight     float64 = 0.05 // Weight given to GPS quaternion over gyro quaternion
+	minDT float64 = 1e-6 // Below this time interval, don't recalculate
+	maxDT float64 = 10   // Above this time interval, re-initialize--too stale
+	minGS float64 = 10   // Below this GS, don't use any GPS data
+)
+
+var (
+	uiSmoothConst = 0.8  // Decay constant for smoothing values reported to the user
+	gpsWeight     = 0.05 // Weight given to GPS quaternion over gyro quaternion
 )
 
 type SimpleState struct {
@@ -341,3 +344,10 @@ var SimpleJSONConfig = `
   ]
 }
 `
+
+// SetConfig lets the user alter some of the configuration settings.
+//TODO westphae: remove this after debugging done
+func SetConfig(smoothConst, weight float64) {
+	uiSmoothConst = smoothConst
+	gpsWeight = weight
+}
