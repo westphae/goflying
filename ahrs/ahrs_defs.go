@@ -311,4 +311,6 @@ type AHRSProvider interface {
 	RateOfTurn() (turnRate float64)
 	// GLoad returns the current G load, in G's as estimated by the Kalman algorithm.
 	GLoad() (gLoad float64)
+	// SetConfig allows for configuration of AHRS to be set on the fly, mainly for developers.
+	SetConfig(configMap map[string]float64)
 }

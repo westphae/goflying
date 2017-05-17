@@ -259,6 +259,12 @@ func (s *SimpleState) GetLogMap() (p map[string]interface{}) {
 	return s.logMap
 }
 
+// SetConfig lets the user alter some of the configuration settings.
+func (s *SimpleState) SetConfig(configMap map[string]float64) {
+	uiSmoothConst = configMap["uiSmoothConst"]
+	gpsWeight = configMap["gpsWeight"]
+}
+
 func updateLogMap(s *SimpleState, m *Measurement, p map[string]interface{}) {
 	var simpleLogMap = map[string]func(s *SimpleState, m *Measurement) float64{
 		"Ta":          func(s *SimpleState, m *Measurement) float64 { return s.T },
@@ -344,10 +350,3 @@ var SimpleJSONConfig = `
   ]
 }
 `
-
-// SetConfig lets the user alter some of the configuration settings.
-//TODO westphae: remove this after debugging done
-func SetConfig(smoothConst, weight float64) {
-	uiSmoothConst = smoothConst
-	gpsWeight = weight
-}
