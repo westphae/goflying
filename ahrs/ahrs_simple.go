@@ -11,11 +11,13 @@ const (
 	minDT float64 = 1e-6 // Below this time interval, don't recalculate
 	maxDT float64 = 10   // Above this time interval, re-initialize--too stale
 	minGS float64 = 10   // Below this GS, don't use any GPS data
+	uiSmoothConstDefault float64 = 0.8 // Sensible default for smoothing AHRS values
+	gpsWeightDefault float64 = 0.05 // Sensible default for weight of GPS solution
 )
 
 var (
-	uiSmoothConst = 0.8  // Decay constant for smoothing values reported to the user
-	gpsWeight     = 0.05 // Weight given to GPS quaternion over gyro quaternion
+	uiSmoothConst = uiSmoothConstDefault  // Decay constant for smoothing values reported to the user
+	gpsWeight     = gpsWeightDefault // Weight given to GPS quaternion over gyro quaternion
 )
 
 type SimpleState struct {
@@ -263,6 +265,12 @@ func (s *SimpleState) GetLogMap() (p map[string]interface{}) {
 func (s *SimpleState) SetConfig(configMap map[string]float64) {
 	uiSmoothConst = configMap["uiSmoothConst"]
 	gpsWeight = configMap["gpsWeight"]
+	if uiSmoothConst==0 {
+		// This doesn't make sense, means user hasn't set correctly
+		// Set sensible defaults
+		uiSmoothConst = uiSmoothConstDefault
+		gpsWeight = gpsWeightDefault
+	}
 }
 
 func updateLogMap(s *SimpleState, m *Measurement, p map[string]interface{}) {
