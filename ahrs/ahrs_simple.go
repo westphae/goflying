@@ -12,11 +12,13 @@ const (
 	maxDT = 10.0                     // Above this time interval, re-initialize--too stale
 	minGS = 2.0                      // Below this GS, don't use any GPS data
 	uiSmoothConstDefault = 0.65      // Sensible default for smoothing AHRS values
+	slipSkidSmoothConstDefault = 0.1 // Sensible default for smoothing AHRS values
 	gpsWeightDefault = 0.025         // Sensible default for weight of GPS solution
 )
 
 var (
 	uiSmoothConst = uiSmoothConstDefault              // Decay constant for smoothing values reported to the user
+	slipSkidSmoothConst = slipSkidSmoothConstDefault  // Decay constant for smoothing values reported to the user
 	gpsWeight = gpsWeightDefault                      // Weight given to GPS quaternion over gyro quaternion
 )
 
@@ -187,8 +189,7 @@ func (s *SimpleState) Update(m *Measurement) {
 	}
 
 	// Update Slip/Skid
-	// Seems to need more smoothing than the others
-	s.slipSkid += uiSmoothConst / 2 * (math.Atan2(m.A2, -m.A3) - s.slipSkid)
+	s.slipSkid += slipSkidSmoothConst * (math.Atan2(m.A2, -m.A3) - s.slipSkid)
 
 	// Update Rate of Turn
 	if s.gs > 0 && dtw > 0 {
