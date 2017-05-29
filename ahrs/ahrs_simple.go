@@ -8,16 +8,16 @@ import (
 )
 
 const (
-	minDT float64 = 1e-6 // Below this time interval, don't recalculate
-	maxDT float64 = 10   // Above this time interval, re-initialize--too stale
-	minGS float64 = 10   // Below this GS, don't use any GPS data
-	uiSmoothConstDefault float64 = 0.8 // Sensible default for smoothing AHRS values
-	gpsWeightDefault float64 = 0.05 // Sensible default for weight of GPS solution
+	minDT = 1e-6                     // Below this time interval, don't recalculate
+	maxDT = 10.0                     // Above this time interval, re-initialize--too stale
+	minGS = 2.0                      // Below this GS, don't use any GPS data
+	uiSmoothConstDefault = 0.65      // Sensible default for smoothing AHRS values
+	gpsWeightDefault = 0.025         // Sensible default for weight of GPS solution
 )
 
 var (
-	uiSmoothConst = uiSmoothConstDefault  // Decay constant for smoothing values reported to the user
-	gpsWeight     = gpsWeightDefault // Weight given to GPS quaternion over gyro quaternion
+	uiSmoothConst = uiSmoothConstDefault              // Decay constant for smoothing values reported to the user
+	gpsWeight = gpsWeightDefault                      // Weight given to GPS quaternion over gyro quaternion
 )
 
 type SimpleState struct {
@@ -120,7 +120,7 @@ func (s *SimpleState) Update(m *Measurement) {
 
 	ae := [3]float64{0, 0, -1} // Acceleration due to gravity in earth frame
 	ve := [3]float64{0, 1, 0}  // Groundspeed in earth frame (default for desktop mode)
-	s.staticMode = s.gs < minGS
+	s.staticMode = !(m.WValid && (s.gs > minGS))
 	if !s.staticMode {
 		if dtw < minDT {
 			log.Printf("No GPS update at %f\n", m.T)
