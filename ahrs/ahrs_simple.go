@@ -155,6 +155,7 @@ func (s *SimpleState) Update(m *Measurement) {
 	// This orientation quaternion EGPS rotates from aircraft frame to earth frame at the current time,
 	// as estimated using GPS and accelerometer.
 	e0, e1, e2, e3 := RotationMatrixToQuaternion(*rotmat)
+	e0, e1, e2, e3 = QuaternionSign(e0, e1, e2, e3, s.E0, s.E1, s.E2, s.E3)
 	s.EGPS0, s.EGPS1, s.EGPS2, s.EGPS3 = QuaternionNormalize(
 		s.EGPS0+uiSmoothConst*(e0-s.EGPS0),
 		s.EGPS1+uiSmoothConst*(e1-s.EGPS1),

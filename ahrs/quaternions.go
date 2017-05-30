@@ -127,7 +127,7 @@ func QuaternionToRotationMatrix(q0, q1, q2, q3 float64) (r *[3][3]float64) {
 	return
 }
 
-//QuaternionNormalize re-scales the input quaternion to unit norm.
+// QuaternionNormalize re-scales the input quaternion to unit norm.
 func QuaternionNormalize(q0, q1, q2, q3 float64) (r0, r1, r2, r3 float64) {
 	qq := math.Sqrt(q0*q0 + q1*q1 + q2*q2 + q3*q3)
 	r0 = q0 / qq
@@ -135,4 +135,14 @@ func QuaternionNormalize(q0, q1, q2, q3 float64) (r0, r1, r2, r3 float64) {
 	r2 = q2 / qq
 	r3 = q3 / qq
 	return
+}
+
+// QuaternionSign chooses the sign of quaternion q so that it is minimally distant from quaternion r.
+func QuaternionSign(q0, q1, q2, q3, r0, r1, r2, r3 float64) (s0, s1, s2, s3 float64) {
+	ss := (q0-r0)*(q0-r0) + (q1-r1)*(q1-r1) + (q2-r2)*(q2-r2) + (q3-r3)*(q3-r3)
+	if ss > 2 {
+		return -q0, -q1, -q2, -q3
+	} else {
+		return q0, q1, q2, q3
+	}
 }
