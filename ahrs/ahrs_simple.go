@@ -35,6 +35,7 @@ type SimpleState struct {
 	turnRate                      float64                // turn rate, Rad/s (smoothed)
 	needsInitialization           bool                   // Rather than computing, initialize
 	staticMode                    bool                   // For low groundspeed or invalid GPS
+	headingValid                  bool                   // Whether to slew quickly to correct heading
 	logMap                        map[string]interface{} // Map only for analysis/debugging
 }
 
@@ -50,6 +51,7 @@ func InitializeSimple() (s *SimpleState) {
 
 func (s *SimpleState) init(m *Measurement) {
 	s.needsInitialization = false
+	s.headingValid = false
 	s.T = m.T
 	s.TW = m.TW
 	if m.WValid {
@@ -68,18 +70,39 @@ func (s *SimpleState) init(m *Measurement) {
 	s.pitch = 0
 	if s.gs > minGS {
 		s.heading = math.Atan2(m.W1, m.W2)
+		for s.heading < 0 {
+			s.heading += 2*Pi
+		}
+		for s.heading >= 2*Pi {
+			s.heading -= 2 * Pi
+		}
 	} else {
 		s.heading = 0
 	}
 
-	s.EGPS3 = math.Sin(s.heading / 2)
-	s.EGPS2 = 0
-	s.EGPS1 = 0
-	s.EGPS0 = math.Sqrt(1 - s.EGPS3*s.EGPS3)
+	s.EGPS0, s.EGPS1, s.EGPS2, s.EGPS3 = ToQuaternion(s.roll, s.pitch, s.heading)
 
 	s.E0, s.E1, s.E2, s.E3 = s.EGPS0, s.EGPS1, s.EGPS2, s.EGPS3
 
 	s.D1, s.D2, s.D3 = 0, 0, 0
+
+	// Update Magnetic Heading
+	s.headingMag = math.Atan2(m.M1, -m.M2)
+	for s.headingMag < 0 {
+		s.headingMag += 2 * Pi
+	}
+	for s.headingMag >= 2*Pi {
+		s.headingMag -= 2 * Pi
+	}
+
+	// Update Slip/Skid
+	s.slipSkid = math.Atan2(m.A2, -m.A3)
+
+	// Update Rate of Turn
+	s.turnRate = 0
+
+	// Update GLoad
+	s.gLoad += uiSmoothConst * (-m.A3 - s.gLoad)
 
 	updateLogMap(s, m, s.logMap)
 }
@@ -124,6 +147,11 @@ func (s *SimpleState) Update(m *Measurement) {
 	ve := [3]float64{0, 1, 0}  // Groundspeed in earth frame (default for desktop mode)
 	s.staticMode = !(m.WValid && (s.gs > minGS))
 	if !s.staticMode {
+		if !s.headingValid  {
+			s.init(m)
+			s.headingValid = true
+			return
+		}
 		if dtw < minDT {
 			log.Printf("No GPS update at %f\n", m.T)
 			return
@@ -155,7 +183,7 @@ func (s *SimpleState) Update(m *Measurement) {
 	// This orientation quaternion EGPS rotates from aircraft frame to earth frame at the current time,
 	// as estimated using GPS and accelerometer.
 	e0, e1, e2, e3 := RotationMatrixToQuaternion(*rotmat)
-	e0, e1, e2, e3 = QuaternionSign(e0, e1, e2, e3, s.E0, s.E1, s.E2, s.E3)
+	e0, e1, e2, e3 = QuaternionSign(e0, e1, e2, e3, s.EGPS0, s.EGPS1, s.EGPS2, s.EGPS3)
 	s.EGPS0, s.EGPS1, s.EGPS2, s.EGPS3 = QuaternionNormalize(
 		s.EGPS0+uiSmoothConst*(e0-s.EGPS0),
 		s.EGPS1+uiSmoothConst*(e1-s.EGPS1),
@@ -169,6 +197,7 @@ func (s *SimpleState) Update(m *Measurement) {
 		(m.B1-s.D1)*dt*Deg, (m.B2-s.D2)*dt*Deg, (m.B3-s.D3)*dt*Deg)
 
 	// Now fuse the GPS/Accelerometer and Gyro estimates, smooth the result and normalize.
+	s.EGPS0, s.EGPS1, s.EGPS2, s.EGPS3 = QuaternionSign(s.EGPS0, s.EGPS1, s.EGPS2, s.EGPS3, s.E0, s.E1, s.E2, s.E3)
 	s.E0, s.E1, s.E2, s.E3 = QuaternionNormalize(
 		s.E0+uiSmoothConst*(gpsWeight*s.EGPS0+(1-gpsWeight)*e0-s.E0),
 		s.E1+uiSmoothConst*(gpsWeight*s.EGPS1+(1-gpsWeight)*e1-s.E1),
@@ -324,6 +353,24 @@ func updateLogMap(s *SimpleState, m *Measurement, p map[string]interface{}) {
 		"slipSkid":   func(s *SimpleState, m *Measurement) float64 { return s.slipSkid },
 		"gLoad":      func(s *SimpleState, m *Measurement) float64 { return s.gLoad },
 		"turnRate":   func(s *SimpleState, m *Measurement) float64 { return s.turnRate },
+		"needsInitialization": func(s *SimpleState, m *Measurement) float64 {
+			if s.needsInitialization {
+				return 1
+			}
+			return 0
+		},
+		"staticMode": func(s *SimpleState, m *Measurement) float64 {
+			if s.staticMode {
+				return 1
+			}
+			return 0
+		},
+		"headingValid": func(s *SimpleState, m *Measurement) float64 {
+			if s.headingValid {
+				return 1
+			}
+			return 0
+		},
 	}
 
 	for k := range simpleLogMap {
@@ -334,12 +381,18 @@ func updateLogMap(s *SimpleState, m *Measurement, p map[string]interface{}) {
 var SimpleJSONConfig = `
 {
   "State": [
-    {"pred": "GPSRoll", "updt": "Roll", "baseline": 0},
-    {"pred": "GPSPitch", "updt": "Pitch", "baseline": 0},
-    {"pred": "GPSHeading", "updt": "Heading"},
-    {"updt": "TurnRate", "baseline": 0},
+    {"pred": "RollGPS", "updt": "Roll", "baseline": 0},
+    {"pred": "PitchGPS", "updt": "Pitch", "baseline": 0},
+    {"pred": "HeadingGPS", "updt": "Heading"},
+    {"updt": "turnRate", "baseline": 0},
+    {"updt": "gLoad", "baseline": 1},
+    {"updt": "slipSkid", "baseline": 0},
     {"updt": "GroundSpeed", "baseline": 0},
     {"updt": "T"},
+    {"pred": "EGPS0", "updt": "E0"},
+    {"pred": "EGPS1", "updt": "E1"},
+    {"pred": "EGPS2", "updt": "E2"},
+    {"pred": "EGPS3", "updt": "E3"},
     {"updt": "D1", "baseline": 0},
     {"updt": "D2", "baseline": 0},
     {"updt": "D3", "baseline": 0}
@@ -353,10 +406,7 @@ var SimpleJSONConfig = `
     {"meas": "A3", "baseline": 1},
     {"meas": "B1", "baseline": 0},
     {"meas": "B2", "baseline": 0},
-    {"meas": "B3", "baseline": 0},
-    {"meas": "M1", "baseline": 0},
-    {"meas": "M2", "baseline": 0},
-    {"meas": "M3", "baseline": 0}
+    {"meas": "B3", "baseline": 0}
   ]
 }
 `
