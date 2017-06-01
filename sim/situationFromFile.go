@@ -1,36 +1,36 @@
 package main
 
 import (
-	"../ahrs"
 	"bufio"
 	"encoding/csv"
 	"errors"
-	"github.com/skelterjohn/go.matrix"
 	"io"
 	"log"
 	"os"
-	"sort"
 	"strconv"
+
+	"../ahrs"
+	"github.com/skelterjohn/go.matrix"
 )
 
 type SituationFromFile struct {
-	t   []float64
-	ts  []float64
-	a1  []float64
-	a2  []float64
-	a3  []float64
-	h1  []float64
-	h2  []float64
-	h3  []float64
-	m1  []float64
-	m2  []float64
-	m3  []float64
-	tw  []float64
-	w1  []float64
-	w2  []float64
-	w3  []float64
-	ta  []float64
-	alt []float64
+	ix     int
+	t      []float64
+	a1     []float64
+	a2     []float64
+	a3     []float64
+	h1     []float64
+	h2     []float64
+	h3     []float64
+	m1     []float64
+	m2     []float64
+	m3     []float64
+	tw     []float64
+	w1     []float64
+	w2     []float64
+	w3     []float64
+	wvalid []float64
+	alt    []float64
 }
 
 func NewSituationFromFile(fn string) (sit *SituationFromFile, err error) {
@@ -71,9 +71,6 @@ func NewSituationFromFile(fn string) (sit *SituationFromFile, err error) {
 	var (
 		j   int
 		t0  float64
-		ts0 float64
-		tw0 float64
-		ta0 float64
 	)
 	for {
 		rec, err = r.Read()
@@ -94,23 +91,18 @@ func NewSituationFromFile(fn string) (sit *SituationFromFile, err error) {
 				if j == 0 {
 					t0 = v
 				}
-				sit.t = expandAppend(&sit.t, v-t0)
-			case "TS":
-				if j == 0 {
-					ts0 = v
-				}
-				sit.ts = expandAppend(&sit.ts, v-ts0)
+				sit.t = expandAppend(&sit.t, v)
 			case "A1":
 				sit.a1 = expandAppend(&sit.a1, v)
 			case "A2":
 				sit.a2 = expandAppend(&sit.a2, v)
 			case "A3":
 				sit.a3 = expandAppend(&sit.a3, v)
-			case "H1":
+			case "B1":
 				sit.h1 = expandAppend(&sit.h1, v)
-			case "H2":
+			case "B2":
 				sit.h2 = expandAppend(&sit.h2, v)
-			case "H3":
+			case "B3":
 				sit.h3 = expandAppend(&sit.h3, v)
 			case "M1":
 				sit.m1 = expandAppend(&sit.m1, v)
@@ -119,27 +111,23 @@ func NewSituationFromFile(fn string) (sit *SituationFromFile, err error) {
 			case "M3":
 				sit.m3 = expandAppend(&sit.m3, v)
 			case "TW":
-				if j == 0 {
-					tw0 = v
-				}
-				sit.tw = expandAppend(&sit.tw, v-tw0)
+				sit.tw = expandAppend(&sit.tw, v)
 			case "W1":
 				sit.w1 = expandAppend(&sit.w1, v)
 			case "W2":
 				sit.w2 = expandAppend(&sit.w2, v)
 			case "W3":
 				sit.w3 = expandAppend(&sit.w3, v)
-			case "TA":
-				if j == 0 {
-					ta0 = v
-				}
-				sit.ta = expandAppend(&sit.ta, v-ta0)
+			case "WValid":
+				sit.wvalid = expandAppend(&sit.wvalid, v)
 			case "Alt":
 				sit.alt = expandAppend(&sit.alt, v)
 			default:
 				continue
 			}
 		}
+		sit.t[j] -= t0
+		sit.tw[j] -= t0
 		j += 1
 	}
 	err = nil
@@ -147,61 +135,61 @@ func NewSituationFromFile(fn string) (sit *SituationFromFile, err error) {
 	return
 }
 
-// BeginTime returns the time stamp when the records begin
+// BeginTime returns the time stamp when the records begin.
 func (s *SituationFromFile) BeginTime() float64 {
 	return s.t[0]
 }
 
-// Interpolate is only filler for reading from a sensor file: we don't know the "actual" situation since it was reality!
-func (s *SituationFromFile) Interpolate(t float64, st *ahrs.State, aBias, bBias, mBias []float64) error {
-	if t < s.t[0] || t > s.t[len(s.t)-1] {
-		st = new(ahrs.State)
+// NextTime returns the next time stamp available.
+func (s *SituationFromFile) NextTime() (err error) {
+	if s.ix >= len(s.t)-1 {
 		return errors.New("sim: requested time is outside of recorded data")
 	}
+	s.ix += 1
+	for s.ix+1 < len(s.t) && s.t[s.ix] <= s.t[s.ix-1] { // No duplicates
+		s.ix += 1
+	}
+	return nil
+}
+
+// UpdateState is only filler for reading from a sensor file: we don't know the "actual" situation since it was reality!
+func (s *SituationFromFile) UpdateState(st *ahrs.State, aBias, bBias, mBias []float64) error {
 	st.E0 = 1
 	st.F0 = 1
-	st.T = t
 
 	return nil
 }
 
-func (s *SituationFromFile) Measurement(t float64, m *ahrs.Measurement,
-	uValid, wValid, sValid, mValid bool,
-	uNoise, wNoise, aNoise, bNoise, mNoise float64,
-	uBias, aBias, bBias, mBias []float64,
-) error {
-	if t < s.t[0] || t > s.t[len(s.t)-1] {
-		m = new(ahrs.Measurement)
-		return errors.New("sim: requested time is outside of recorded data")
-	}
-	ix := 0
-	if t > s.t[0] {
-		ix = sort.SearchFloat64s(s.t, t) - 1
-	}
-
-	f := (s.t[ix+1] - t) / (s.t[ix+1] - s.t[ix])
-
+func (s *SituationFromFile) UpdateMeasurement(m *ahrs.Measurement,
+		uValid, wValid, sValid, mValid bool,
+		uNoise, wNoise, aNoise, bNoise, mNoise float64,
+		uBias, aBias, bBias, mBias []float64) error {
 	m.U1 = 0
 	m.U2 = 0
 	m.U3 = 0
 	m.UValid = false
-	m.W1 = f*s.w1[ix] + (1-f)*s.w1[ix+1]
-	m.W2 = f*s.w2[ix] + (1-f)*s.w2[ix+1]
-	m.W3 = f*s.w3[ix] + (1-f)*s.w3[ix+1]
-	m.WValid = s.ts[ix]-s.tw[ix] < 5 // Arbitrary: allow up to 5 sec lag for GPS data (5s seems typical)
-	m.A1 = -(f*s.a1[ix] + (1-f)*s.a1[ix+1])
-	m.A2 = -(f*s.a2[ix] + (1-f)*s.a2[ix+1])
-	m.A3 = -(f*s.a3[ix] + (1-f)*s.a3[ix+1])
-	m.B1 = (f*s.h1[ix] + (1-f)*s.h1[ix+1])
-	m.B2 = (f*s.h2[ix] + (1-f)*s.h2[ix+1])
-	m.B3 = (f*s.h3[ix] + (1-f)*s.h3[ix+1])
+	m.TU = 0
+	m.W1 = s.w1[s.ix]
+	m.W2 = s.w2[s.ix]
+	m.W3 = s.w3[s.ix]
+	if s.wvalid[s.ix] < 0.5 {
+		m.WValid = false
+	} else {
+		m.WValid = true
+	}
+	m.TW = s.tw[s.ix]
+	m.A1 = s.a1[s.ix]
+	m.A2 = s.a2[s.ix]
+	m.A3 = s.a3[s.ix]
+	m.B1 = s.h1[s.ix]
+	m.B2 = s.h2[s.ix]
+	m.B3 = s.h3[s.ix]
 	m.SValid = true
-	m.M1 = f*s.m1[ix] + (1-f)*s.m1[ix+1]
-	m.M2 = f*s.m2[ix] + (1-f)*s.m2[ix+1]
-	m.M3 = f*s.m3[ix] + (1-f)*s.m3[ix+1]
+	m.M1 = s.m1[s.ix]
+	m.M2 = s.m2[s.ix]
+	m.M3 = s.m3[s.ix]
 	m.MValid = m.M1 != 0 || m.M2 != 0 || m.M3 != 0
-
-	m.T = t
+	m.T = s.t[s.ix]
 
 	m.M = matrix.Zeros(15, 15)
 	return nil
