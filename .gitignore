@@ -37,5 +37,5 @@ out/
 *.lyx~
 
 mpu9250/motion_driver_6_1/
-sim/sim
+sim/ahrs_sim
 public
