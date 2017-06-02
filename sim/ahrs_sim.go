@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"../ahrs"
+	"encoding/json"
 )
 
 func parseFloatArrayString(str string, a *[]float64) (err error) {
@@ -39,6 +40,8 @@ func main() {
 		gyroBias, accelBias, magBias                        []float64
 		gpsInop, magInop, asiInop                           bool
 		algo                                                string
+		ahrsConfigStr                                       string
+		ahrsConfig                                          map[string]float64
 		s                                                   ahrs.AHRSProvider
 		scenario                                            string
 		sit                                                 Situation
@@ -82,6 +85,8 @@ func main() {
 		scenarioUsage     = "Scenario to use: filename or \"takeoff\" or \"turn\""
 		defaultAlgo       = "simple"
 		algoUsage         = "Algo to use for AHRS: simple (default), heuristic, kalman, kalman1, kalman2"
+		defaultConfig     = ""
+		configUsage       = "json-formatted map for AHRS Config"
 	)
 
 	flag.Float64Var(&pdt, "pdt", defaultPdt, pdtUsage)
@@ -110,6 +115,8 @@ func main() {
 	flag.StringVar(&scenario, "scenario", defaultScenario, scenarioUsage)
 	flag.StringVar(&scenario, "s", defaultScenario, scenarioUsage)
 	flag.StringVar(&algo, "algo", defaultAlgo, algoUsage)
+	flag.StringVar(&ahrsConfigStr, "config", defaultConfig, configUsage)
+	flag.StringVar(&ahrsConfigStr, "c", defaultConfig, configUsage)
 	flag.Parse()
 
 	switch scenario {
@@ -132,10 +139,6 @@ func main() {
 
 	fmt.Println("Simulation parameters:")
 	switch strings.ToLower(algo) {
-	case "simple":
-		fmt.Println("Running simple AHRS")
-		ioutil.WriteFile("config.json", []byte(ahrs.SimpleJSONConfig), 0644)
-		s = ahrs.InitializeSimple()
 	/*
 	case "kalman":
 		fmt.Println("Running Kalman AHRS")
@@ -146,9 +149,12 @@ func main() {
 		ioutil.WriteFile("config.json", []byte(ahrs.Kalman1JSONConfig), 0644)
 		s = ahrs.InitializeKalman1(m)
 	*/
+	case "simple":
+		fallthrough // simple is the default.
 	default:
-		fmt.Printf("No such AHRS implementation: %s\n", algo)
-		return
+		fmt.Println("Running simple AHRS")
+		ioutil.WriteFile("config.json", []byte(ahrs.SimpleJSONConfig), 0644)
+		s = ahrs.InitializeSimple()
 	}
 
 	if err := parseFloatArrayString(gyroBiasStr, &gyroBias); err != nil {
@@ -185,6 +191,12 @@ func main() {
 	fmt.Printf("\tBias: %f,%f,%f\n", magBias[0], magBias[1], magBias[2])
 
 	uBias := []float64{asiBias, 0, 0}
+
+	if err := json.Unmarshal([]byte(ahrsConfigStr), &ahrsConfig); err != nil {
+		log.Printf("Bad config: %s\n", err.Error())
+	}
+	log.Printf("ahrs config: %v\n", ahrsConfig)
+	s.SetConfig(ahrsConfig)
 
 	// Set up logging
 	ahrsLogger = ahrs.NewAHRSLogger("ahrs.csv", s.GetLogMap())
