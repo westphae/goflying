@@ -10,7 +10,8 @@ import (
 const (
 	minDT = 1e-6                     // Below this time interval, don't recalculate
 	maxDT = 10.0                     // Above this time interval, re-initialize--too stale
-	minGS = 2.0                      // Below this GS, don't use any GPS data
+	minGS = 5.0                      // Below this GS, don't use any GPS data
+	smoothConstGS = 0.02             // Five-second smoothing for groundspeed, to decide static mode
 	uiSmoothConstDefault = 0.65      // Sensible default for smoothing AHRS values
 	slipSkidSmoothConstDefault = 0.1 // Sensible default for smoothing AHRS values
 	gpsWeightDefault = 0.025         // Sensible default for weight of GPS solution
@@ -29,6 +30,7 @@ type SimpleState struct {
 	roll, pitch, heading          float64                // Fused attitude, Rad
 	rollGPS, pitchGPS, headingGPS float64                // GPS/accel-based attitude, Rad
 	w1, w2, w3, gs                float64                // Groundspeed & ROC, Kts
+	smoothW1, smoothW2, smoothGS  float64                // Smoothed groundspeed used to determine if stationary
 	headingMag                    float64                // Magnetic heading, Rad (smoothed)
 	slipSkid                      float64                // Slip/Skid Angle, Rad (smoothed)
 	gLoad                         float64                // G Load, G vertical (smoothed)
@@ -56,11 +58,17 @@ func (s *SimpleState) init(m *Measurement) {
 	s.TW = m.TW
 	if m.WValid {
 		s.gs = math.Hypot(m.W1, m.W2)
+		s.smoothW1 = s.smoothW1 + smoothConstGS*(m.W1 - s.smoothW1)
+		s.smoothW2 = s.smoothW2 + smoothConstGS*(m.W2 - s.smoothW2)
+		s.smoothGS = math.Hypot(s.smoothW1, s.smoothW2)
 		s.w1 = m.W1
 		s.w2 = m.W2
 		s.w3 = m.W3
 	} else {
 		s.gs = 0
+		s.smoothW1 = 0
+		s.smoothW2 = 0
+		s.smoothGS = 0
 		s.w1 = 0
 		s.w2 = 0
 		s.w3 = 0
@@ -68,7 +76,7 @@ func (s *SimpleState) init(m *Measurement) {
 
 	s.roll = 0
 	s.pitch = 0
-	if s.gs > minGS {
+	if s.smoothGS > minGS {
 		s.heading = math.Atan2(m.W1, m.W2)
 		for s.heading < 0 {
 			s.heading += 2*Pi
@@ -141,11 +149,14 @@ func (s *SimpleState) Update(m *Measurement) {
 
 	if m.WValid && dtw > minDT {
 		s.gs = math.Hypot(m.W1, m.W2)
+		s.smoothW1 = s.smoothW1 + smoothConstGS*(m.W1 - s.smoothW1)
+		s.smoothW2 = s.smoothW2 + smoothConstGS*(m.W2 - s.smoothW2)
+		s.smoothGS = math.Hypot(s.smoothW1, s.smoothW2)
 	}
 
 	ae := [3]float64{0, 0, -1} // Acceleration due to gravity in earth frame
 	ve := [3]float64{0, 1, 0}  // Groundspeed in earth frame (default for desktop mode)
-	s.staticMode = !(m.WValid && (s.gs > minGS))
+	s.staticMode = !(m.WValid && (s.smoothGS > minGS))
 	if !s.staticMode {
 		if !s.headingValid  {
 			s.init(m)
@@ -315,6 +326,9 @@ func updateLogMap(s *SimpleState, m *Measurement, p map[string]interface{}) {
 		"PitchGPS":    func(s *SimpleState, m *Measurement) float64 { return s.pitchGPS / Deg },
 		"HeadingGPS":  func(s *SimpleState, m *Measurement) float64 { return s.headingGPS / Deg },
 		"GroundSpeed": func(s *SimpleState, m *Measurement) float64 { return s.gs },
+		"SmoothW1":    func(s *SimpleState, m *Measurement) float64 { return s.smoothW1 },
+		"SmoothW2":    func(s *SimpleState, m *Measurement) float64 { return s.smoothW2 },
+		"SmoothGroundSpeed": func(s *SimpleState, m *Measurement) float64 { return s.smoothGS },
 		"W1a":         func(s *SimpleState, m *Measurement) float64 { return s.w1 },
 		"W2a":         func(s *SimpleState, m *Measurement) float64 { return s.w2 },
 		"W3a":         func(s *SimpleState, m *Measurement) float64 { return s.w3 },
