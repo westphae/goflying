@@ -25,10 +25,12 @@ var (
 
 type SimpleState struct {
 	State
-	TW                            float64                // Time of last GPS reading
-	EGPS0, EGPS1, EGPS2, EGPS3    float64                // GPS-derived orientation quaternion
+	tW                            float64                // Time of last GPS reading
+	eGPS0, eGPS1, eGPS2, eGPS3    float64                // GPS-derived orientation quaternion
+	eGyr0, eGyr1, eGyr2, eGyr3    float64                // GPS-derived orientation quaternion
 	roll, pitch, heading          float64                // Fused attitude, Rad
 	rollGPS, pitchGPS, headingGPS float64                // GPS/accel-based attitude, Rad
+	rollGyr, pitchGyr, headingGyr float64                // Gyro-based attitude, Rad
 	w1, w2, w3, gs                float64                // Groundspeed & ROC, Kts
 	smoothW1, smoothW2, smoothGS  float64                // Smoothed groundspeed used to determine if stationary
 	headingMag                    float64                // Magnetic heading, Rad (smoothed)
@@ -55,7 +57,7 @@ func (s *SimpleState) init(m *Measurement) {
 	s.needsInitialization = false
 	s.headingValid = false
 	s.T = m.T
-	s.TW = m.TW
+	s.tW = m.TW
 	if m.WValid {
 		s.gs = math.Hypot(m.W1, m.W2)
 		s.smoothW1 = s.smoothW1 + smoothConstGS*(m.W1 - s.smoothW1)
@@ -88,9 +90,10 @@ func (s *SimpleState) init(m *Measurement) {
 		s.heading = 0
 	}
 
-	s.EGPS0, s.EGPS1, s.EGPS2, s.EGPS3 = ToQuaternion(s.roll, s.pitch, s.heading)
+	s.eGPS0, s.eGPS1, s.eGPS2, s.eGPS3 = ToQuaternion(s.roll, s.pitch, s.heading)
+	s.eGyr0, s.eGyr1, s.eGyr2, s.eGyr3 = ToQuaternion(s.roll, s.pitch, s.heading)
 
-	s.E0, s.E1, s.E2, s.E3 = s.EGPS0, s.EGPS1, s.EGPS2, s.EGPS3
+	s.E0, s.E1, s.E2, s.E3 = s.eGPS0, s.eGPS1, s.eGPS2, s.eGPS3
 
 	s.D1, s.D2, s.D3 = 0, 0, 0
 
@@ -139,7 +142,7 @@ func (s *SimpleState) Predict(t float64) {
 // the math and stratux integration can be more easily developed and debugged.
 func (s *SimpleState) Update(m *Measurement) {
 	dt := m.T - s.T
-	dtw := m.TW - s.TW
+	dtw := m.TW - s.tW
 
 	if dt > maxDT || dtw > maxDT {
 		log.Printf("AHRS Info: Reinitializing at %f\n", m.T)
@@ -194,30 +197,31 @@ func (s *SimpleState) Update(m *Measurement) {
 	// This orientation quaternion EGPS rotates from aircraft frame to earth frame at the current time,
 	// as estimated using GPS and accelerometer.
 	e0, e1, e2, e3 := RotationMatrixToQuaternion(*rotmat)
-	e0, e1, e2, e3 = QuaternionSign(e0, e1, e2, e3, s.EGPS0, s.EGPS1, s.EGPS2, s.EGPS3)
-	s.EGPS0, s.EGPS1, s.EGPS2, s.EGPS3 = QuaternionNormalize(
-		s.EGPS0+uiSmoothConst*(e0-s.EGPS0),
-		s.EGPS1+uiSmoothConst*(e1-s.EGPS1),
-		s.EGPS2+uiSmoothConst*(e2-s.EGPS2),
-		s.EGPS3+uiSmoothConst*(e3-s.EGPS3),
+	e0, e1, e2, e3 = QuaternionSign(e0, e1, e2, e3, s.eGPS0, s.eGPS1, s.eGPS2, s.eGPS3)
+	s.eGPS0, s.eGPS1, s.eGPS2, s.eGPS3 = QuaternionNormalize(
+		s.eGPS0+uiSmoothConst*(e0-s.eGPS0),
+		s.eGPS1+uiSmoothConst*(e1-s.eGPS1),
+		s.eGPS2+uiSmoothConst*(e2-s.eGPS2),
+		s.eGPS3+uiSmoothConst*(e3-s.eGPS3),
 	)
 
 	// By rotating the orientation quaternion at the last time step, s.E, by the measured gyro rates,
-	// we get another estimate of the current orientation quaternion using gyro.
-	e0, e1, e2, e3 = QuaternionRotate(s.E0, s.E1, s.E2, s.E3,
+	// we get another estimate of the current orientation quaternion using the gyro.
+	s.eGyr0, s.eGyr1, s.eGyr2, s.eGyr3 = QuaternionRotate(s.E0, s.E1, s.E2, s.E3,
 		(m.B1-s.D1)*dt*Deg, (m.B2-s.D2)*dt*Deg, (m.B3-s.D3)*dt*Deg)
 
 	// Now fuse the GPS/Accelerometer and Gyro estimates, smooth the result and normalize.
-	s.EGPS0, s.EGPS1, s.EGPS2, s.EGPS3 = QuaternionSign(s.EGPS0, s.EGPS1, s.EGPS2, s.EGPS3, s.E0, s.E1, s.E2, s.E3)
+	s.eGPS0, s.eGPS1, s.eGPS2, s.eGPS3 = QuaternionSign(s.eGPS0, s.eGPS1, s.eGPS2, s.eGPS3, s.E0, s.E1, s.E2, s.E3)
 	s.E0, s.E1, s.E2, s.E3 = QuaternionNormalize(
-		s.E0+uiSmoothConst*(gpsWeight*s.EGPS0+(1-gpsWeight)*e0-s.E0),
-		s.E1+uiSmoothConst*(gpsWeight*s.EGPS1+(1-gpsWeight)*e1-s.E1),
-		s.E2+uiSmoothConst*(gpsWeight*s.EGPS2+(1-gpsWeight)*e2-s.E2),
-		s.E3+uiSmoothConst*(gpsWeight*s.EGPS3+(1-gpsWeight)*e3-s.E3),
+		s.E0+uiSmoothConst*(gpsWeight*s.eGPS0+(1-gpsWeight)*s.eGyr0-s.E0),
+		s.E1+uiSmoothConst*(gpsWeight*s.eGPS1+(1-gpsWeight)*s.eGyr1-s.E1),
+		s.E2+uiSmoothConst*(gpsWeight*s.eGPS2+(1-gpsWeight)*s.eGyr2-s.E2),
+		s.E3+uiSmoothConst*(gpsWeight*s.eGPS3+(1-gpsWeight)*s.eGyr3-s.E3),
 	)
 
 	s.roll, s.pitch, s.heading = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
-	s.rollGPS, s.pitchGPS, s.headingGPS = FromQuaternion(s.EGPS0, s.EGPS1, s.EGPS2, s.EGPS3)
+	s.rollGPS, s.pitchGPS, s.headingGPS = FromQuaternion(s.eGPS0, s.eGPS1, s.eGPS2, s.eGPS3)
+	s.rollGyr, s.pitchGyr, s.headingGyr = FromQuaternion(s.eGyr0, s.eGyr1, s.eGyr2, s.eGyr3)
 
 	// Update Magnetic Heading
 	dhM := AngleDiff(math.Atan2(m.M1, -m.M2), s.headingMag)
@@ -243,7 +247,7 @@ func (s *SimpleState) Update(m *Measurement) {
 	updateLogMap(s, m, s.logMap)
 
 	s.T = m.T
-	s.TW = m.TW
+	s.tW = m.TW
 	s.w1 = m.W1
 	s.w2 = m.W2
 	s.w3 = m.W3
@@ -318,13 +322,16 @@ func (s *SimpleState) SetConfig(configMap map[string]float64) {
 func updateLogMap(s *SimpleState, m *Measurement, p map[string]interface{}) {
 	var simpleLogMap = map[string]func(s *SimpleState, m *Measurement) float64{
 		"Ta":          func(s *SimpleState, m *Measurement) float64 { return s.T },
-		"TWa":         func(s *SimpleState, m *Measurement) float64 { return s.TW },
+		"TWa":         func(s *SimpleState, m *Measurement) float64 { return s.tW },
 		"Roll":        func(s *SimpleState, m *Measurement) float64 { return s.roll / Deg },
 		"Pitch":       func(s *SimpleState, m *Measurement) float64 { return s.pitch / Deg },
 		"Heading":     func(s *SimpleState, m *Measurement) float64 { return s.heading / Deg },
 		"RollGPS":     func(s *SimpleState, m *Measurement) float64 { return s.rollGPS / Deg },
 		"PitchGPS":    func(s *SimpleState, m *Measurement) float64 { return s.pitchGPS / Deg },
 		"HeadingGPS":  func(s *SimpleState, m *Measurement) float64 { return s.headingGPS / Deg },
+		"RollGyr":     func(s *SimpleState, m *Measurement) float64 { return s.rollGyr / Deg },
+		"PitchGyr":    func(s *SimpleState, m *Measurement) float64 { return s.pitchGyr / Deg },
+		"HeadingGyr":  func(s *SimpleState, m *Measurement) float64 { return s.headingGyr / Deg },
 		"GroundSpeed": func(s *SimpleState, m *Measurement) float64 { return s.gs },
 		"SmoothW1":    func(s *SimpleState, m *Measurement) float64 { return s.smoothW1 },
 		"SmoothW2":    func(s *SimpleState, m *Measurement) float64 { return s.smoothW2 },
@@ -347,10 +354,14 @@ func updateLogMap(s *SimpleState, m *Measurement, p map[string]interface{}) {
 		"E1":         func(s *SimpleState, m *Measurement) float64 { return s.E1 },
 		"E2":         func(s *SimpleState, m *Measurement) float64 { return s.E2 },
 		"E3":         func(s *SimpleState, m *Measurement) float64 { return s.E3 },
-		"EGPS0":      func(s *SimpleState, m *Measurement) float64 { return s.EGPS0 },
-		"EGPS1":      func(s *SimpleState, m *Measurement) float64 { return s.EGPS1 },
-		"EGPS2":      func(s *SimpleState, m *Measurement) float64 { return s.EGPS2 },
-		"EGPS3":      func(s *SimpleState, m *Measurement) float64 { return s.EGPS3 },
+		"eGPS0":      func(s *SimpleState, m *Measurement) float64 { return s.eGPS0 },
+		"eGPS1":      func(s *SimpleState, m *Measurement) float64 { return s.eGPS1 },
+		"eGPS2":      func(s *SimpleState, m *Measurement) float64 { return s.eGPS2 },
+		"eGPS3":      func(s *SimpleState, m *Measurement) float64 { return s.eGPS3 },
+		"eGyr0":      func(s *SimpleState, m *Measurement) float64 { return s.eGyr0 },
+		"eGyr1":      func(s *SimpleState, m *Measurement) float64 { return s.eGyr1 },
+		"eGyr2":      func(s *SimpleState, m *Measurement) float64 { return s.eGyr2 },
+		"eGyr3":      func(s *SimpleState, m *Measurement) float64 { return s.eGyr3 },
 		"A1":         func(s *SimpleState, m *Measurement) float64 { return m.A1 },
 		"A2":         func(s *SimpleState, m *Measurement) float64 { return m.A2 },
 		"A3":         func(s *SimpleState, m *Measurement) float64 { return m.A3 },
