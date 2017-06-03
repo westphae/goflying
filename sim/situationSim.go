@@ -25,6 +25,7 @@ type SituationSim struct {
 	phi0, theta0, psi0 []float64 // base attitude, rad [adjust for position of stratux on glareshield]
 	v1, v2, v3         []float64 // windspeed, kts, earth frame [N/S, E/W, and U/D]
 	m1, m2, m3         []float64 // magnetometer reading
+	logMap             map[string]interface{} // Map only for analysis/debugging
 }
 
 // BeginTime returns the time stamp when the simulation begins
@@ -257,4 +258,8 @@ var sitTakeoffDef = &SituationSim{
 	m1:     []float64{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 	m2:     []float64{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
 	m3:     []float64{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+}
+
+func (s *SituationSim) GetLogMap() (p map[string]interface{}) {
+	return s.logMap
 }

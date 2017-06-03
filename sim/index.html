@@ -212,10 +212,10 @@
 
             chart.data = ahrs.map(function(d, i) {
                 var r = {T: parseFloat(d.T),
-                    updt: parseFloat(d[v.updt]),
+                    updt: parseFloat(d[v.updt])
                 };
                 if (plotActual) {
-                    r.actual = parseFloat(actual[i][v]);
+                    r.actual = parseFloat(actual[i][v.actual]);
                 } else {
                     r.actual = parseFloat(d[v.updt]);
                 }

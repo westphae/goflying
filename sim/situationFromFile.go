@@ -31,10 +31,14 @@ type SituationFromFile struct {
 	w3     []float64
 	wvalid []float64
 	alt    []float64
+	logMap map[string][]*float64 // Map only for analysis/debugging
+	logMapCurrent map[string]interface{}
 }
 
 func NewSituationFromFile(fn string) (sit *SituationFromFile, err error) {
 	sit = new(SituationFromFile)
+	sit.logMap = make(map[string][]*float64)
+	sit.logMapCurrent = make(map[string]interface{})
 	f, err := os.Open(fn)
 	if err != nil {
 		log.Fatalln(err.Error())
@@ -86,6 +90,7 @@ func NewSituationFromFile(fn string) (sit *SituationFromFile, err error) {
 			if err != nil {
 				log.Printf("csv contains bad data %s, skipping this one\n", err.Error())
 			}
+			sit.logMap[fields[i]] = append(sit.logMap[fields[i]], &v)
 			switch fields[i] {
 			case "T":
 				if j == 0 {
@@ -137,6 +142,9 @@ func NewSituationFromFile(fn string) (sit *SituationFromFile, err error) {
 
 // BeginTime returns the time stamp when the records begin.
 func (s *SituationFromFile) BeginTime() float64 {
+	for k, v := range s.logMap {
+		s.logMapCurrent[k] = *v[0]
+	}
 	return s.t[0]
 }
 
@@ -156,6 +164,9 @@ func (s *SituationFromFile) NextTime() (err error) {
 func (s *SituationFromFile) UpdateState(st *ahrs.State, aBias, bBias, mBias []float64) error {
 	st.E0 = 1
 	st.F0 = 1
+	for k, v := range s.logMap {
+		s.logMapCurrent[k] = *v[s.ix]
+	}
 
 	return nil
 }
@@ -193,4 +204,11 @@ func (s *SituationFromFile) UpdateMeasurement(m *ahrs.Measurement,
 
 	m.M = matrix.Zeros(15, 15)
 	return nil
+}
+
+func (s *SituationFromFile) GetLogMap() (p map[string]interface{}) {
+	for k, v := range s.logMap {
+		s.logMapCurrent[k] = *v[0]
+	}
+	return s.logMapCurrent
 }

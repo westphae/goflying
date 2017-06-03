@@ -11,4 +11,5 @@ type Situation interface {
 		uNoise, wNoise, aNoise, bNoise, mNoise float64,
 		uBias, aBias, bBias, mBias []float64,
 	) (err error)
+	GetLogMap() (p map[string]interface{})
 }

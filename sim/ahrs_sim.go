@@ -47,6 +47,7 @@ func main() {
 		sit                                                 Situation
 		err                                                 error
 		ahrsLogger                                          *ahrs.AHRSLogger
+		actualLogger                                        *ahrs.AHRSLogger
 	)
 	gyroBias = make([]float64, 3)
 	accelBias = make([]float64, 3)
@@ -144,10 +145,6 @@ func main() {
 		fmt.Println("Running Kalman AHRS")
 		ioutil.WriteFile("config.json", []byte(ahrs.KalmanJSONConfig), 0644)
 		s = ahrs.InitializeKalman(m)
-	case "kalman1":
-		fmt.Println("Running Kalman1 AHRS")
-		ioutil.WriteFile("config.json", []byte(ahrs.Kalman1JSONConfig), 0644)
-		s = ahrs.InitializeKalman1(m)
 	*/
 	case "simple":
 		fallthrough // simple is the default.
@@ -200,6 +197,7 @@ func main() {
 
 	// Set up logging
 	ahrsLogger = ahrs.NewAHRSLogger("ahrs.csv", s.GetLogMap())
+	actualLogger = ahrs.NewAHRSLogger("actual.csv", sit.GetLogMap())
 
 	// This is where it all happens
 	fmt.Println("Running Simulation")
@@ -225,7 +223,10 @@ func main() {
 		}
 
 		s.Compute(m)
-		ahrsLogger.Log() // Log to csv for serving
+
+		// Log to csv for serving
+		ahrsLogger.Log()
+		actualLogger.Log()
 
 		err = sit.NextTime()
 		if err != nil {
