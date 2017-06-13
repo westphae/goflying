@@ -8,24 +8,26 @@ import (
 )
 
 const (
-	minDT = 1e-6                     // Below this time interval, don't recalculate
-	maxDT = 10.0                     // Above this time interval, re-initialize--too stale
-	minGS = 5.0                      // Below this GS, don't use any GPS data
-	smoothConstGS = 0.02             // Five-second smoothing for groundspeed, to decide static mode
-	uiSmoothConstDefault = 0.65      // Sensible default for smoothing AHRS values
-	slipSkidSmoothConstDefault = 0.1 // Sensible default for smoothing AHRS values
-	gpsWeightDefault = 0.025         // Sensible default for weight of GPS solution
+	minDT                      = 1e-6 // Below this time interval, don't recalculate
+	maxDT                      = 10.0 // Above this time interval, re-initialize--too stale
+	minGS                      = 5.0  // Below this GS, don't use any GPS data
+	fastSmoothConstDefault     = 0.7  // Sensible default for fast smoothing of AHRS values
+	slowSmoothConstDefault     = 0.1  // Sensible default for slow smoothing of AHRS values
+	verySlowSmoothConstDefault = 0.02 // Five-second smoothing mainly for groundspeed, to decide static mode
+	gpsWeightDefault           = 0.04 // Sensible default for weight of GPS-derived values in solution
 )
 
 var (
-	uiSmoothConst = uiSmoothConstDefault              // Decay constant for smoothing values reported to the user
-	slipSkidSmoothConst = slipSkidSmoothConstDefault  // Decay constant for smoothing values reported to the user
-	gpsWeight = gpsWeightDefault                      // Weight given to GPS quaternion over gyro quaternion
+	fastSmoothConst     = fastSmoothConstDefault     // Decay constant for smoothing values reported to the user
+	slowSmoothConst     = slowSmoothConstDefault     // Decay constant for smoothing values reported to the user
+	verySlowSmoothConst = verySlowSmoothConstDefault // Decay constant for smoothing values reported to the user
+	gpsWeight           = gpsWeightDefault           // Weight given to GPS quaternion over gyro quaternion
 )
 
 type SimpleState struct {
 	State
 	tW                            float64                // Time of last GPS reading
+	b1, b2, b3                    float64                // Smoothed gyro rates TODO westphae: change to H1,H2,H3
 	eGPS0, eGPS1, eGPS2, eGPS3    float64                // GPS-derived orientation quaternion
 	eGyr0, eGyr1, eGyr2, eGyr3    float64                // GPS-derived orientation quaternion
 	roll, pitch, heading          float64                // Fused attitude, Rad
@@ -60,8 +62,8 @@ func (s *SimpleState) init(m *Measurement) {
 	s.tW = m.TW
 	if m.WValid {
 		s.gs = math.Hypot(m.W1, m.W2)
-		s.smoothW1 = s.smoothW1 + smoothConstGS*(m.W1 - s.smoothW1)
-		s.smoothW2 = s.smoothW2 + smoothConstGS*(m.W2 - s.smoothW2)
+		s.smoothW1 = s.smoothW1 + verySlowSmoothConst*(m.W1-s.smoothW1)
+		s.smoothW2 = s.smoothW2 + verySlowSmoothConst*(m.W2-s.smoothW2)
 		s.smoothGS = math.Hypot(s.smoothW1, s.smoothW2)
 		s.w1 = m.W1
 		s.w2 = m.W2
@@ -81,7 +83,7 @@ func (s *SimpleState) init(m *Measurement) {
 	if s.smoothGS > minGS {
 		s.heading = math.Atan2(m.W1, m.W2)
 		for s.heading < 0 {
-			s.heading += 2*Pi
+			s.heading += 2 * Pi
 		}
 		for s.heading >= 2*Pi {
 			s.heading -= 2 * Pi
@@ -113,7 +115,7 @@ func (s *SimpleState) init(m *Measurement) {
 	s.turnRate = 0
 
 	// Update GLoad
-	s.gLoad += uiSmoothConst * (-m.A3 - s.gLoad)
+	s.gLoad += slowSmoothConst * (-m.A3 - s.gLoad)
 
 	updateLogMap(s, m, s.logMap)
 }
@@ -152,8 +154,8 @@ func (s *SimpleState) Update(m *Measurement) {
 
 	if m.WValid && dtw > minDT {
 		s.gs = math.Hypot(m.W1, m.W2)
-		s.smoothW1 = s.smoothW1 + smoothConstGS*(m.W1 - s.smoothW1)
-		s.smoothW2 = s.smoothW2 + smoothConstGS*(m.W2 - s.smoothW2)
+		s.smoothW1 = s.smoothW1 + verySlowSmoothConst*(m.W1-s.smoothW1)
+		s.smoothW2 = s.smoothW2 + verySlowSmoothConst*(m.W2-s.smoothW2)
 		s.smoothGS = math.Hypot(s.smoothW1, s.smoothW2)
 	}
 
@@ -161,7 +163,7 @@ func (s *SimpleState) Update(m *Measurement) {
 	ve := [3]float64{0, 1, 0}  // Groundspeed in earth frame (default for desktop mode)
 	s.staticMode = !(m.WValid && (s.smoothGS > minGS))
 	if !s.staticMode {
-		if !s.headingValid  {
+		if !s.headingValid {
 			s.init(m)
 			s.headingValid = true
 			return
@@ -199,24 +201,29 @@ func (s *SimpleState) Update(m *Measurement) {
 	e0, e1, e2, e3 := RotationMatrixToQuaternion(*rotmat)
 	e0, e1, e2, e3 = QuaternionSign(e0, e1, e2, e3, s.eGPS0, s.eGPS1, s.eGPS2, s.eGPS3)
 	s.eGPS0, s.eGPS1, s.eGPS2, s.eGPS3 = QuaternionNormalize(
-		s.eGPS0+uiSmoothConst*(e0-s.eGPS0),
-		s.eGPS1+uiSmoothConst*(e1-s.eGPS1),
-		s.eGPS2+uiSmoothConst*(e2-s.eGPS2),
-		s.eGPS3+uiSmoothConst*(e3-s.eGPS3),
+		s.eGPS0+fastSmoothConst*(e0-s.eGPS0),
+		s.eGPS1+fastSmoothConst*(e1-s.eGPS1),
+		s.eGPS2+fastSmoothConst*(e2-s.eGPS2),
+		s.eGPS3+fastSmoothConst*(e3-s.eGPS3),
 	)
+
+	// Update estimates of current gyro rate
+	s.b1 += fastSmoothConst * (m.B1 - s.D1 - s.b1)
+	s.b2 += fastSmoothConst * (m.B2 - s.D1 - s.b2)
+	s.b3 += fastSmoothConst * (m.B3 - s.D1 - s.b3)
 
 	// By rotating the orientation quaternion at the last time step, s.E, by the measured gyro rates,
 	// we get another estimate of the current orientation quaternion using the gyro.
-	s.eGyr0, s.eGyr1, s.eGyr2, s.eGyr3 = QuaternionRotate(s.E0, s.E1, s.E2, s.E3,
-		(m.B1-s.D1)*dt*Deg, (m.B2-s.D2)*dt*Deg, (m.B3-s.D3)*dt*Deg)
+	s.eGyr0, s.eGyr1, s.eGyr2, s.eGyr3 = QuaternionRotate(s.E0, s.E1, s.E2, s.E3, s.b1*dt*Deg, s.b2*dt*Deg, s.b3*dt*Deg)
 
 	// Now fuse the GPS/Accelerometer and Gyro estimates, smooth the result and normalize.
-	s.eGPS0, s.eGPS1, s.eGPS2, s.eGPS3 = QuaternionSign(s.eGPS0, s.eGPS1, s.eGPS2, s.eGPS3, s.E0, s.E1, s.E2, s.E3)
+	s.eGPS0, s.eGPS1, s.eGPS2, s.eGPS3 = QuaternionSign(s.eGPS0, s.eGPS1, s.eGPS2, s.eGPS3,
+		s.eGyr0, s.eGyr1, s.eGyr2, s.eGyr3)
 	s.E0, s.E1, s.E2, s.E3 = QuaternionNormalize(
-		s.E0+uiSmoothConst*(gpsWeight*s.eGPS0+(1-gpsWeight)*s.eGyr0-s.E0),
-		s.E1+uiSmoothConst*(gpsWeight*s.eGPS1+(1-gpsWeight)*s.eGyr1-s.E1),
-		s.E2+uiSmoothConst*(gpsWeight*s.eGPS2+(1-gpsWeight)*s.eGyr2-s.E2),
-		s.E3+uiSmoothConst*(gpsWeight*s.eGPS3+(1-gpsWeight)*s.eGyr3-s.E3),
+		s.eGyr0+gpsWeight*(s.eGPS0-s.eGyr0)*(0.5+(s.eGPS0-s.eGyr0)*(s.eGPS0-s.eGyr0)),
+		s.eGyr1+gpsWeight*(s.eGPS1-s.eGyr1)*(0.5+(s.eGPS1-s.eGyr1)*(s.eGPS1-s.eGyr1)),
+		s.eGyr2+gpsWeight*(s.eGPS2-s.eGyr2)*(0.5+(s.eGPS2-s.eGyr2)*(s.eGPS2-s.eGyr2)),
+		s.eGyr3+gpsWeight*(s.eGPS3-s.eGyr3)*(0.5+(s.eGPS3-s.eGyr3)*(s.eGPS3-s.eGyr3)),
 	)
 
 	s.roll, s.pitch, s.heading = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
@@ -225,7 +232,7 @@ func (s *SimpleState) Update(m *Measurement) {
 
 	// Update Magnetic Heading
 	dhM := AngleDiff(math.Atan2(m.M1, -m.M2), s.headingMag)
-	s.headingMag += uiSmoothConst * dhM
+	s.headingMag += slowSmoothConst * dhM
 	for s.headingMag < 0 {
 		s.headingMag += 2 * Pi
 	}
@@ -234,15 +241,15 @@ func (s *SimpleState) Update(m *Measurement) {
 	}
 
 	// Update Slip/Skid
-	s.slipSkid += slipSkidSmoothConst * (math.Atan2(m.A2, -m.A3) - s.slipSkid)
+	s.slipSkid += slowSmoothConst * (math.Atan2(m.A2, -m.A3) - s.slipSkid)
 
 	// Update Rate of Turn
 	if s.gs > 0 && dtw > 0 {
-		s.turnRate += uiSmoothConst * ((m.W2*(m.W1-s.w1)-m.W1*(m.W2-s.w2))/(s.gs*s.gs)/dtw - s.turnRate)
+		s.turnRate += slowSmoothConst * ((m.W2*(m.W1-s.w1)-m.W1*(m.W2-s.w2))/(s.gs*s.gs)/dtw - s.turnRate)
 	}
 
 	// Update GLoad
-	s.gLoad += uiSmoothConst * (-m.A3 - s.gLoad)
+	s.gLoad += slowSmoothConst * (-m.A3 - s.gLoad)
 
 	updateLogMap(s, m, s.logMap)
 
@@ -309,36 +316,40 @@ func (s *SimpleState) GetLogMap() (p map[string]interface{}) {
 
 // SetConfig lets the user alter some of the configuration settings.
 func (s *SimpleState) SetConfig(configMap map[string]float64) {
-	uiSmoothConst = configMap["uiSmoothConst"]
+	fastSmoothConst = configMap["fastSmoothConst"]
+	slowSmoothConst = configMap["slowSmoothConst"]
+	verySlowSmoothConst = configMap["verySlowSmoothConst"]
 	gpsWeight = configMap["gpsWeight"]
-	if uiSmoothConst==0 {
-		// This doesn't make sense, means user hasn't set correctly
-		// Set sensible defaults
-		uiSmoothConst = uiSmoothConstDefault
+	if fastSmoothConst == 0 || slowSmoothConst == 0 || verySlowSmoothConst == 0 {
+		// This doesn't make sense, means user hasn't set correctly.
+		// Set sensible defaults.
+		fastSmoothConst = fastSmoothConstDefault
+		slowSmoothConst = slowSmoothConstDefault
+		verySlowSmoothConst = verySlowSmoothConstDefault
 		gpsWeight = gpsWeightDefault
 	}
 }
 
 func updateLogMap(s *SimpleState, m *Measurement, p map[string]interface{}) {
 	var simpleLogMap = map[string]func(s *SimpleState, m *Measurement) float64{
-		"Ta":          func(s *SimpleState, m *Measurement) float64 { return s.T },
-		"TWa":         func(s *SimpleState, m *Measurement) float64 { return s.tW },
-		"Roll":        func(s *SimpleState, m *Measurement) float64 { return s.roll / Deg },
-		"Pitch":       func(s *SimpleState, m *Measurement) float64 { return s.pitch / Deg },
-		"Heading":     func(s *SimpleState, m *Measurement) float64 { return s.heading / Deg },
-		"RollGPS":     func(s *SimpleState, m *Measurement) float64 { return s.rollGPS / Deg },
-		"PitchGPS":    func(s *SimpleState, m *Measurement) float64 { return s.pitchGPS / Deg },
-		"HeadingGPS":  func(s *SimpleState, m *Measurement) float64 { return s.headingGPS / Deg },
-		"RollGyr":     func(s *SimpleState, m *Measurement) float64 { return s.rollGyr / Deg },
-		"PitchGyr":    func(s *SimpleState, m *Measurement) float64 { return s.pitchGyr / Deg },
-		"HeadingGyr":  func(s *SimpleState, m *Measurement) float64 { return s.headingGyr / Deg },
-		"GroundSpeed": func(s *SimpleState, m *Measurement) float64 { return s.gs },
-		"SmoothW1":    func(s *SimpleState, m *Measurement) float64 { return s.smoothW1 },
-		"SmoothW2":    func(s *SimpleState, m *Measurement) float64 { return s.smoothW2 },
+		"Ta":                func(s *SimpleState, m *Measurement) float64 { return s.T },
+		"TWa":               func(s *SimpleState, m *Measurement) float64 { return s.tW },
+		"Roll":              func(s *SimpleState, m *Measurement) float64 { return s.roll / Deg },
+		"Pitch":             func(s *SimpleState, m *Measurement) float64 { return s.pitch / Deg },
+		"Heading":           func(s *SimpleState, m *Measurement) float64 { return s.heading / Deg },
+		"RollGPS":           func(s *SimpleState, m *Measurement) float64 { return s.rollGPS / Deg },
+		"PitchGPS":          func(s *SimpleState, m *Measurement) float64 { return s.pitchGPS / Deg },
+		"HeadingGPS":        func(s *SimpleState, m *Measurement) float64 { return s.headingGPS / Deg },
+		"RollGyr":           func(s *SimpleState, m *Measurement) float64 { return s.rollGyr / Deg },
+		"PitchGyr":          func(s *SimpleState, m *Measurement) float64 { return s.pitchGyr / Deg },
+		"HeadingGyr":        func(s *SimpleState, m *Measurement) float64 { return s.headingGyr / Deg },
+		"GroundSpeed":       func(s *SimpleState, m *Measurement) float64 { return s.gs },
+		"SmoothW1":          func(s *SimpleState, m *Measurement) float64 { return s.smoothW1 },
+		"SmoothW2":          func(s *SimpleState, m *Measurement) float64 { return s.smoothW2 },
 		"SmoothGroundSpeed": func(s *SimpleState, m *Measurement) float64 { return s.smoothGS },
-		"W1a":         func(s *SimpleState, m *Measurement) float64 { return s.w1 },
-		"W2a":         func(s *SimpleState, m *Measurement) float64 { return s.w2 },
-		"W3a":         func(s *SimpleState, m *Measurement) float64 { return s.w3 },
+		"W1a":               func(s *SimpleState, m *Measurement) float64 { return s.w1 },
+		"W2a":               func(s *SimpleState, m *Measurement) float64 { return s.w2 },
+		"W3a":               func(s *SimpleState, m *Measurement) float64 { return s.w3 },
 		"WValid": func(s *SimpleState, m *Measurement) float64 {
 			if m.WValid {
 				return 1
@@ -365,6 +376,9 @@ func updateLogMap(s *SimpleState, m *Measurement, p map[string]interface{}) {
 		"A1":         func(s *SimpleState, m *Measurement) float64 { return m.A1 },
 		"A2":         func(s *SimpleState, m *Measurement) float64 { return m.A2 },
 		"A3":         func(s *SimpleState, m *Measurement) float64 { return m.A3 },
+		"B1a":        func(s *SimpleState, m *Measurement) float64 { return s.b1 },
+		"B2a":        func(s *SimpleState, m *Measurement) float64 { return s.b2 },
+		"B3a":        func(s *SimpleState, m *Measurement) float64 { return s.b3 },
 		"B1":         func(s *SimpleState, m *Measurement) float64 { return m.B1 },
 		"B2":         func(s *SimpleState, m *Measurement) float64 { return m.B2 },
 		"B3":         func(s *SimpleState, m *Measurement) float64 { return m.B3 },
