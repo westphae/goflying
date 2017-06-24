@@ -115,7 +115,7 @@ func (s *SimpleState) init(m *Measurement) {
 	s.turnRate = 0
 
 	// Update GLoad
-	s.gLoad += slowSmoothConst * (-m.A3 - s.gLoad)
+	s.gLoad = -m.A3
 
 	updateLogMap(s, m, s.logMap)
 }
