@@ -269,13 +269,16 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, enableMag boo
 		}
 	}
 
-	// Usually we don't want the automatic gyro bias compensation - it pollutes the gyro in a non-inertial frame
+	// Usually we don't want the automatic gyro bias compensation - it pollutes the gyro in a non-inertial frame.
 	if err := mpu.EnableGyroBiasCal(false); err != nil {
 		return nil, err
 	}
 
 	go mpu.readSensors()
-	time.Sleep(50 * time.Millisecond) // Make sure it's ready
+
+	// Give the IMU time to fully initialize and then clear out any bad values from the averages.
+	time.Sleep(500 * time.Millisecond) // Make sure it's ready
+	<-mpu.CAvg
 
 	return mpu, nil
 }
