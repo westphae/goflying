@@ -316,10 +316,18 @@ func (s *SimpleState) GetLogMap() (p map[string]interface{}) {
 
 // SetConfig lets the user alter some of the configuration settings.
 func (s *SimpleState) SetConfig(configMap map[string]float64) {
-	fastSmoothConst = configMap["fastSmoothConst"]
-	slowSmoothConst = configMap["slowSmoothConst"]
-	verySlowSmoothConst = configMap["verySlowSmoothConst"]
-	gpsWeight = configMap["gpsWeight"]
+	if v, ok := configMap["fastSmoothConst"]; ok {
+		fastSmoothConst = v
+	}
+	if v, ok := configMap["slowSmoothConst"]; ok {
+		slowSmoothConst = v
+	}
+	if v, ok := configMap["verySlowSmoothConst"]; ok {
+		verySlowSmoothConst = v
+	}
+	if v, ok := configMap["gpsWeight"]; ok {
+		gpsWeight = v
+	}
 	if fastSmoothConst == 0 || slowSmoothConst == 0 || verySlowSmoothConst == 0 {
 		// This doesn't make sense, means user hasn't set correctly.
 		// Set sensible defaults.
