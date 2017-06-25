@@ -60,14 +60,25 @@
             pointer-events: all;
         }
 
+        div.tooltip {
+            position: absolute;
+            text-align: center;
+            width: 60px;
+            height: 28px;
+            padding: 2px;
+            font: 12px sans-serif;
+            background: lightsteelblue;
+            border: 0px;
+            border-radius: 8px;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
 <script src="http://d3js.org/d3.v3.min.js"></script>
 <script>
-    var actual, ahrs, config,
-        remaining = 3,
-        plotActual,
+    var ahrs, config,
+        remaining = 2,
         charts = [];
 
     d3.json("config.json", function (error, data) {
@@ -77,22 +88,16 @@
         if (!--remaining) makeAll();
     });
 
-    d3.csv("actual.csv", function (error, data) {
-        if (error) {
-            plotActual = false;
-        } else {
-            plotActual = true;
-            actual = data;
-        }
-        if (!--remaining) makeAll();
-    });
-
     d3.csv("ahrs.csv", function (error, data) {
         if (error) throw error;
 
         ahrs = data;
         if (!--remaining) makeAll();
     });
+
+    var tt = d3.select("body").append("div")
+        .attr("class", "tooltip")
+        .style("opacity", 0);
 
     function makeAll() {
         var margin = {top: 5, right: 35, bottom: 20, left: 40},
@@ -136,37 +141,28 @@
                         y1 = c.y1;
                     } else {
                         y0 = d3.min(c.data, function (v) {
-                            if (+v.T >= xs[0] & +v.T <= xs[1]) {
-                                if (c.type == 'state') {
-                                    return d3.min([+v.lower, +v.pred]);
-                                } else {
-                                    return d3.min([+v.y, +v.py]);
-                                }
+                            if (+v[0] >= xs[0] & +v[0] <= xs[1]) {
+                                return d3.min(v.slice(1));
                             }
                         });
                         y1 = d3.max(c.data, function (v) {
-                            if (+v.T > xs[0] & +v.T < xs[1]) {
-                                if (c.type == 'state') {
-                                    return d3.max([+v.upper, +v.pred]);
-                                } else {
-                                    return d3.max([+v.y, +v.py]);
-                                }
+                            if (+v[0] > xs[0] & +v[0] < xs[1]) {
+                                return d3.max(v.slice(1));
                             }
                         });
                     }
 
                     c.set_y_domain(y0, y1);
                     c.svg.select(".y.axis").call(c.yAxis);
-                    if (c.type == 'state') {
-                        c.svg.select(".line.actual").attr("d", c.line("actual"));
-                        c.svg.select(".line.pred").attr("d", c.line("pred"));
-                        c.svg.select(".line.updt").attr("d", c.line("updt"));
-                        c.svg.select(".area").attr("d", c.area);
+                    if (c.type === 'state') {
+                        for (var i=1; i<=c.config.length; i++) {
+                            c.svg.select(".line.c"+i).attr("d", c.line(i));
+                        }
+//                        c.svg.select(".line.updt").attr("d", c.line("updt"));
                     } else {
                         c.svg.select(".line").attr("d", c.line);
                         c.svg.select(".pline").attr("d", c.pline);
                     }
-                    c.svg.select(".line.baseline").attr({x1: 0, x2: width, y1: c.y(c.config.baseline), y2: c.y(c.config.baseline)})
                     c.svg.select(".brush").call(brush);
                 });
         }
@@ -190,58 +186,53 @@
             });
         }
 
+        var color = d3.scale.category10();
+
         function MakeStateChart(v) {
 
             var chart = {
-                    'var': v.updt,
+                    'var': v[0],
                     'type': 'state',
                     'config': v
-                },
-                plotPred = false, plotBand = false;
+                };
 
-            if ('pred' in v) {
-                plotPred = true;
-            }
+//                plotBand = false;
+//            if ('std' in v) {
+//                plotBand = true;
+//            }
 
-            if ('std' in v) {
-                plotBand = true;
-            }
-
-            chart.color = d3.scale.category20()
-                    .domain(d3.keys(ahrs[0]));
+//            chart.color = d3.scale.category20()
+//                    .domain(d3.keys(ahrs[0]));
 
             chart.data = ahrs.map(function(d, i) {
-                var r = {T: parseFloat(d.T),
-                    updt: parseFloat(d[v.updt])
-                };
-                if (plotActual) {
-                    r.actual = parseFloat(actual[i][v.actual]);
-                } else {
-                    r.actual = parseFloat(d[v.updt]);
+                var r = [parseFloat(d.T)],
+                    vv;
+                for (var j=0; j<v.length; j++) {
+                    vv = parseFloat(v[j]);
+                    if (isNaN(vv)) {
+                        r.push(parseFloat(d[v[j]]));
+                    } else {
+                        r.push(vv);
+                    }
                 }
-                if (plotPred) {
-                    r.pred = parseFloat(d[v.pred]);
-                } else {
-                    r.pred = r.updt;
-                }
-                if (plotBand) {
-                    r.lower = parseFloat(d[v.updt])-parseFloat(d[v.std]);
-                    r.upper = parseFloat(d[v.updt])+parseFloat(d[v.std]);
-                } else {
-                    r.lower = r.updt;
-                    r.upper = r.updt;
-                }
+//                if (plotBand) {
+//                    r.lower = parseFloat(d[v.updt])-parseFloat(d[v.std]);
+//                    r.upper = parseFloat(d[v.updt])+parseFloat(d[v.std]);
+//                } else {
+//                    r.lower = r.updt;
+//                    r.upper = r.updt;
+//                }
                 return r
             });
 
             chart.y0 = d3.min(chart.data, function(v) {
-                if (x(+v.T)>0 & x(+v.T)<width) {
-                    return d3.min([v.lower, v.actual, v.pred]);
+                if (x(v[0])>0 & x(v[0])<width) {
+                    return d3.min(v.slice(1));
                 }
             });
             chart.y1 = d3.max(chart.data, function (v) {
-                if (x(+v.T)>0 & x(+v.T)<width) {
-                    return d3.max([+v.upper, +v.actual, v.pred]);
+                if (x(+v[0])>0 & x(v[0])<width) {
+                    return d3.max(v.slice(1));
                 }
             });
 
@@ -250,7 +241,6 @@
 
             chart.set_y_domain = function(y0, y1) {
                 chart.y.domain([y0, y1]);
-
             };
 
             chart.set_y_domain(chart.y0, chart.y1);
@@ -259,18 +249,18 @@
                     .scale(chart.y)
                     .orient("left");
 
-            chart.line = function(z) {
+            chart.line = function(i) {
                 return d3.svg.line()
                         .interpolate("basis")
-                        .x(function (d) { return x(d.T); })
-                        .y(function (d) { return chart.y(d[z]); });
+                        .x(function (d) { return x(d[0]); })
+                        .y(function (d) { return chart.y(d[i]); });
             };
 
-            chart.area = d3.svg.area()
-                .interpolate("basis")
-                .x(function (d) { return x(d.T); })
-                .y0(function (d) { return chart.y(d.lower); })
-                .y1(function (d) { return chart.y(d.upper); });
+//            chart.area = d3.svg.area()
+//                .interpolate("basis")
+//                .x(function (d) { return x(d[0]); })
+//                .y0(function (d) { return chart.y(d.lower); })
+//                .y1(function (d) { return chart.y(d.upper); });
 
             chart.svg = d3.select("body").append("svg")
                 .attr("width", width + margin.left + margin.right)
@@ -279,7 +269,7 @@
                 .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
 
             chart.svg.append("clipPath")
-                    .attr("id", "clip-path-state-" + v.updt)
+                    .attr("id", "clip-path-state-" + chart.var)
                     .append("rect")
                     .attr("x", -1)
                     .attr("y", -1)
@@ -294,43 +284,48 @@
                     .attr("y2", height);
 
             chart.lines = chart.svg.append("g")
-                    .attr("clip-path", "url(#clip-path-state-" + v.updt + ")")
+                    .attr("clip-path", "url(#clip-path-state-" + chart.var + ")")
                     .selectAll(".lines")
                     .data([chart.data])
                     .enter().append("g")
                     .attr("class", "lines");
 
-            if (plotBand) {
+//            if (plotBand) {
+//                chart.lines.append("path")
+//                    .attr("class", "area")
+//                    .attr("d", chart.area)
+//                    .style("fill", chart.color(v.updt));
+//            }
+
+            for (var i=1; i<=chart.config.length; i++) {
                 chart.lines.append("path")
-                    .attr("class", "area")
-                    .attr("d", chart.area)
-                    .style("fill", chart.color(v.updt));
+                    .attr("class", "line c" + i)
+                    .attr("d", chart.line(i))
+                    .style("stroke", color(i-1))
+                    .on("mouseover", function() {
+                        console.log("over "+i);
+                        tt.transition()
+                            .duration(200)
+                            .style("opacity", .9)
+                            .style("stroke", color(i-1));
+                        tt.html(v[i-1])
+                            .style("left", (d3.event.pageX) + "px")
+                            .style("top", (d3.event.pageY - 28) + "px");
+                    })
+                    .on("mouseout", function() {
+                        console.log("out "+i);
+                        tt.transition()
+                            .duration(500)
+                            .style("opacity", 0);
+                    });
             }
 
-            if (plotActual) {
-                chart.lines.append("path")
-                    .attr("class", "line actual")
-                    .attr("d", chart.line("actual"));
-            }
-
-            if (plotPred) {
-                chart.lines.append("path")
-                    .attr("class", "line pred")
-                    .attr("d", chart.line("pred"))
-                    .style("stroke", chart.color(v.updt));
-            }
-
-            chart.lines.append("path")
-                    .attr("class", "line updt")
-                    .attr("d", chart.line("updt"))
-                    .style("stroke", chart.color(v.updt));
-
-            if ("baseline" in v) {
-                chart.lines.append("line")
-                    .attr("class", "line baseline")
-                    .attr({x1: 0, x2: width, y1: chart.y(v.baseline), y2: chart.y(v.baseline)})
-                    .style("stroke", "black");
-            }
+//            if ("baseline" in v) {
+//                chart.lines.append("line")
+//                    .attr("class", "line baseline")
+//                    .attr({x1: 0, x2: width, y1: chart.y(v.baseline), y2: chart.y(v.baseline)})
+//                    .style("stroke", "black");
+//            }
 
             chart.brush = chart.svg.append("g")
                     .attr("class", "brush")
@@ -362,7 +357,7 @@
                     .attr("text-anchor", "middle")
                     .attr("alignment-baseline", "hanging")
                     .style("font-size", "12px")
-                    .text(v.updt);
+                    .text(v[0]);
 
             return chart
         }
@@ -519,9 +514,9 @@
             charts.push(MakeStateChart(config.State[i]));
         }
 
-        for (i=0; i<config.Measurement.length; i++) {
-            charts.push(MakeMeasurementChart(config.Measurement[i]));
-        }
+//        for (i=0; i<config.Measurement.length; i++) {
+//            charts.push(MakeMeasurementChart(config.Measurement[i]));
+//        }
     }
 
 </script>

@@ -425,35 +425,33 @@ func updateLogMap(s *SimpleState, m *Measurement, p map[string]interface{}) {
 	}
 }
 
-var SimpleJSONConfig = `
-{
+var SimpleJSONConfig = `{
   "State": [
-    {"pred": "RollGPS", "updt": "Roll", "actual": "Roll", "baseline": 0},
-    {"pred": "PitchGPS", "updt": "Pitch", "actual": "Pitch", "baseline": 0},
-    {"pred": "HeadingGPS", "updt": "Heading", "actual": "Heading"},
-    {"updt": "turnRate", "actual": "turnRate", "baseline": 0},
-    {"updt": "gLoad", "actual": "gLoad", "baseline": 1},
-    {"updt": "slipSkid", "actual": "slipSkid", "baseline": 0},
-    {"updt": "GroundSpeed", "baseline": 0},
-    {"updt": "T"},
-    {"pred": "EGPS0", "updt": "E0"},
-    {"pred": "EGPS1", "updt": "E1"},
-    {"pred": "EGPS2", "updt": "E2"},
-    {"pred": "EGPS3", "updt": "E3"},
-    {"updt": "D1", "baseline": 0},
-    {"updt": "D2", "baseline": 0},
-    {"updt": "D3", "baseline": 0}
+    ["Roll", "RollGPS", "RollGyr", "RollActual", 0],
+    ["Pitch", "PitchGPS", "PitchGyr", "PitchActual", 0],
+    ["Heading", "HeadingGPS", "HeadingGyr", "HeadingActual", null],
+    ["turnRate", null, null, "turnRateActual", 0],
+    ["gLoad", null, null, "gLoadActual", 1],
+    ["slipSkid", null, null, "slipSkidActual", 0],
+    ["GroundSpeed", null, null, null, 0],
+    ["T", null, null, null, null],
+    ["E0", "EGPS0", "EGyr0", "E0Actual", null],
+    ["E1", "EGPS1", "EGyr1", "E1Actual", null],
+    ["E2", "EGPS2", "EGyr2", "E2Actual", null],
+    ["E3", "EGPS3", "EGyr3", "E3Actual", null],
+    ["D1", null, null, "D1Actual", 0],
+    ["D2", null, null, "D2Actual", 0],
+    ["D3", null, null, "D3Actual", 0]
   ],
   "Measurement": [
-    {"meas": "W1", "pred": "W1a", "baseline": 0},
-    {"meas": "W2", "pred": "W2a", "baseline": 0},
-    {"meas": "W3", "pred": "W3a", "baseline": 0},
-    {"meas": "A1", "baseline": 0},
-    {"meas": "A2", "baseline": 0},
-    {"meas": "A3", "baseline": 1},
-    {"meas": "B1", "baseline": 0},
-    {"meas": "B2", "baseline": 0},
-    {"meas": "B3", "baseline": 0}
+    ["W1", "W1a", 0],
+    ["W2", "W2a", 0],
+    ["W3", "W3a", 0],
+    ["A1", null, 0],
+    ["A2", null, 0],
+    ["A3", null, 1],
+    ["B1", null, 0],
+    ["B2", null, 0],
+    ["B3", null, 0]
   ]
-}
-`
+}`

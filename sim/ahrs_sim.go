@@ -46,9 +46,8 @@ func main() {
 		scenario                                            string
 		sit                                                 Situation
 		err                                                 error
-		ahrsLogger                                          *ahrs.AHRSLogger
-		actualLogger                                        *ahrs.AHRSLogger
 	)
+
 	gyroBias = make([]float64, 3)
 	accelBias = make([]float64, 3)
 	magBias = make([]float64, 3)
@@ -196,8 +195,15 @@ func main() {
 	s.SetConfig(ahrsConfig)
 
 	// Set up logging
-	ahrsLogger = ahrs.NewAHRSLogger("ahrs.csv", s.GetLogMap())
-	actualLogger = ahrs.NewAHRSLogger("actual.csv", sit.GetLogMap())
+	logMap := s.GetLogMap()
+	logMapActual := sit.GetLogMap()
+	var transferLogMap = func() {
+		for k, v := range logMapActual {
+			logMap[k + "Actual"] = v
+		}
+	}
+	transferLogMap()
+	ahrsLogger := ahrs.NewAHRSLogger("ahrs.csv", logMap)
 
 	// This is where it all happens
 	fmt.Println("Running Simulation")
@@ -225,8 +231,8 @@ func main() {
 		s.Compute(m)
 
 		// Log to csv for serving
+		transferLogMap()
 		ahrsLogger.Log()
-		actualLogger.Log()
 
 		err = sit.NextTime()
 		if err != nil {
