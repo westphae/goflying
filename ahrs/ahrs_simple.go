@@ -45,7 +45,9 @@ type SimpleState struct {
 	logMap                        map[string]interface{} // Map only for analysis/debugging
 }
 
-func InitializeSimple() (s *SimpleState) {
+//NewSimpleAHRS returns a new Simple AHRS object.
+// It is initialized with a beginning sensor orientation quaternion f0.
+func NewSimpleAHRS(f0 [4]float64) (s *SimpleState) {
 	s = new(SimpleState)
 	s.logMap = make(map[string]interface{})
 	updateLogMap(s, NewMeasurement(), s.logMap)
@@ -295,6 +297,7 @@ func (s *SimpleState) GLoad() (gLoad float64) {
 	return s.gLoad
 }
 
+// Reset restarts the algorithm from scratch.
 func (s *SimpleState) Reset() {
 	s.needsInitialization = true
 }

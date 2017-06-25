@@ -150,7 +150,7 @@ func main() {
 	default:
 		fmt.Println("Running simple AHRS")
 		ioutil.WriteFile("config.json", []byte(ahrs.SimpleJSONConfig), 0644)
-		s = ahrs.InitializeSimple()
+		s = ahrs.NewSimpleAHRS()
 	}
 
 	if err := parseFloatArrayString(gyroBiasStr, &gyroBias); err != nil {
