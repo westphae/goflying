@@ -28,6 +28,7 @@ type SimpleState struct {
 	State
 	tW                            float64                // Time of last GPS reading
 	b1, b2, b3                    float64                // Smoothed gyro rates
+	aNorm                         float64                // Normalization constant by which to scale measured accelerations
 	eGPS0, eGPS1, eGPS2, eGPS3    float64                // GPS-derived orientation quaternion
 	eGyr0, eGyr1, eGyr2, eGyr3    float64                // GPS-derived orientation quaternion
 	roll, pitch, heading          float64                // Fused attitude, Rad
@@ -47,7 +48,7 @@ type SimpleState struct {
 
 //NewSimpleAHRS returns a new Simple AHRS object.
 // It is initialized with a beginning sensor orientation quaternion f0.
-func NewSimpleAHRS(f0 [4]float64) (s *SimpleState) {
+func NewSimpleAHRS() (s *SimpleState) {
 	s = new(SimpleState)
 	s.logMap = make(map[string]interface{})
 	updateLogMap(s, NewMeasurement(), s.logMap)
@@ -148,6 +149,17 @@ func (s *SimpleState) Update(m *Measurement) {
 	dt := m.T - s.T
 	dtw := m.TW - s.tW
 
+	// Rotate measurements from sensor frame to aircraft frame
+	a1 := -(s.f11*m.A1 + s.f12*m.A2 + s.f13*m.A3) / s.aNorm
+	a2 := -(s.f21*m.A1 + s.f22*m.A2 + s.f23*m.A3) / s.aNorm
+	a3 := -(s.f31*m.A1 + s.f32*m.A2 + s.f33*m.A3) / s.aNorm
+	b1 := s.f11*(m.B1 - s.D1) + s.f12*(m.B2 - s.D2) + s.f13*(m.B3 - s.D3)
+	b2 := s.f21*(m.B1 - s.D1) + s.f22*(m.B2 - s.D2) + s.f23*(m.B3 - s.D3)
+	b3 := s.f31*(m.B1 - s.D1) + s.f32*(m.B2 - s.D2) + s.f33*(m.B3 - s.D3)
+	m1 := s.f11*m.M1 + s.f12*m.M1 + s.f13*m.M1
+	m2 := s.f21*m.M1 + s.f22*m.M1 + s.f23*m.M1
+	m3 := s.f31*m.M1 + s.f32*m.M1 + s.f33*m.M1
+
 	if dt > maxDT || dtw > maxDT {
 		log.Printf("AHRS Info: Reinitializing at %f\n", m.T)
 		s.init(m)
@@ -181,7 +193,7 @@ func (s *SimpleState) Update(m *Measurement) {
 		ae[2] -= (m.W3 - s.w3) / dtw / G
 	}
 
-	ha, err := MakeUnitVector([3]float64{m.A1, m.A2, m.A3})
+	ha, err := MakeUnitVector([3]float64{a1, a2, a3})
 	if err != nil {
 		log.Println("AHRS Error: IMU-measured acceleration was zero")
 		return
@@ -210,9 +222,9 @@ func (s *SimpleState) Update(m *Measurement) {
 	)
 
 	// Update estimates of current gyro rate
-	s.b1 += fastSmoothConst * (m.B1 - s.D1 - s.b1)
-	s.b2 += fastSmoothConst * (m.B2 - s.D1 - s.b2)
-	s.b3 += fastSmoothConst * (m.B3 - s.D1 - s.b3)
+	s.b1 += fastSmoothConst * (b1 - s.b1)
+	s.b2 += fastSmoothConst * (b2 - s.b2)
+	s.b3 += fastSmoothConst * (b3 - s.b3)
 
 	// By rotating the orientation quaternion at the last time step, s.E, by the measured gyro rates,
 	// we get another estimate of the current orientation quaternion using the gyro.
@@ -233,7 +245,7 @@ func (s *SimpleState) Update(m *Measurement) {
 	s.rollGyr, s.pitchGyr, s.headingGyr = FromQuaternion(s.eGyr0, s.eGyr1, s.eGyr2, s.eGyr3)
 
 	// Update Magnetic Heading
-	dhM := AngleDiff(math.Atan2(m.M1, -m.M2), s.headingMag)
+	dhM := AngleDiff(math.Atan2(m1, -m2), s.headingMag) + 0*m3
 	s.headingMag += slowSmoothConst * dhM
 	for s.headingMag < 0 {
 		s.headingMag += 2 * Pi
@@ -243,7 +255,7 @@ func (s *SimpleState) Update(m *Measurement) {
 	}
 
 	// Update Slip/Skid
-	s.slipSkid += slowSmoothConst * (math.Atan2(m.A2, -m.A3) - s.slipSkid)
+	s.slipSkid += slowSmoothConst * (math.Atan2(a2, -a3) - s.slipSkid)
 
 	// Update Rate of Turn
 	if s.gs > 0 && dtw > 0 {
@@ -251,7 +263,7 @@ func (s *SimpleState) Update(m *Measurement) {
 	}
 
 	// Update GLoad
-	s.gLoad += slowSmoothConst * (-m.A3 - s.gLoad)
+	s.gLoad += slowSmoothConst * (-a3 - s.gLoad)
 
 	updateLogMap(s, m, s.logMap)
 
@@ -304,12 +316,32 @@ func (s *SimpleState) Reset() {
 	s.needsInitialization = true
 }
 
-// PredictMeasurement doesn't do anything for the Simple method
-func (s *SimpleState) PredictMeasurement() *Measurement {
-	return NewMeasurement()
+// SetSensorQuaternion changes the AHRS algorithm's sensor quaternion F.
+func (s *SimpleState) SetSensorQuaternion(f *[4]float64) {
+	s.F0 = f[0]
+	s.F1 = f[1]
+	s.F2 = f[2]
+	s.F3 = f[3]
+	s.calcRotationMatrices()
 }
 
-// GetState returns the Kalman state of the system
+// GetSensorQuaternion returns the AHRS algorithm's sensor quaternion F.
+func (s *SimpleState) GetSensorQuaternion() (*[4]float64) {
+	return &[4]float64{s.F0, s.F1, s.F2, s.F3}
+}
+
+// SetCalibrations sets the AHRS accelerometer calibrations to c and gyro calibrations to d.
+func (s *SimpleState) SetCalibrations(c, d *[3]float64) {
+	s.C1 = c[0]
+	s.C2 = c[1]
+	s.C3 = c[2]
+	s.D1 = d[0]
+	s.D2 = d[1]
+	s.D3 = d[2]
+	s.aNorm = math.Sqrt(c[0]*c[0] + c[1]*c[1] + c[2]*c[2])
+}
+
+// GetState returns the state of the system
 func (s *SimpleState) GetState() *State {
 	return &s.State
 }
