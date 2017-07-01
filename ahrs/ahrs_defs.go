@@ -13,7 +13,7 @@ const (
 	Small   = 1e-9
 	Big     = 1e9
 	Deg     = Pi / 180
-	MMDecay = (1 - 1.0/50) // Exponential decay constant for measurement variances
+	MMDecay = 1 - 1.0/50 // Exponential decay constant for measurement variances
 	Invalid float64  = 3276.7 // 2**15-1
 )
 
@@ -119,15 +119,15 @@ func (s *State) normalize() {
 func (s *State) calcRotationMatrices() {
 	// eij rotates from earth frame j component to aircraft frame i component
 	// X_e = E*X_a*conj(E)
-	s.e11 = (+s.E0*s.E0 + s.E1*s.E1 - s.E2*s.E2 - s.E3*s.E3)
+	s.e11 = +s.E0*s.E0 + s.E1*s.E1 - s.E2*s.E2 - s.E3*s.E3
 	s.e12 = 2 * (-s.E0*s.E3 + s.E1*s.E2)
 	s.e13 = 2 * (+s.E0*s.E2 + s.E1*s.E3)
 	s.e21 = 2 * (+s.E0*s.E3 + s.E2*s.E1)
-	s.e22 = (+s.E0*s.E0 - s.E1*s.E1 + s.E2*s.E2 - s.E3*s.E3)
+	s.e22 = +s.E0*s.E0 - s.E1*s.E1 + s.E2*s.E2 - s.E3*s.E3
 	s.e23 = 2 * (-s.E0*s.E1 + s.E2*s.E3)
 	s.e31 = 2 * (-s.E0*s.E2 + s.E3*s.E1)
 	s.e32 = 2 * (+s.E0*s.E1 + s.E3*s.E2)
-	s.e33 = (+s.E0*s.E0 - s.E1*s.E1 - s.E2*s.E2 + s.E3*s.E3)
+	s.e33 = +s.E0*s.E0 - s.E1*s.E1 - s.E2*s.E2 + s.E3*s.E3
 
 	// fij rotates sensor frame j component into aircraft frame i component
 	// X_s = F*X_a*conj(F)

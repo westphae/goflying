@@ -27,7 +27,7 @@ var (
 type SimpleState struct {
 	State
 	tW                            float64                // Time of last GPS reading
-	b1, b2, b3                    float64                // Smoothed gyro rates TODO westphae: change to H1,H2,H3
+	b1, b2, b3                    float64                // Smoothed gyro rates
 	eGPS0, eGPS1, eGPS2, eGPS3    float64                // GPS-derived orientation quaternion
 	eGyr0, eGyr1, eGyr2, eGyr3    float64                // GPS-derived orientation quaternion
 	roll, pitch, heading          float64                // Fused attitude, Rad
@@ -174,7 +174,7 @@ func (s *SimpleState) Update(m *Measurement) {
 			log.Printf("No GPS update at %f\n", m.T)
 			return
 		}
-		ve = [3]float64{m.W1, m.W2, m.W3} // Instantaneous roundspeed in earth frame
+		ve = [3]float64{m.W1, m.W2, m.W3} // Instantaneous groundspeed in earth frame
 		// Instantaneous acceleration in earth frame based on change in GPS groundspeed
 		ae[0] -= (m.W1 - s.w1) / dtw / G
 		ae[1] -= (m.W2 - s.w2) / dtw / G
@@ -262,10 +262,12 @@ func (s *SimpleState) Update(m *Measurement) {
 	s.w3 = m.W3
 }
 
+// Valid returns whether the current state is a valid estimate or if something went wrong in the calculation.
 func (s *SimpleState) Valid() (ok bool) {
 	return true
 }
 
+// RollPitchHeading returns the current attitude values as estimated by the Kalman algorithm.
 func (s *SimpleState) RollPitchHeading() (roll float64, pitch float64, heading float64) {
 	roll, pitch, heading = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
 	if s.staticMode {
