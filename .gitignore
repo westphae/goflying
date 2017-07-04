@@ -40,3 +40,4 @@ mpu9250/motion_driver_6_1/
 sim/ahrs_sim
 public
 ahrsweb_server
+AHRS_Math.pdf
