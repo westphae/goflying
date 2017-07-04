@@ -233,11 +233,15 @@ func (s *SimpleState) Update(m *Measurement) {
 	// Now fuse the GPS/Accelerometer and Gyro estimates, smooth the result and normalize.
 	s.eGPS0, s.eGPS1, s.eGPS2, s.eGPS3 = QuaternionSign(s.eGPS0, s.eGPS1, s.eGPS2, s.eGPS3,
 		s.eGyr0, s.eGyr1, s.eGyr2, s.eGyr3)
+	de0 := s.eGPS0 - s.eGyr0
+	de1 := s.eGPS1 - s.eGyr1
+	de2 := s.eGPS2 - s.eGyr2
+	de3 := s.eGPS3 - s.eGyr3
 	s.E0, s.E1, s.E2, s.E3 = QuaternionNormalize(
-		s.eGyr0+gpsWeight*(s.eGPS0-s.eGyr0)*(0.5+(s.eGPS0-s.eGyr0)*(s.eGPS0-s.eGyr0)),
-		s.eGyr1+gpsWeight*(s.eGPS1-s.eGyr1)*(0.5+(s.eGPS1-s.eGyr1)*(s.eGPS1-s.eGyr1)),
-		s.eGyr2+gpsWeight*(s.eGPS2-s.eGyr2)*(0.5+(s.eGPS2-s.eGyr2)*(s.eGPS2-s.eGyr2)),
-		s.eGyr3+gpsWeight*(s.eGPS3-s.eGyr3)*(0.5+(s.eGPS3-s.eGyr3)*(s.eGPS3-s.eGyr3)),
+		s.eGyr0+gpsWeight*de0*(0.5+de0*de0),
+		s.eGyr1+gpsWeight*de1*(0.5+de1*de1),
+		s.eGyr2+gpsWeight*de2*(0.5+de2*de2),
+		s.eGyr3+gpsWeight*de3*(0.5+de3*de3),
 	)
 
 	s.roll, s.pitch, s.heading = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
