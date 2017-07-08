@@ -27,7 +27,6 @@ var (
 type SimpleState struct {
 	State
 	tW                            float64                // Time of last GPS reading
-	b1, b2, b3                    float64                // Smoothed gyro rates
 	aNorm                         float64                // Normalization constant by which to scale measured accelerations
 	eGPS0, eGPS1, eGPS2, eGPS3    float64                // GPS-derived orientation quaternion
 	eGyr0, eGyr1, eGyr2, eGyr3    float64                // GPS-derived orientation quaternion
@@ -100,8 +99,6 @@ func (s *SimpleState) init(m *Measurement) {
 
 	s.E0, s.E1, s.E2, s.E3 = s.eGPS0, s.eGPS1, s.eGPS2, s.eGPS3
 
-	s.D1, s.D2, s.D3 = 0, 0, 0
-
 	// Update Magnetic Heading
 	s.headingMag = math.Atan2(m.M1, -m.M2)
 	for s.headingMag < 0 {
@@ -149,6 +146,12 @@ func (s *SimpleState) Update(m *Measurement) {
 	dt := m.T - s.T
 	dtw := m.TW - s.tW
 
+	if dt > maxDT || dtw > maxDT {
+		log.Printf("AHRS Info: Reinitializing at %f\n", m.T)
+		s.init(m)
+		return
+	}
+
 	// Rotate measurements from sensor frame to aircraft frame
 	a1 := -(s.f11*m.A1 + s.f12*m.A2 + s.f13*m.A3) / s.aNorm
 	a2 := -(s.f21*m.A1 + s.f22*m.A2 + s.f23*m.A3) / s.aNorm
@@ -160,11 +163,13 @@ func (s *SimpleState) Update(m *Measurement) {
 	m2 := s.f21*m.M1 + s.f22*m.M1 + s.f23*m.M1
 	m3 := s.f31*m.M1 + s.f32*m.M1 + s.f33*m.M1
 
-	if dt > maxDT || dtw > maxDT {
-		log.Printf("AHRS Info: Reinitializing at %f\n", m.T)
-		s.init(m)
-		return
-	}
+	// Update estimates of current gyro  and accel rates
+	s.Z1 += fastSmoothConst * (a1 - s.Z1)
+	s.Z2 += fastSmoothConst * (a2 - s.Z2)
+	s.Z3 += fastSmoothConst * (a3 - s.Z3)
+	s.H1 += fastSmoothConst * (b1 - s.H1)
+	s.H2 += fastSmoothConst * (b2 - s.H2)
+	s.H3 += fastSmoothConst * (b3 - s.H3)
 
 	if m.WValid && dtw > minDT {
 		s.gs = math.Hypot(m.W1, m.W2)
@@ -193,7 +198,7 @@ func (s *SimpleState) Update(m *Measurement) {
 		ae[2] -= (m.W3 - s.w3) / dtw / G
 	}
 
-	ha, err := MakeUnitVector([3]float64{a1, a2, a3})
+	ha, err := MakeUnitVector([3]float64{s.Z1, s.Z2, s.Z3})
 	if err != nil {
 		log.Println("AHRS Error: IMU-measured acceleration was zero")
 		return
@@ -221,14 +226,9 @@ func (s *SimpleState) Update(m *Measurement) {
 		s.eGPS3+fastSmoothConst*(e3-s.eGPS3),
 	)
 
-	// Update estimates of current gyro rate
-	s.b1 += fastSmoothConst * (b1 - s.b1)
-	s.b2 += fastSmoothConst * (b2 - s.b2)
-	s.b3 += fastSmoothConst * (b3 - s.b3)
-
 	// By rotating the orientation quaternion at the last time step, s.E, by the measured gyro rates,
 	// we get another estimate of the current orientation quaternion using the gyro.
-	s.eGyr0, s.eGyr1, s.eGyr2, s.eGyr3 = QuaternionRotate(s.E0, s.E1, s.E2, s.E3, s.b1*dt*Deg, s.b2*dt*Deg, s.b3*dt*Deg)
+	s.eGyr0, s.eGyr1, s.eGyr2, s.eGyr3 = QuaternionRotate(s.E0, s.E1, s.E2, s.E3, s.H1*dt*Deg, s.H2*dt*Deg, s.H3*dt*Deg)
 
 	// Now fuse the GPS/Accelerometer and Gyro estimates, smooth the result and normalize.
 	s.eGPS0, s.eGPS1, s.eGPS2, s.eGPS3 = QuaternionSign(s.eGPS0, s.eGPS1, s.eGPS2, s.eGPS3,
@@ -422,21 +422,27 @@ func updateLogMap(s *SimpleState, m *Measurement, p map[string]interface{}) {
 		"EGyr1":      func(s *SimpleState, m *Measurement) float64 { return s.eGyr1 },
 		"EGyr2":      func(s *SimpleState, m *Measurement) float64 { return s.eGyr2 },
 		"EGyr3":      func(s *SimpleState, m *Measurement) float64 { return s.eGyr3 },
+		"Z1":        func(s *SimpleState, m *Measurement) float64 { return s.Z1 },
+		"Z2":        func(s *SimpleState, m *Measurement) float64 { return s.Z2 },
+		"Z3":        func(s *SimpleState, m *Measurement) float64 { return s.Z3 },
+		"C1":        func(s *SimpleState, m *Measurement) float64 { return s.C1 },
+		"C2":        func(s *SimpleState, m *Measurement) float64 { return s.C2 },
+		"C3":        func(s *SimpleState, m *Measurement) float64 { return s.C3 },
 		"A1":         func(s *SimpleState, m *Measurement) float64 { return m.A1 },
 		"A2":         func(s *SimpleState, m *Measurement) float64 { return m.A2 },
 		"A3":         func(s *SimpleState, m *Measurement) float64 { return m.A3 },
-		"B1a":        func(s *SimpleState, m *Measurement) float64 { return s.b1 },
-		"B2a":        func(s *SimpleState, m *Measurement) float64 { return s.b2 },
-		"B3a":        func(s *SimpleState, m *Measurement) float64 { return s.b3 },
+		"H1":        func(s *SimpleState, m *Measurement) float64 { return s.H1 },
+		"H2":        func(s *SimpleState, m *Measurement) float64 { return s.H2 },
+		"H3":        func(s *SimpleState, m *Measurement) float64 { return s.H3 },
+		"D1":         func(s *SimpleState, m *Measurement) float64 { return s.D1 },
+		"D2":         func(s *SimpleState, m *Measurement) float64 { return s.D2 },
+		"D3":         func(s *SimpleState, m *Measurement) float64 { return s.D3 },
 		"B1":         func(s *SimpleState, m *Measurement) float64 { return m.B1 },
 		"B2":         func(s *SimpleState, m *Measurement) float64 { return m.B2 },
 		"B3":         func(s *SimpleState, m *Measurement) float64 { return m.B3 },
 		"M1":         func(s *SimpleState, m *Measurement) float64 { return m.M1 },
 		"M2":         func(s *SimpleState, m *Measurement) float64 { return m.M2 },
 		"M3":         func(s *SimpleState, m *Measurement) float64 { return m.M3 },
-		"D1":         func(s *SimpleState, m *Measurement) float64 { return s.D1 },
-		"D2":         func(s *SimpleState, m *Measurement) float64 { return s.D2 },
-		"D3":         func(s *SimpleState, m *Measurement) float64 { return s.D3 },
 		"headingMag": func(s *SimpleState, m *Measurement) float64 { return s.headingMag },
 		"slipSkid":   func(s *SimpleState, m *Measurement) float64 { return s.slipSkid },
 		"gLoad":      func(s *SimpleState, m *Measurement) float64 { return s.gLoad },
@@ -480,6 +486,15 @@ var SimpleJSONConfig = `{
     ["E1", "EGPS1", "EGyr1", "E1Actual", null],
     ["E2", "EGPS2", "EGyr2", "E2Actual", null],
     ["E3", "EGPS3", "EGyr3", "E3Actual", null],
+    ["Z1", null, null, "Z1Actual", 0],
+    ["Z2", null, null, "Z2Actual", 0],
+    ["Z3", null, null, "Z3Actual", -1]
+    ["C1", null, null, "C1Actual", 0],
+    ["C2", null, null, "C2Actual", 0],
+    ["C3", null, null, "C3Actual", 0]
+    ["H1", null, null, "H1Actual", 0],
+    ["H2", null, null, "H2Actual", 0],
+    ["H3", null, null, "H3Actual", 0]
     ["D1", null, null, "D1Actual", 0],
     ["D2", null, null, "D2Actual", 0],
     ["D3", null, null, "D3Actual", 0]
@@ -490,9 +505,12 @@ var SimpleJSONConfig = `{
     ["W3", "W3a", 0],
     ["A1", null, 0],
     ["A2", null, 0],
-    ["A3", null, 1],
+    ["A3", null, 0],
     ["B1", null, 0],
     ["B2", null, 0],
     ["B3", null, 0]
+    ["M1", null, 0],
+    ["M2", null, 0],
+    ["M3", null, 0]
   ]
 }`
