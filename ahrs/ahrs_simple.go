@@ -153,9 +153,9 @@ func (s *SimpleState) Update(m *Measurement) {
 	a1 := -(s.f11*m.A1 + s.f12*m.A2 + s.f13*m.A3) / s.aNorm
 	a2 := -(s.f21*m.A1 + s.f22*m.A2 + s.f23*m.A3) / s.aNorm
 	a3 := -(s.f31*m.A1 + s.f32*m.A2 + s.f33*m.A3) / s.aNorm
-	b1 := s.f11*(m.B1 - s.D1) + s.f12*(m.B2 - s.D2) + s.f13*(m.B3 - s.D3)
-	b2 := s.f21*(m.B1 - s.D1) + s.f22*(m.B2 - s.D2) + s.f23*(m.B3 - s.D3)
-	b3 := s.f31*(m.B1 - s.D1) + s.f32*(m.B2 - s.D2) + s.f33*(m.B3 - s.D3)
+	b1 := s.f11*(m.B1-s.D1) + s.f12*(m.B2-s.D2) + s.f13*(m.B3-s.D3)
+	b2 := s.f21*(m.B1-s.D1) + s.f22*(m.B2-s.D2) + s.f23*(m.B3-s.D3)
+	b3 := s.f31*(m.B1-s.D1) + s.f32*(m.B2-s.D2) + s.f33*(m.B3-s.D3)
 	m1 := s.f11*m.M1 + s.f12*m.M1 + s.f13*m.M1
 	m2 := s.f21*m.M1 + s.f22*m.M1 + s.f23*m.M1
 	m3 := s.f31*m.M1 + s.f32*m.M1 + s.f33*m.M1
@@ -330,7 +330,7 @@ func (s *SimpleState) SetSensorQuaternion(f *[4]float64) {
 }
 
 // GetSensorQuaternion returns the AHRS algorithm's sensor quaternion F.
-func (s *SimpleState) GetSensorQuaternion() (*[4]float64) {
+func (s *SimpleState) GetSensorQuaternion() *[4]float64 {
 	return &[4]float64{s.F0, s.F1, s.F2, s.F3}
 }
 
