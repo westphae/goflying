@@ -291,6 +291,8 @@ type AHRSProvider interface {
 	GetSensorQuaternion() (f *[4]float64)
 	// SetCalibrations sets the AHRS accelerometer calibrations to c and gyro calibrations to d.
 	SetCalibrations(c, d *[3]float64)
+	// GetCalibrations returns the AHRS accelerometer calibrations c and gyro calibrations d.
+	GetCalibrations() (c, d *[3]float64)
 	// SetConfig allows for configuration of AHRS to be set on the fly, mainly for developers.
 	SetConfig(configMap map[string]float64)
 	// Valid returns whether the current state is a valid estimate or if something went wrong in the calculation.

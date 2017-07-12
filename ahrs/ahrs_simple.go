@@ -50,6 +50,7 @@ type SimpleState struct {
 func NewSimpleAHRS() (s *SimpleState) {
 	s = new(SimpleState)
 	s.logMap = make(map[string]interface{})
+	s.aNorm = 1
 	updateLogMap(s, NewMeasurement(), s.logMap)
 	s.needsInitialization = true
 	s.M = matrix.Zeros(32, 32)
@@ -336,13 +337,22 @@ func (s *SimpleState) GetSensorQuaternion() *[4]float64 {
 
 // SetCalibrations sets the AHRS accelerometer calibrations to c and gyro calibrations to d.
 func (s *SimpleState) SetCalibrations(c, d *[3]float64) {
-	s.C1 = c[0]
-	s.C2 = c[1]
-	s.C3 = c[2]
-	s.D1 = d[0]
-	s.D2 = d[1]
-	s.D3 = d[2]
-	s.aNorm = math.Sqrt(c[0]*c[0] + c[1]*c[1] + c[2]*c[2])
+	if c != nil {
+		s.C1 = c[0]
+		s.C2 = c[1]
+		s.C3 = c[2]
+		s.aNorm = math.Sqrt(c[0]*c[0] + c[1]*c[1] + c[2]*c[2])
+	}
+	if d != nil {
+		s.D1 = d[0]
+		s.D2 = d[1]
+		s.D3 = d[2]
+	}
+}
+
+// GetCalibrations sets the AHRS accelerometer calibrations to c and gyro calibrations to d.
+func (s *SimpleState) GetCalibrations() (c, d *[3]float64) {
+	return &[3]float64{s.C1, s.C2, s.C3}, &[3]float64{s.D1, s.D2, s.D3}
 }
 
 // GetState returns the state of the system
