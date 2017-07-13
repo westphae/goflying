@@ -338,10 +338,15 @@ func (s *SimpleState) GetSensorQuaternion() *[4]float64 {
 // SetCalibrations sets the AHRS accelerometer calibrations to c and gyro calibrations to d.
 func (s *SimpleState) SetCalibrations(c, d *[3]float64) {
 	if c != nil {
-		s.C1 = c[0]
-		s.C2 = c[1]
-		s.C3 = c[2]
-		s.aNorm = math.Sqrt(c[0]*c[0] + c[1]*c[1] + c[2]*c[2])
+		aNorm := math.Sqrt(c[0]*c[0] + c[1]*c[1] + c[2]*c[2])
+		if aNorm > 0.5 {
+			s.C1 = c[0]
+			s.C2 = c[1]
+			s.C3 = c[2]
+			s.aNorm = math.Sqrt(c[0]*c[0] + c[1]*c[1] + c[2]*c[2])
+		} else {
+			s.aNorm = 1
+		}
 	}
 	if d != nil {
 		s.D1 = d[0]
