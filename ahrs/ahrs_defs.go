@@ -142,6 +142,14 @@ func (s *State) calcRotationMatrices() {
 	s.f33 = (+s.F0*s.F0 - s.F1*s.F1 - s.F2*s.F2 + s.F3*s.F3)
 }
 
+// rotateByF rotates the input vector by the state's rotation matrix ff.
+func (s *State) rotateByF(a1, a2, a3 float64) (z1, z2, z3 float64) {
+	z1 = s.f11*a1 + s.f12*a2 + s.f13*a3
+	z2 = s.f21*a1 + s.f22*a2 + s.f23*a3
+	z3 = s.f31*a1 + s.f32*a2 + s.f33*a3
+	return
+}
+
 // RollPitchHeading returns the current roll, pitch and heading estimates
 // for the State, in degrees
 func (s *State) CalcRollPitchHeading() (roll float64, pitch float64, heading float64) {

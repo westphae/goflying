@@ -50,9 +50,12 @@ type SimpleState struct {
 func NewSimpleAHRS() (s *SimpleState) {
 	s = new(SimpleState)
 	s.logMap = make(map[string]interface{})
-	s.aNorm = 1
 	updateLogMap(s, NewMeasurement(), s.logMap)
 	s.needsInitialization = true
+	s.aNorm = 1
+	s.f11 = 1
+	s.f22 = 1
+	s.f33 = 1
 	s.M = matrix.Zeros(32, 32)
 	s.N = matrix.Zeros(32, 32)
 	return
@@ -100,8 +103,11 @@ func (s *SimpleState) init(m *Measurement) {
 
 	s.E0, s.E1, s.E2, s.E3 = s.eGPS0, s.eGPS1, s.eGPS2, s.eGPS3
 
-	// Update Magnetic Heading
-	s.headingMag = math.Atan2(m.M1, -m.M2)
+	// Initialize Magnetic Heading.
+	_, a2, a3 := s.rotateByF(-m.A1, -m.A2, -m.A3)
+	_, _, b3 := s.rotateByF(m.B1 - s.D1, m.B2 - s.D2, m.B3 - s.D3)
+	m1, m2, _ := s.rotateByF(m.M1, m.M2, m.M3)
+	s.headingMag = math.Atan2(m1, -m2)
 	for s.headingMag < 0 {
 		s.headingMag += 2 * Pi
 	}
@@ -109,14 +115,10 @@ func (s *SimpleState) init(m *Measurement) {
 		s.headingMag -= 2 * Pi
 	}
 
-	// Update Slip/Skid
-	s.slipSkid = math.Atan2(m.A2, -m.A3)
-
-	// Update Rate of Turn
-	s.turnRate = 0
-
-	// Update GLoad
-	s.gLoad = -m.A3
+	// Initialize Slip/Skid, Rate of Turn, and GLoad.
+	s.slipSkid = math.Atan2(a2, -a3)
+	s.turnRate = b3 * Deg
+	s.gLoad = -a3 / s.aNorm
 
 	updateLogMap(s, m, s.logMap)
 }
@@ -154,20 +156,14 @@ func (s *SimpleState) Update(m *Measurement) {
 	}
 
 	// Rotate measurements from sensor frame to aircraft frame
-	a1 := -(s.f11*m.A1 + s.f12*m.A2 + s.f13*m.A3) / s.aNorm
-	a2 := -(s.f21*m.A1 + s.f22*m.A2 + s.f23*m.A3) / s.aNorm
-	a3 := -(s.f31*m.A1 + s.f32*m.A2 + s.f33*m.A3) / s.aNorm
-	b1 := s.f11*(m.B1-s.D1) + s.f12*(m.B2-s.D2) + s.f13*(m.B3-s.D3)
-	b2 := s.f21*(m.B1-s.D1) + s.f22*(m.B2-s.D2) + s.f23*(m.B3-s.D3)
-	b3 := s.f31*(m.B1-s.D1) + s.f32*(m.B2-s.D2) + s.f33*(m.B3-s.D3)
-	m1 := s.f11*m.M1 + s.f12*m.M1 + s.f13*m.M1
-	m2 := s.f21*m.M1 + s.f22*m.M1 + s.f23*m.M1
-	m3 := s.f31*m.M1 + s.f32*m.M1 + s.f33*m.M1
+	a1, a2, a3 := s.rotateByF(-m.A1, -m.A2, -m.A3)
+	b1, b2, b3 := s.rotateByF(m.B1 - s.D1, m.B2 - s.D2, m.B3 - s.D3)
+	m1, m2, m3 := s.rotateByF(m.M1, m.M2, m.M3)
 
 	// Update estimates of current gyro  and accel rates
-	s.Z1 += fastSmoothConst * (a1 - s.Z1)
-	s.Z2 += fastSmoothConst * (a2 - s.Z2)
-	s.Z3 += fastSmoothConst * (a3 - s.Z3)
+	s.Z1 += fastSmoothConst * (a1/s.aNorm - s.Z1)
+	s.Z2 += fastSmoothConst * (a2/s.aNorm - s.Z2)
+	s.Z3 += fastSmoothConst * (a3/s.aNorm - s.Z3)
 	s.H1 += fastSmoothConst * (b1 - s.H1)
 	s.H2 += fastSmoothConst * (b2 - s.H2)
 	s.H3 += fastSmoothConst * (b3 - s.H3)
@@ -268,7 +264,7 @@ func (s *SimpleState) Update(m *Measurement) {
 	}
 
 	// Update GLoad
-	s.gLoad += slowSmoothConst * (-a3 - s.gLoad)
+	s.gLoad += slowSmoothConst * (-a3 / s.aNorm - s.gLoad)
 
 	updateLogMap(s, m, s.logMap)
 
