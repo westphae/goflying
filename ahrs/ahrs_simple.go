@@ -27,44 +27,34 @@ var (
 type SimpleState struct {
 	State
 	tW                            float64                // Time of last GPS reading
-	aNorm                         float64                // Normalization constant by which to scale measured accelerations
 	eGPS0, eGPS1, eGPS2, eGPS3    float64                // GPS-derived orientation quaternion
 	eGyr0, eGyr1, eGyr2, eGyr3    float64                // GPS-derived orientation quaternion
-	roll, pitch, heading          float64                // Fused attitude, Rad
 	rollGPS, pitchGPS, headingGPS float64                // GPS/accel-based attitude, Rad
 	rollGyr, pitchGyr, headingGyr float64                // Gyro-based attitude, Rad
 	w1, w2, w3, gs                float64                // Groundspeed & ROC, Kts
 	smoothW1, smoothW2, smoothGS  float64                // Smoothed groundspeed used to determine if stationary
-	headingMag                    float64                // Magnetic heading, Rad (smoothed)
-	slipSkid                      float64                // Slip/Skid Angle, Rad (smoothed)
-	gLoad                         float64                // G Load, G vertical (smoothed)
-	turnRate                      float64                // turn rate, Rad/s (smoothed)
-	needsInitialization           bool                   // Rather than computing, initialize
 	staticMode                    bool                   // For low groundspeed or invalid GPS
 	headingValid                  bool                   // Whether to slew quickly to correct heading
-	logMap                        map[string]interface{} // Map only for analysis/debugging
 }
 
 //NewSimpleAHRS returns a new Simple AHRS object.
 // It is initialized with a beginning sensor orientation quaternion f0.
 func NewSimpleAHRS() (s *SimpleState) {
 	s = new(SimpleState)
-	s.logMap = make(map[string]interface{})
-	updateLogMap(s, NewMeasurement(), s.logMap)
 	s.needsInitialization = true
 	s.aNorm = 1
-	s.f11 = 1
-	s.f22 = 1
-	s.f33 = 1
+	s.F0 = 1 // Initial guess is that it's oriented pointing forward and level
 	s.M = matrix.Zeros(32, 32)
 	s.N = matrix.Zeros(32, 32)
+	s.logMap = make(map[string]interface{})
+	s.updateLogMap(NewMeasurement(), s.logMap)
 	return
 }
 
 func (s *SimpleState) init(m *Measurement) {
-	s.needsInitialization = false
+	s.State.init(m)
+
 	s.headingValid = false
-	s.T = m.T
 	s.tW = m.TW
 	if m.WValid {
 		s.gs = math.Hypot(m.W1, m.W2)
@@ -84,8 +74,6 @@ func (s *SimpleState) init(m *Measurement) {
 		s.w3 = 0
 	}
 
-	s.roll = 0
-	s.pitch = 0
 	if s.smoothGS > minGS {
 		s.heading = math.Atan2(m.W1, m.W2)
 		for s.heading < 0 {
@@ -94,8 +82,6 @@ func (s *SimpleState) init(m *Measurement) {
 		for s.heading >= 2*Pi {
 			s.heading -= 2 * Pi
 		}
-	} else {
-		s.heading = 0
 	}
 
 	s.eGPS0, s.eGPS1, s.eGPS2, s.eGPS3 = ToQuaternion(s.roll, s.pitch, s.heading)
@@ -103,40 +89,10 @@ func (s *SimpleState) init(m *Measurement) {
 
 	s.E0, s.E1, s.E2, s.E3 = s.eGPS0, s.eGPS1, s.eGPS2, s.eGPS3
 
-	// Initialize Magnetic Heading.
-	_, a2, a3 := s.rotateByF(-m.A1, -m.A2, -m.A3)
-	_, _, b3 := s.rotateByF(m.B1 - s.D1, m.B2 - s.D2, m.B3 - s.D3)
-	m1, m2, _ := s.rotateByF(m.M1, m.M2, m.M3)
-	s.headingMag = math.Atan2(m1, -m2)
-	for s.headingMag < 0 {
-		s.headingMag += 2 * Pi
-	}
-	for s.headingMag >= 2*Pi {
-		s.headingMag -= 2 * Pi
-	}
-
-	// Initialize Slip/Skid, Rate of Turn, and GLoad.
-	s.slipSkid = math.Atan2(a2, -a3)
-	s.turnRate = b3 * Deg
-	s.gLoad = -a3 / s.aNorm
-
-	updateLogMap(s, m, s.logMap)
+	s.updateLogMap(m, s.logMap)
 }
 
-func (s *SimpleState) Compute(m *Measurement) {
-	if s.needsInitialization {
-		s.init(m)
-	} else {
-		s.Predict(m.T)
-		s.Update(m)
-	}
-}
-
-func (s *SimpleState) Predict(t float64) {
-	return
-}
-
-// Update performs the AHRSSimple AHRS computations.
+// Compute performs the AHRSSimple AHRS computations.
 // The idea behind the Simple AHRS algorithm is to use the GPS to compute what the accelerometer should show
 // and then to create a rotation matrix to map the measured accelerometer vector onto this vector and the
 // speed vector (GPS Track) onto the sensor x-axis.  Then the gyro is used to further improve this estimate.
@@ -145,7 +101,11 @@ func (s *SimpleState) Predict(t float64) {
 //
 // It is a step on the way to the full Kalman Filter implementation, a bit more obvious what's going on so
 // the math and stratux integration can be more easily developed and debugged.
-func (s *SimpleState) Update(m *Measurement) {
+func (s *SimpleState) Compute(m *Measurement) {
+	if s.needsInitialization {
+		s.init(m)
+		return
+	}
 	dt := m.T - s.T
 	dtw := m.TW - s.tW
 
@@ -157,7 +117,7 @@ func (s *SimpleState) Update(m *Measurement) {
 
 	// Rotate measurements from sensor frame to aircraft frame
 	a1, a2, a3 := s.rotateByF(-m.A1, -m.A2, -m.A3)
-	b1, b2, b3 := s.rotateByF(m.B1 - s.D1, m.B2 - s.D2, m.B3 - s.D3)
+	b1, b2, b3 := s.rotateByF(m.B1-s.D1, m.B2-s.D2, m.B3-s.D3)
 	m1, m2, m3 := s.rotateByF(m.M1, m.M2, m.M3)
 
 	// Update estimates of current gyro  and accel rates
@@ -264,9 +224,9 @@ func (s *SimpleState) Update(m *Measurement) {
 	}
 
 	// Update GLoad
-	s.gLoad += slowSmoothConst * (-a3 / s.aNorm - s.gLoad)
+	s.gLoad += slowSmoothConst * (-a3/s.aNorm - s.gLoad)
 
-	updateLogMap(s, m, s.logMap)
+	s.updateLogMap(m, s.logMap)
 
 	s.T = m.T
 	s.tW = m.TW
@@ -275,28 +235,13 @@ func (s *SimpleState) Update(m *Measurement) {
 	s.w3 = m.W3
 }
 
-// Valid returns whether the current state is a valid estimate or if something went wrong in the calculation.
-func (s *SimpleState) Valid() (ok bool) {
-	return true
-}
-
 // RollPitchHeading returns the current attitude values as estimated by the Kalman algorithm.
 func (s *SimpleState) RollPitchHeading() (roll float64, pitch float64, heading float64) {
-	roll, pitch, heading = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
+	roll, pitch, heading = s.State.RollPitchHeading()
 	if s.staticMode {
 		heading = Invalid
 	}
 	return
-}
-
-// MagHeading returns the magnetic heading in degrees.
-func (s *SimpleState) MagHeading() (hdg float64) {
-	return s.headingMag / Deg
-}
-
-// SlipSkid returns the slip/skid angle in degrees.
-func (s *SimpleState) SlipSkid() (slipSkid float64) {
-	return s.slipSkid / Deg
 }
 
 // RateOfTurn returns the turn rate in degrees per second.
@@ -304,66 +249,7 @@ func (s *SimpleState) RateOfTurn() (turnRate float64) {
 	if s.staticMode {
 		return Invalid
 	}
-	return s.turnRate / Deg
-}
-
-// GLoad returns the current G load, in G's.
-func (s *SimpleState) GLoad() (gLoad float64) {
-	return s.gLoad
-}
-
-// Reset restarts the algorithm from scratch.
-func (s *SimpleState) Reset() {
-	s.needsInitialization = true
-}
-
-// SetSensorQuaternion changes the AHRS algorithm's sensor quaternion F.
-func (s *SimpleState) SetSensorQuaternion(f *[4]float64) {
-	s.F0 = f[0]
-	s.F1 = f[1]
-	s.F2 = f[2]
-	s.F3 = f[3]
-	s.calcRotationMatrices()
-}
-
-// GetSensorQuaternion returns the AHRS algorithm's sensor quaternion F.
-func (s *SimpleState) GetSensorQuaternion() *[4]float64 {
-	return &[4]float64{s.F0, s.F1, s.F2, s.F3}
-}
-
-// SetCalibrations sets the AHRS accelerometer calibrations to c and gyro calibrations to d.
-func (s *SimpleState) SetCalibrations(c, d *[3]float64) {
-	if c != nil {
-		aNorm := math.Sqrt(c[0]*c[0] + c[1]*c[1] + c[2]*c[2])
-		if aNorm > 0.5 {
-			s.C1 = c[0]
-			s.C2 = c[1]
-			s.C3 = c[2]
-			s.aNorm = math.Sqrt(c[0]*c[0] + c[1]*c[1] + c[2]*c[2])
-		} else {
-			s.aNorm = 1
-		}
-	}
-	if d != nil {
-		s.D1 = d[0]
-		s.D2 = d[1]
-		s.D3 = d[2]
-	}
-}
-
-// GetCalibrations sets the AHRS accelerometer calibrations to c and gyro calibrations to d.
-func (s *SimpleState) GetCalibrations() (c, d *[3]float64) {
-	return &[3]float64{s.C1, s.C2, s.C3}, &[3]float64{s.D1, s.D2, s.D3}
-}
-
-// GetState returns the state of the system
-func (s *SimpleState) GetState() *State {
-	return &s.State
-}
-
-// GetLogMap returns a map providing current state and measurement values for analysis
-func (s *SimpleState) GetLogMap() (p map[string]interface{}) {
-	return s.logMap
+	return s.State.RateOfTurn()
 }
 
 // SetConfig lets the user alter some of the configuration settings.
@@ -390,13 +276,9 @@ func (s *SimpleState) SetConfig(configMap map[string]float64) {
 	}
 }
 
-func updateLogMap(s *SimpleState, m *Measurement, p map[string]interface{}) {
+func (s *SimpleState) updateLogMap(m *Measurement, p map[string]interface{}) {
+	s.State.updateLogMap(m, s.logMap)
 	var simpleLogMap = map[string]func(s *SimpleState, m *Measurement) float64{
-		"Ta":                func(s *SimpleState, m *Measurement) float64 { return s.T },
-		"TWa":               func(s *SimpleState, m *Measurement) float64 { return s.tW },
-		"Roll":              func(s *SimpleState, m *Measurement) float64 { return s.roll / Deg },
-		"Pitch":             func(s *SimpleState, m *Measurement) float64 { return s.pitch / Deg },
-		"Heading":           func(s *SimpleState, m *Measurement) float64 { return s.heading / Deg },
 		"RollGPS":           func(s *SimpleState, m *Measurement) float64 { return s.rollGPS / Deg },
 		"PitchGPS":          func(s *SimpleState, m *Measurement) float64 { return s.pitchGPS / Deg },
 		"HeadingGPS":        func(s *SimpleState, m *Measurement) float64 { return s.headingGPS / Deg },
@@ -407,70 +289,25 @@ func updateLogMap(s *SimpleState, m *Measurement, p map[string]interface{}) {
 		"SmoothW1":          func(s *SimpleState, m *Measurement) float64 { return s.smoothW1 },
 		"SmoothW2":          func(s *SimpleState, m *Measurement) float64 { return s.smoothW2 },
 		"SmoothGroundSpeed": func(s *SimpleState, m *Measurement) float64 { return s.smoothGS },
+		"TWa":               func(s *SimpleState, m *Measurement) float64 { return s.tW },
 		"W1a":               func(s *SimpleState, m *Measurement) float64 { return s.w1 },
 		"W2a":               func(s *SimpleState, m *Measurement) float64 { return s.w2 },
 		"W3a":               func(s *SimpleState, m *Measurement) float64 { return s.w3 },
-		"WValid": func(s *SimpleState, m *Measurement) float64 {
-			if m.WValid {
-				return 1
-			}
-			return 0
-		},
-		"T":          func(s *SimpleState, m *Measurement) float64 { return m.T },
-		"TW":         func(s *SimpleState, m *Measurement) float64 { return m.TW },
-		"W1":         func(s *SimpleState, m *Measurement) float64 { return m.W1 },
-		"W2":         func(s *SimpleState, m *Measurement) float64 { return m.W2 },
-		"W3":         func(s *SimpleState, m *Measurement) float64 { return m.W3 },
-		"E0":         func(s *SimpleState, m *Measurement) float64 { return s.E0 },
-		"E1":         func(s *SimpleState, m *Measurement) float64 { return s.E1 },
-		"E2":         func(s *SimpleState, m *Measurement) float64 { return s.E2 },
-		"E3":         func(s *SimpleState, m *Measurement) float64 { return s.E3 },
-		"EGPS0":      func(s *SimpleState, m *Measurement) float64 { return s.eGPS0 },
-		"EGPS1":      func(s *SimpleState, m *Measurement) float64 { return s.eGPS1 },
-		"EGPS2":      func(s *SimpleState, m *Measurement) float64 { return s.eGPS2 },
-		"EGPS3":      func(s *SimpleState, m *Measurement) float64 { return s.eGPS3 },
-		"EGyr0":      func(s *SimpleState, m *Measurement) float64 { return s.eGyr0 },
-		"EGyr1":      func(s *SimpleState, m *Measurement) float64 { return s.eGyr1 },
-		"EGyr2":      func(s *SimpleState, m *Measurement) float64 { return s.eGyr2 },
-		"EGyr3":      func(s *SimpleState, m *Measurement) float64 { return s.eGyr3 },
-		"Z1":        func(s *SimpleState, m *Measurement) float64 { return s.Z1 },
-		"Z2":        func(s *SimpleState, m *Measurement) float64 { return s.Z2 },
-		"Z3":        func(s *SimpleState, m *Measurement) float64 { return s.Z3 },
-		"C1":        func(s *SimpleState, m *Measurement) float64 { return s.C1 },
-		"C2":        func(s *SimpleState, m *Measurement) float64 { return s.C2 },
-		"C3":        func(s *SimpleState, m *Measurement) float64 { return s.C3 },
-		"A1":         func(s *SimpleState, m *Measurement) float64 { return m.A1 },
-		"A2":         func(s *SimpleState, m *Measurement) float64 { return m.A2 },
-		"A3":         func(s *SimpleState, m *Measurement) float64 { return m.A3 },
-		"H1":        func(s *SimpleState, m *Measurement) float64 { return s.H1 },
-		"H2":        func(s *SimpleState, m *Measurement) float64 { return s.H2 },
-		"H3":        func(s *SimpleState, m *Measurement) float64 { return s.H3 },
-		"D1":         func(s *SimpleState, m *Measurement) float64 { return s.D1 },
-		"D2":         func(s *SimpleState, m *Measurement) float64 { return s.D2 },
-		"D3":         func(s *SimpleState, m *Measurement) float64 { return s.D3 },
-		"B1":         func(s *SimpleState, m *Measurement) float64 { return m.B1 },
-		"B2":         func(s *SimpleState, m *Measurement) float64 { return m.B2 },
-		"B3":         func(s *SimpleState, m *Measurement) float64 { return m.B3 },
-		"M1":         func(s *SimpleState, m *Measurement) float64 { return m.M1 },
-		"M2":         func(s *SimpleState, m *Measurement) float64 { return m.M2 },
-		"M3":         func(s *SimpleState, m *Measurement) float64 { return m.M3 },
-		"headingMag": func(s *SimpleState, m *Measurement) float64 { return s.headingMag },
-		"slipSkid":   func(s *SimpleState, m *Measurement) float64 { return s.slipSkid },
-		"gLoad":      func(s *SimpleState, m *Measurement) float64 { return s.gLoad },
-		"turnRate":   func(s *SimpleState, m *Measurement) float64 { return s.turnRate },
-		"needsInitialization": func(s *SimpleState, m *Measurement) float64 {
-			if s.needsInitialization {
-				return 1
-			}
-			return 0
-		},
-		"staticMode": func(s *SimpleState, m *Measurement) float64 {
+		"EGPS0":             func(s *SimpleState, m *Measurement) float64 { return s.eGPS0 },
+		"EGPS1":             func(s *SimpleState, m *Measurement) float64 { return s.eGPS1 },
+		"EGPS2":             func(s *SimpleState, m *Measurement) float64 { return s.eGPS2 },
+		"EGPS3":             func(s *SimpleState, m *Measurement) float64 { return s.eGPS3 },
+		"EGyr0":             func(s *SimpleState, m *Measurement) float64 { return s.eGyr0 },
+		"EGyr1":             func(s *SimpleState, m *Measurement) float64 { return s.eGyr1 },
+		"EGyr2":             func(s *SimpleState, m *Measurement) float64 { return s.eGyr2 },
+		"EGyr3":             func(s *SimpleState, m *Measurement) float64 { return s.eGyr3 },
+		"staticMode":        func(s *SimpleState, m *Measurement) float64 {
 			if s.staticMode {
 				return 1
 			}
 			return 0
 		},
-		"headingValid": func(s *SimpleState, m *Measurement) float64 {
+		"headingValid":      func(s *SimpleState, m *Measurement) float64 {
 			if s.headingValid {
 				return 1
 			}

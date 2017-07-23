@@ -17,37 +17,39 @@ const (
 	Invalid float64  = 3276.7 // 2**15-1
 )
 
-// State holds the complete information describing the state of the aircraft
-// Aircraft frame is noninertial: 1 is to nose; 2 is to left wing; 3 is up
-// Earth frame is inertial: 1 is east; 2 is north; 3 is up
-// Sensor frame is fixed within aircraft frame, so noninertial, rotated
-type State struct {
-	U1, U2, U3     float64 // Vector for airspeed, aircraft frame, kt
-	Z1, Z2, Z3     float64 // Vector for rate of change of airspeed, aircraft frame, G
-	E0, E1, E2, E3 float64 // Quaternion rotating aircraft frame to earth frame
-	H1, H2, H3     float64 // Vector for gyro rates, earth frame, °/s
-	N1, N2, N3     float64 // Vector for earth's magnetic field, earth (inertial) frame, µT
-
-	V1, V2, V3     float64 // (Bias) Vector for windspeed, earth frame, kt
-	C1, C2, C3     float64 // Bias vector for accelerometer, sensor frame, G
-	F0, F1, F2, F3 float64 // (Bias) quaternion rotating aircraft frame to sensor frame
-	D1, D2, D3     float64 // Bias vector for gyro rates, sensor frame, °/s
-	L1, L2, L3     float64 // Bias vector for magnetometer direction, sensor frame, µT
-
-	T float64 // Time when state last updated
-
-	M *matrix.DenseMatrix // Covariance matrix of state uncertainty, same order as above vars:
-	N *matrix.DenseMatrix // Covariance matrix of state noise per unit time
-	// U, Z, E, H, N,
-	// V, C, F, D, L
-
-	e11, e12, e13 float64 // cached earth-aircraft rotation matrix
-	e21, e22, e23 float64
-	e31, e32, e33 float64
-
-	f11, f12, f13 float64 // cached sensor-aircraft rotation matrix
-	f21, f22, f23 float64
-	f31, f32, f33 float64
+// AHRSProvider defines an AHRS (Kalman or other) algorithm, such as ahrs_kalman, ahrs_simple, etc.
+type AHRSProvider interface {
+	// RollPitchHeading returns the current attitude values as estimated by the Kalman algorithm.
+	RollPitchHeading() (roll float64, pitch float64, heading float64)
+	// MagHeading returns the current magnetic heading in degrees as estimated by the Kalman algorithm.
+	MagHeading() (hdg float64)
+	// SlipSkid returns the slip/skid angle in degrees as estimated by the Kalman algorithm.
+	SlipSkid() (slipSkid float64)
+	// RateOfTurn returns the turn rate in degrees per second as estimated by the Kalman algorithm.
+	RateOfTurn() (turnRate float64)
+	// GLoad returns the current G load, in G's as estimated by the Kalman algorithm.
+	GLoad() (gLoad float64)
+	// Compute runs both the "predict" and "update" stages of the algorithm, for convenience.
+	Compute(m *Measurement)
+	// SetSensorQuaternion changes the AHRS algorithm's sensor quaternion F.
+	SetSensorQuaternion(f *[4]float64)
+	// GetSensorQuaternion returns the AHRS algorithm's sensor quaternion F.
+	GetSensorQuaternion() (f *[4]float64)
+	// SetCalibrations sets the AHRS accelerometer calibrations to c and gyro calibrations to d.
+	SetCalibrations(c, d *[3]float64)
+	// GetCalibrations returns the AHRS accelerometer calibrations c and gyro calibrations d.
+	GetCalibrations() (c, d *[3]float64)
+	// SetConfig allows for configuration of AHRS to be set on the fly, mainly for developers.
+	SetConfig(configMap map[string]float64)
+	// Valid returns whether the current state is a valid estimate or if something went wrong in the calculation.
+	Valid() bool
+	// Reset restarts the algorithm from scratch.
+	Reset()
+	// GetState returns all the information about the current state.
+	GetState() *State
+	// GetLogMap returns a map customized for each AHRSProvider algorithm to provide more detailed information
+	// for debugging and logging.
+	GetLogMap() map[string]interface{}
 }
 
 // Measurement holds the measurements used for updating the Kalman filter:
@@ -73,8 +75,8 @@ type Measurement struct { // Order here also defines order in the matrices below
 
 // NewMeasurement returns a pointer to an empty AHRS Measurement.
 // Uncertainty matrix and variance accumulators are properly initialized.
-func NewMeasurement() *Measurement {
-	m := new(Measurement)
+func NewMeasurement() (m *Measurement) {
+	m = new(Measurement)
 
 	m.M = matrix.Scaled(matrix.Eye(15), Big)
 
@@ -94,67 +96,7 @@ func NewMeasurement() *Measurement {
 	m.Accums[13] = NewVarianceAccumulator(0, 80, MMDecay)
 	m.Accums[14] = NewVarianceAccumulator(0, 80, MMDecay)
 
-	return m
-}
-
-// normalize normalizes the E & F quaternions in State s to unit magnitude
-func (s *State) normalize() {
-	ee := math.Sqrt(s.E0*s.E0 + s.E1*s.E1 + s.E2*s.E2 + s.E3*s.E3)
-	s.E0 /= ee
-	s.E1 /= ee
-	s.E2 /= ee
-	s.E3 /= ee
-
-	ff := math.Sqrt(s.F0*s.F0 + s.F1*s.F1 + s.F2*s.F2 + s.F3*s.F3)
-	s.F0 /= ff
-	s.F1 /= ff
-	s.F2 /= ff
-	s.F3 /= ff
-
-	s.calcRotationMatrices()
-}
-
-// calcRotationMatrices populates the rotation matrices in the State based on
-// the quaternions E* and F*
-func (s *State) calcRotationMatrices() {
-	// eij rotates from earth frame j component to aircraft frame i component
-	// X_e = E*X_a*conj(E)
-	s.e11 = +s.E0*s.E0 + s.E1*s.E1 - s.E2*s.E2 - s.E3*s.E3
-	s.e12 = 2 * (-s.E0*s.E3 + s.E1*s.E2)
-	s.e13 = 2 * (+s.E0*s.E2 + s.E1*s.E3)
-	s.e21 = 2 * (+s.E0*s.E3 + s.E2*s.E1)
-	s.e22 = +s.E0*s.E0 - s.E1*s.E1 + s.E2*s.E2 - s.E3*s.E3
-	s.e23 = 2 * (-s.E0*s.E1 + s.E2*s.E3)
-	s.e31 = 2 * (-s.E0*s.E2 + s.E3*s.E1)
-	s.e32 = 2 * (+s.E0*s.E1 + s.E3*s.E2)
-	s.e33 = +s.E0*s.E0 - s.E1*s.E1 - s.E2*s.E2 + s.E3*s.E3
-
-	// fij rotates sensor frame j component into aircraft frame i component
-	// X_s = F*X_a*conj(F)
-	s.f11 = (+s.F0*s.F0 + s.F1*s.F1 - s.F2*s.F2 - s.F3*s.F3)
-	s.f12 = 2 * (-s.F0*s.F3 + s.F1*s.F2)
-	s.f13 = 2 * (+s.F0*s.F2 + s.F3*s.F1)
-	s.f21 = 2 * (+s.F0*s.F3 + s.F1*s.F2)
-	s.f22 = (+s.F0*s.F0 - s.F1*s.F1 + s.F2*s.F2 - s.F3*s.F3)
-	s.f23 = 2 * (-s.F0*s.F1 + s.F2*s.F3)
-	s.f31 = 2 * (-s.F0*s.F2 + s.F3*s.F1)
-	s.f32 = 2 * (+s.F0*s.F1 + s.F2*s.F3)
-	s.f33 = (+s.F0*s.F0 - s.F1*s.F1 - s.F2*s.F2 + s.F3*s.F3)
-}
-
-// rotateByF rotates the input vector by the state's rotation matrix ff.
-func (s *State) rotateByF(a1, a2, a3 float64) (z1, z2, z3 float64) {
-	z1 = s.f11*a1 + s.f12*a2 + s.f13*a3
-	z2 = s.f21*a1 + s.f22*a2 + s.f23*a3
-	z3 = s.f31*a1 + s.f32*a2 + s.f33*a3
 	return
-}
-
-// RollPitchHeading returns the current roll, pitch and heading estimates
-// for the State, in degrees
-func (s *State) CalcRollPitchHeading() (roll float64, pitch float64, heading float64) {
-	roll, pitch, heading = FromQuaternion(s.E0, s.E1, s.E2, s.E3)
-	return roll / Deg, pitch / Deg, heading / Deg
 }
 
 // Regularize ensures that roll, pitch, and heading are in the correct ranges.
@@ -287,39 +229,4 @@ func AngleDiff(a, b float64) (diff float64) {
 		diff += 2*Pi
 	}
 	return
-}
-
-// AHRSProvider defines an AHRS (Kalman or other) algorithm, such as ahrs_kalman, ahrs_simple, etc.
-type AHRSProvider interface {
-	// Compute runs both the "predict" and "update" stages of the algorithm, for convenience.
-	Compute(m *Measurement)
-	// SetSensorQuaternion changes the AHRS algorithm's sensor quaternion F.
-	SetSensorQuaternion(f *[4]float64)
-	// GetSensorQuaternion returns the AHRS algorithm's sensor quaternion F.
-	GetSensorQuaternion() (f *[4]float64)
-	// SetCalibrations sets the AHRS accelerometer calibrations to c and gyro calibrations to d.
-	SetCalibrations(c, d *[3]float64)
-	// GetCalibrations returns the AHRS accelerometer calibrations c and gyro calibrations d.
-	GetCalibrations() (c, d *[3]float64)
-	// SetConfig allows for configuration of AHRS to be set on the fly, mainly for developers.
-	SetConfig(configMap map[string]float64)
-	// Valid returns whether the current state is a valid estimate or if something went wrong in the calculation.
-	Valid() bool
-	// Reset restarts the algorithm from scratch.
-	Reset()
-	// RollPitchHeading returns the current attitude values as estimated by the Kalman algorithm.
-	RollPitchHeading() (roll float64, pitch float64, heading float64)
-	// MagHeading returns the current magnetic heading in degrees as estimated by the Kalman algorithm.
-	MagHeading() (hdg float64)
-	// SlipSkid returns the slip/skid angle in degrees as estimated by the Kalman algorithm.
-	SlipSkid() (slipSkid float64)
-	// RateOfTurn returns the turn rate in degrees per second as estimated by the Kalman algorithm.
-	RateOfTurn() (turnRate float64)
-	// GLoad returns the current G load, in G's as estimated by the Kalman algorithm.
-	GLoad() (gLoad float64)
-	// GetState returns all the information about the current state.
-	GetState() *State
-	// GetLogMap returns a map customized for each AHRSProvider algorithm to provide more detailed information
-	// for debugging and logging.
-	GetLogMap() map[string]interface{}
 }
