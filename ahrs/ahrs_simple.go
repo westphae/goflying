@@ -41,15 +41,15 @@ var (
 
 type SimpleState struct {
 	State
-	tW                            float64                // Time of last GPS reading
-	eGPS0, eGPS1, eGPS2, eGPS3    float64                // GPS-derived orientation quaternion
-	eGyr0, eGyr1, eGyr2, eGyr3    float64                // GPS-derived orientation quaternion
-	rollGPS, pitchGPS, headingGPS float64                // GPS/accel-based attitude, Rad
-	rollGyr, pitchGyr, headingGyr float64                // Gyro-based attitude, Rad
-	w1, w2, w3, gs                float64                // Groundspeed & ROC, Kts
-	smoothW1, smoothW2, smoothGS  float64                // Smoothed groundspeed used to determine if stationary
-	staticMode                    bool                   // For low groundspeed or invalid GPS
-	headingValid                  bool                   // Whether to slew quickly to correct heading
+	tW                            float64 // Time of last GPS reading
+	eGPS0, eGPS1, eGPS2, eGPS3    float64 // GPS-derived orientation quaternion
+	eGyr0, eGyr1, eGyr2, eGyr3    float64 // GPS-derived orientation quaternion
+	rollGPS, pitchGPS, headingGPS float64 // GPS/accel-based attitude, Rad
+	rollGyr, pitchGyr, headingGyr float64 // Gyro-based attitude, Rad
+	w1, w2, w3, gs                float64 // Groundspeed & ROC, Kts
+	smoothW1, smoothW2, smoothGS  float64 // Smoothed groundspeed used to determine if stationary
+	staticMode                    bool    // For low groundspeed or invalid GPS
+	headingValid                  bool    // Whether to slew quickly to correct heading
 }
 
 //NewSimpleAHRS returns a new Simple AHRS object.
@@ -308,13 +308,13 @@ func (s *SimpleState) updateLogMap(m *Measurement, p map[string]interface{}) {
 		"EGyr1":             func(s *SimpleState, m *Measurement) float64 { return s.eGyr1 },
 		"EGyr2":             func(s *SimpleState, m *Measurement) float64 { return s.eGyr2 },
 		"EGyr3":             func(s *SimpleState, m *Measurement) float64 { return s.eGyr3 },
-		"staticMode":        func(s *SimpleState, m *Measurement) float64 {
+		"staticMode": func(s *SimpleState, m *Measurement) float64 {
 			if s.staticMode {
 				return 1
 			}
 			return 0
 		},
-		"headingValid":      func(s *SimpleState, m *Measurement) float64 {
+		"headingValid": func(s *SimpleState, m *Measurement) float64 {
 			if s.headingValid {
 				return 1
 			}

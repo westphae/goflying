@@ -105,10 +105,10 @@ func QuaternionRotate(q0, q1, q2, q3, h1, h2, h3 float64) (r0, r1, r2, r3 float6
 
 // RotationMatrixToQuaternion computes the quaternion q corresponding to a rotation matrix r.
 func RotationMatrixToQuaternion(r [3][3]float64) (q0, q1, q2, q3 float64) {
-	q0 = math.Sqrt(1 + r[0][0] + r[1][1] + r[2][2])/2
-	q1 = (r[2][1] - r[1][2])/(4*q0)
-	q2 = (r[0][2] - r[2][0])/(4*q0)
-	q3 = (r[1][0] - r[0][1])/(4*q0)
+	q0 = math.Sqrt(1+r[0][0]+r[1][1]+r[2][2]) / 2
+	q1 = (r[2][1] - r[1][2]) / (4 * q0)
+	q2 = (r[0][2] - r[2][0]) / (4 * q0)
+	q3 = (r[1][0] - r[0][1]) / (4 * q0)
 	return
 }
 

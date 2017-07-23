@@ -8,13 +8,13 @@ import (
 )
 
 const (
-	Pi      = math.Pi
-	G       = 32.1740 / 1.687810 // G is the acceleration due to gravity, kt/s
-	Small   = 1e-9
-	Big     = 1e9
-	Deg     = Pi / 180
-	MMDecay = 1 - 1.0/50 // Exponential decay constant for measurement variances
-	Invalid float64  = 3276.7 // 2**15-1
+	Pi              = math.Pi
+	G               = 32.1740 / 1.687810 // G is the acceleration due to gravity, kt/s
+	Small           = 1e-9
+	Big             = 1e9
+	Deg             = Pi / 180
+	MMDecay         = 1 - 1.0/50 // Exponential decay constant for measurement variances
+	Invalid float64 = 3276.7     // 2**15-1
 )
 
 // AHRSProvider defines an AHRS (Kalman or other) algorithm, such as ahrs_kalman, ahrs_simple, etc.
@@ -103,34 +103,34 @@ func NewMeasurement() (m *Measurement) {
 // All in radians.
 func Regularize(roll, pitch, heading float64) (float64, float64, float64) {
 	for pitch > Pi {
-		pitch -= 2*Pi
+		pitch -= 2 * Pi
 	}
 	for pitch <= -Pi {
-		pitch += 2*Pi
+		pitch += 2 * Pi
 	}
-	if pitch > Pi / 2 {
+	if pitch > Pi/2 {
 		pitch = Pi - pitch
 		roll -= Pi
 		heading += Pi
 	}
-	if pitch < -Pi / 2 {
+	if pitch < -Pi/2 {
 		pitch = -Pi - pitch
 		roll -= Pi
 		heading += Pi
 	}
 
 	for roll > Pi {
-		roll -= 2*Pi
+		roll -= 2 * Pi
 	}
 	for roll < -Pi {
-		roll += 2*Pi
+		roll += 2 * Pi
 	}
 
 	for heading >= 2*Pi {
-		heading -= 2*Pi
+		heading -= 2 * Pi
 	}
 	for heading < 0 {
-		heading += 2*Pi
+		heading += 2 * Pi
 	}
 	return roll, pitch, heading
 }
@@ -153,8 +153,8 @@ func MakeUnitVector(vec [3]float64) (res *[3]float64, err error) {
 func MakeOrthogonal(target, ortho [3]float64) (res *[3]float64) {
 	res = new([3]float64)
 	f := target[0]*ortho[0] + target[1]*ortho[1] + target[2]*ortho[2]
-	for i:=0; i<3; i++ {
-		res[i] = target[i] - f * ortho[i]
+	for i := 0; i < 3; i++ {
+		res[i] = target[i] - f*ortho[i]
 	}
 	return
 }
@@ -163,9 +163,9 @@ func MakeOrthogonal(target, ortho [3]float64) (res *[3]float64) {
 // (Uses the cross product.)
 func MakePerpendicular(vec1, vec2 [3]float64) (res *[3]float64, err error) {
 	res = new([3]float64)
-	for i:=0; i < 3; i++ {
-		j := (i+1)%3
-		k := (i+2)%3
+	for i := 0; i < 3; i++ {
+		j := (i + 1) % 3
+		k := (i + 2) % 3
 		res[i] = vec1[j]*vec2[k] - vec1[k]*vec2[j]
 	}
 	res, err = MakeUnitVector(*res)
@@ -223,10 +223,10 @@ func MakeHardSoftRotationMatrix(h1, s1, h2, s2 [3]float64) (rotmat *[3][3]float6
 func AngleDiff(a, b float64) (diff float64) {
 	diff = a - b
 	for diff > Pi {
-		diff -= 2*Pi
+		diff -= 2 * Pi
 	}
 	for diff < -Pi {
-		diff += 2*Pi
+		diff += 2 * Pi
 	}
 	return
 }
