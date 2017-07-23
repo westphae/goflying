@@ -1,3 +1,18 @@
+/*
+The idea behind the Simple AHRS algorithm is to use the GPS to compute what the accelerometer should show
+and then to create a rotation matrix to map the measured accelerometer vector onto this vector and the
+speed vector (GPS Track) onto the sensor x-axis.  The gyro is used to further improve this estimate,
+by providing a more instantaneous response than the GPS can provide.
+This is really a poor-man's sensor fusion algorithm.  The proper way to do this is with a Kalman Filter,
+but this approach is simpler and easier to debug, and should be good enough for most flight conditions.
+
+It is a step on the way to the full Kalman Filter implementation, a bit more obvious what's going on so
+the math and stratux integration can be more easily developed and debugged.
+
+This software is protected by the MIT license and is copyright 2017 by Eric Westphal.  I would be happy
+for the algorithm to be used elsewhere but please do give me credit if you use either this specific software
+or the algorithm behind it.
+*/
 package ahrs
 
 import (
@@ -93,14 +108,6 @@ func (s *SimpleState) init(m *Measurement) {
 }
 
 // Compute performs the AHRSSimple AHRS computations.
-// The idea behind the Simple AHRS algorithm is to use the GPS to compute what the accelerometer should show
-// and then to create a rotation matrix to map the measured accelerometer vector onto this vector and the
-// speed vector (GPS Track) onto the sensor x-axis.  Then the gyro is used to further improve this estimate.
-// This is really a poor-man's sensor fusion algorithm.  The proper way to do this is with a Kalman Filter,
-// but this approach is simpler and easier to debug, and should be good enough for most flight conditions.
-//
-// It is a step on the way to the full Kalman Filter implementation, a bit more obvious what's going on so
-// the math and stratux integration can be more easily developed and debugged.
 func (s *SimpleState) Compute(m *Measurement) {
 	if s.needsInitialization {
 		s.init(m)
