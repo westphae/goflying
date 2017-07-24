@@ -123,9 +123,9 @@ func (s *SimpleState) Compute(m *Measurement) {
 	}
 
 	// Rotate measurements from sensor frame to aircraft frame
-	a1, a2, a3 := s.rotateByF(-m.A1, -m.A2, -m.A3)
-	b1, b2, b3 := s.rotateByF(m.B1-s.D1, m.B2-s.D2, m.B3-s.D3)
-	m1, m2, m3 := s.rotateByF(m.M1, m.M2, m.M3)
+	a1, a2, a3 := s.rotateByF(-m.A1, -m.A2, -m.A3, false)
+	b1, b2, b3 := s.rotateByF(m.B1-s.D1, m.B2-s.D2, m.B3-s.D3, false)
+	m1, m2, m3 := s.rotateByF(m.M1, m.M2, m.M3, false)
 
 	// Update estimates of current gyro  and accel rates
 	s.Z1 += fastSmoothConst * (a1/s.aNorm - s.Z1)

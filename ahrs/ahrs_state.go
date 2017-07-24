@@ -142,9 +142,9 @@ func (s *State) init(m *Measurement) {
 	s.E0, s.E1, s.E2, s.E3 = 1, 0, 0, 0
 	s.normalize()
 
-	_, a2, a3 := s.rotateByF(-m.A1, -m.A2, -m.A3)
-	_, _, b3 := s.rotateByF(m.B1-s.D1, m.B2-s.D2, m.B3-s.D3)
-	m1, m2, _ := s.rotateByF(m.M1, m.M2, m.M3)
+	_, a2, a3 := s.rotateByF(-m.A1, -m.A2, -m.A3, false)
+	_, _, b3 := s.rotateByF(m.B1-s.D1, m.B2-s.D2, m.B3-s.D3, false)
+	m1, m2, _ := s.rotateByF(m.M1, m.M2, m.M3, false)
 
 	// Initialize Magnetic Heading, Slip/Skid, Rate of Turn, and GLoad.
 	_, _, s.headingMag = Regularize(0, 0, math.Atan2(m1, -m2))
@@ -278,8 +278,28 @@ func (s *State) calcRotationMatrices() {
 	s.f33 = (+s.F0*s.F0 - s.F1*s.F1 - s.F2*s.F2 + s.F3*s.F3)
 }
 
+// rotateByE rotates the input vector by the state's rotation matrix ee.
+func (s *State) rotateByE(a1, a2, a3 float64, inverse bool) (z1, z2, z3 float64) {
+	if inverse {
+		z1 = s.e11*a1 + s.e21*a2 + s.e31*a3
+		z2 = s.e12*a1 + s.e22*a2 + s.e32*a3
+		z3 = s.e13*a1 + s.e23*a2 + s.e33*a3
+		return
+	}
+	z1 = s.e11*a1 + s.e12*a2 + s.e13*a3
+	z2 = s.e21*a1 + s.e22*a2 + s.e23*a3
+	z3 = s.e31*a1 + s.e32*a2 + s.e33*a3
+	return
+}
+
 // rotateByF rotates the input vector by the state's rotation matrix ff.
-func (s *State) rotateByF(a1, a2, a3 float64) (z1, z2, z3 float64) {
+func (s *State) rotateByF(a1, a2, a3 float64, inverse bool) (z1, z2, z3 float64) {
+	if inverse {
+		z1 = s.f11*a1 + s.f21*a2 + s.f31*a3
+		z2 = s.f12*a1 + s.f22*a2 + s.f32*a3
+		z3 = s.f13*a1 + s.f23*a2 + s.f33*a3
+		return
+	}
 	z1 = s.f11*a1 + s.f12*a2 + s.f13*a3
 	z2 = s.f21*a1 + s.f22*a2 + s.f23*a3
 	z3 = s.f31*a1 + s.f32*a2 + s.f33*a3
