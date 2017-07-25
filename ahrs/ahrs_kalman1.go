@@ -36,6 +36,12 @@ import (
 
 type Kalman1State struct {
 	State
+	f     *matrix.DenseMatrix
+	z     *Measurement
+	y     *matrix.DenseMatrix
+	h     *matrix.DenseMatrix
+	ss    *matrix.DenseMatrix
+	kk    *matrix.DenseMatrix
 }
 
 // Initialize the state at the start of the Kalman filter, based on current measurements
@@ -48,15 +54,23 @@ func NewKalman1AHRS() (s *Kalman1State) {
 	s.normalize()
 	s.M = matrix.Zeros(32, 32)
 	s.N = matrix.Zeros(32, 32)
+	s.f = matrix.Zeros(32, 32)
+	s.z = NewMeasurement()
+	s.y = matrix.Zeros(15, 1)
+	s.h = matrix.Zeros(15, 32)
+	s.ss = matrix.Zeros(16, 15)
+	s.kk = matrix.Zeros(16, 15)
 	s.logMap = make(map[string]interface{})
 	s.updateLogMap(NewMeasurement(), s.logMap)
+
+	s.gLoad = 1
 	return
 }
 
 func (s *Kalman1State) init(m *Measurement) {
 	s.needsInitialization = false
 
-	s.E0 = 1 // Initial guess is East
+	s.E0, s.E1, s.E2, s.E3 = 1, 0, 0, 0 // Initial guess is East
 	//s.F0, s.F1, s.F2, s.F3 = 0, math.Sqrt(0.5), -math.Sqrt(0.5), 0
 	s.F0, s.F1, s.F2, s.F3 = 0, 0, 1, 0
 	s.normalize()
@@ -126,8 +140,8 @@ func (s *Kalman1State) predict(t float64) {
 	s.E0, s.E1, s.E2, s.E3 = QuaternionRotate(s.E0, s.E1, s.E2, s.E3, s.H1*dt*Deg, s.H2*dt*Deg, s.H3*dt*Deg)
 	s.T = t
 
-	f := s.calcJacobianState(t)
-	s.M = matrix.Sum(matrix.Product(f, matrix.Product(s.M, f.Transpose())), matrix.Scaled(s.N, dt))
+	s.calcJacobianState(t)
+	s.M = matrix.Sum(matrix.Product(s.f, matrix.Product(s.M, s.f.Transpose())), matrix.Scaled(s.N, dt))
 }
 
 // predictMeasurement returns the measurement expected given the current state.
@@ -145,17 +159,16 @@ func (s *Kalman1State) predictMeasurement() (m *Measurement) {
 
 // update applies the Kalman filter corrections given the measurements
 func (s *Kalman1State) update(m *Measurement) {
-	z := s.predictMeasurement()
+	s.z = s.predictMeasurement()
 
-	y := matrix.Zeros(15, 1)
-	y.Set(6, 0, m.A1-z.A1)
-	y.Set(7, 0, m.A2-z.A2)
-	y.Set(8, 0, m.A3-z.A3)
-	y.Set(9, 0, m.B1-z.B1)
-	y.Set(10, 0, m.B2-z.B2)
-	y.Set(11, 0, m.B3-z.B3)
+	s.y.Set(6, 0, m.A1-s.z.A1)
+	s.y.Set(7, 0, m.A2-s.z.A2)
+	s.y.Set(8, 0, m.A3-s.z.A3)
+	s.y.Set(9, 0, m.B1-s.z.B1)
+	s.y.Set(10, 0, m.B2-s.z.B2)
+	s.y.Set(11, 0, m.B3-s.z.B3)
 
-	h := s.calcJacobianMeasurement()
+	s.calcJacobianMeasurement()
 
 	var v float64
 	_, _, v = m.Accums[6](m.A1)
@@ -171,16 +184,16 @@ func (s *Kalman1State) update(m *Measurement) {
 	_, _, v = m.Accums[11](m.B3)
 	m.M.Set(11, 11, v)
 
-	ss := matrix.Sum(matrix.Product(h, matrix.Product(s.M, h.Transpose())), m.M)
+	s.ss = matrix.Sum(matrix.Product(s.h, matrix.Product(s.M, s.h.Transpose())), m.M)
 
-	m2, err := ss.Inverse()
+	m2, err := s.ss.Inverse()
 	if err != nil {
 		log.Println("AHRS: Can't invert Kalman gain matrix")
-		log.Printf("ss: %s\n", ss)
+		log.Printf("ss: %s\n", s.ss)
 		return
 	}
-	kk := matrix.Product(s.M, matrix.Product(h.Transpose(), m2))
-	su := matrix.Product(kk, y)
+	s.kk = matrix.Product(s.M, matrix.Product(s.h.Transpose(), m2))
+	su := matrix.Product(s.kk, s.y)
 	s.E0 += su.Get(6, 0)
 	s.E1 += su.Get(7, 0)
 	s.E2 += su.Get(8, 0)
@@ -192,93 +205,88 @@ func (s *Kalman1State) update(m *Measurement) {
 	s.D2 += su.Get(27, 0)
 	s.D3 += su.Get(28, 0)
 	s.T = m.T
-	s.M = matrix.Product(matrix.Difference(matrix.Eye(32), matrix.Product(kk, h)), s.M)
+	s.M = matrix.Product(matrix.Difference(matrix.Eye(32), matrix.Product(s.kk, s.h)), s.M)
 	s.normalize()
 }
 
-func (s *Kalman1State) calcJacobianState(t float64) (jac *matrix.DenseMatrix) {
+func (s *Kalman1State) calcJacobianState(t float64) {
 	dt := t - s.T
 
-	jac = matrix.Eye(32)
 	// U*3, Z*3, E*4, H*3, N*3,
 	// V*3, C*3, F*4, D*3, L*3
 
 	//s.E0 += 0.5*dt*(-s.E1*s.H1 - s.E2*s.H2 - s.E3*s.H3)*Deg
-	jac.Set(6, 7, -0.5*dt*s.H1*Deg)  // E0/E1
-	jac.Set(6, 8, -0.5*dt*s.H2*Deg)  // E0/E2
-	jac.Set(6, 9, -0.5*dt*s.H3*Deg)  // E0/E3
-	jac.Set(6, 10, -0.5*dt*s.E1*Deg) // E0/H1
-	jac.Set(6, 11, -0.5*dt*s.E2*Deg) // E0/H2
-	jac.Set(6, 12, -0.5*dt*s.E3*Deg) // E0/H3
+	s.f.Set(6, 7, -0.5*dt*s.H1*Deg) // E0/E1
+	s.f.Set(6, 8, -0.5*dt*s.H2*Deg) // E0/E2
+	s.f.Set(6, 9, -0.5*dt*s.H3*Deg) // E0/E3
+	s.f.Set(6, 10, -0.5*dt*s.E1*Deg) // E0/H1
+	s.f.Set(6, 11, -0.5*dt*s.E2*Deg) // E0/H2
+	s.f.Set(6, 12, -0.5*dt*s.E3*Deg) // E0/H3
 
 	//s.E1 += 0.5*dt*(+s.E0*s.H1 - s.E3*s.H2 + s.E2*s.H3)*Deg
-	jac.Set(7, 6, +0.5*dt*s.H1*Deg)  // E1/E0
-	jac.Set(7, 8, +0.5*dt*s.H3*Deg)  // E1/E2
-	jac.Set(7, 9, -0.5*dt*s.H2*Deg)  // E1/E3
-	jac.Set(7, 10, +0.5*dt*s.E0*Deg) // E1/H1
-	jac.Set(7, 11, -0.5*dt*s.E3*Deg) // E1/H2
-	jac.Set(7, 12, +0.5*dt*s.E2*Deg) // E1/H3
+	s.f.Set(7, 6, +0.5*dt*s.H1*Deg) // E1/E0
+	s.f.Set(7, 8, +0.5*dt*s.H3*Deg) // E1/E2
+	s.f.Set(7, 9, -0.5*dt*s.H2*Deg) // E1/E3
+	s.f.Set(7, 10, +0.5*dt*s.E0*Deg) // E1/H1
+	s.f.Set(7, 11, -0.5*dt*s.E3*Deg) // E1/H2
+	s.f.Set(7, 12, +0.5*dt*s.E2*Deg) // E1/H3
 
 	//s.E2 += 0.5*dt*(+s.E3*s.H1 + s.E0*s.H2 - s.E1*s.H3)*Deg
-	jac.Set(8, 6, +0.5*dt*s.H2*Deg)  // E2/E0
-	jac.Set(8, 7, -0.5*dt*s.H3*Deg)  // E2/E1
-	jac.Set(8, 9, +0.5*dt*s.H1*Deg)  // E2/E3
-	jac.Set(8, 10, +0.5*dt*s.E3*Deg) // E2/H1
-	jac.Set(8, 11, +0.5*dt*s.E0*Deg) // E2/H2
-	jac.Set(8, 12, -0.5*dt*s.E1*Deg) // E2/H3
+	s.f.Set(8, 6, +0.5*dt*s.H2*Deg) // E2/E0
+	s.f.Set(8, 7, -0.5*dt*s.H3*Deg) // E2/E1
+	s.f.Set(8, 9, +0.5*dt*s.H1*Deg) // E2/E3
+	s.f.Set(8, 10, +0.5*dt*s.E3*Deg) // E2/H1
+	s.f.Set(8, 11, +0.5*dt*s.E0*Deg) // E2/H2
+	s.f.Set(8, 12, -0.5*dt*s.E1*Deg) // E2/H3
 
 	//s.E3 += 0.5*dt*(-s.E2*s.H1 + s.E1*s.H2 + s.E0*s.H3)*Deg
-	jac.Set(9, 6, +0.5*dt*s.H3*Deg)  // E3/E0
-	jac.Set(9, 7, +0.5*dt*s.H2*Deg)  // E3/E1
-	jac.Set(9, 8, -0.5*dt*s.H1*Deg)  // E3/E2
-	jac.Set(9, 10, -0.5*dt*s.E2*Deg) // E3/H1
-	jac.Set(9, 11, +0.5*dt*s.E1*Deg) // E3/H2
-	jac.Set(9, 12, +0.5*dt*s.E0*Deg) // E3/H3
+	s.f.Set(9, 6, +0.5*dt*s.H3*Deg) // E3/E0
+	s.f.Set(9, 7, +0.5*dt*s.H2*Deg) // E3/E1
+	s.f.Set(9, 8, -0.5*dt*s.H1*Deg) // E3/E2
+	s.f.Set(9, 10, -0.5*dt*s.E2*Deg) // E3/H1
+	s.f.Set(9, 11, +0.5*dt*s.E1*Deg) // E3/H2
+	s.f.Set(9, 12, +0.5*dt*s.E0*Deg) // E3/H3
 
 	// H and D are constant.
 
 	return
 }
 
-func (s *Kalman1State) calcJacobianMeasurement() (jac *matrix.DenseMatrix) {
+func (s *Kalman1State) calcJacobianMeasurement() {
 
-	jac = matrix.Zeros(15, 32)
 	// U*3, Z*3, E*4, H*3, N*3,
 	// V*3, C*3, F*4, D*3, L*3
 	// U*3, W*3, A*3, B*3, M*3
 
-	// m.A1 = s.e31
-	// s.e31 = 2 * (-s.E0*s.E2 + s.E3*s.E1)
-	jac.Set(6, 6, -2*s.E2) // A1/E0
-	jac.Set(6, 7, +2*s.E3) // A1/E1
-	jac.Set(6, 8, -2*s.E0) // A1/E2
-	jac.Set(6, 9, +2*s.E1) // A1/E3
+	// m.A1 = s.e31 = 2 * (-s.E0*s.E2 + s.E3*s.E1)
+	s.h.Set(6, 6, -2*s.E2) // A1/E0
+	s.h.Set(6, 7, +2*s.E3) // A1/E1
+	s.h.Set(6, 8, -2*s.E0) // A1/E2
+	s.h.Set(6, 9, +2*s.E1) // A1/E3
 
-	// m.A2 = s.e32
-	//s.e32 = 2 * (+s.E0*s.E1 + s.E3*s.E2)
-	jac.Set(7, 6, +2*s.E1) // A2/E0
-	jac.Set(7, 7, +2*s.E0) // A2/E1
-	jac.Set(7, 8, +2*s.E3) // A2/E2
-	jac.Set(7, 9, +2*s.E2) // A2/E3
+	// m.A2 = s.e32 = 2 * (+s.E0*s.E1 + s.E3*s.E2)
+	s.h.Set(7, 6, +2*s.E1) // A2/E0
+	s.h.Set(7, 7, +2*s.E0) // A2/E1
+	s.h.Set(7, 8, +2*s.E3) // A2/E2
+	s.h.Set(7, 9, +2*s.E2) // A2/E3
 
-	// m.A3 = s.e33
-	// s.e33 = +s.E0*s.E0 - s.E1*s.E1 - s.E2*s.E2 + s.E3*s.E3
-	jac.Set(8, 6, +2*s.E0) // A3/E0
-	jac.Set(8, 7, -2*s.E1) // A3/E1
-	jac.Set(8, 8, -2*s.E2) // A3/E2
-	jac.Set(8, 9, +2*s.E3) // A3/E3
+	// m.A3 = s.e33 = +s.E0*s.E0 - s.E1*s.E1 - s.E2*s.E2 + s.E3*s.E3
+	s.h.Set(8, 6, +2*s.E0) // A3/E0
+	s.h.Set(8, 7, -2*s.E1) // A3/E1
+	s.h.Set(8, 8, -2*s.E2) // A3/E2
+	s.h.Set(8, 9, +2*s.E3) // A3/E3
 
-	//m.B1 = s.H1 + s.D1
-	jac.Set(9, 10, 1) // B1/H1
-	jac.Set(9, 26, 1) // B1/D1
+	// m.B1 = s.H1 + s.D1
+	s.h.Set(9, 10, 1) // B1/H1
+	s.h.Set(9, 26, 1) // B1/D1
 
-	//m.B2 = s.H2 + s.D2
-	jac.Set(10, 11, 1) // B2/H2
-	jac.Set(10, 27, 1) // B2/D2
+	// m.B2 = s.H2 + s.D2
+	s.h.Set(10, 11, 1) // B2/H2
+	s.h.Set(10, 27, 1) // B2/D2
 
-	//m.B3 = s.H3 + s.D3
-	jac.Set(11, 12, 1) // B3/H3
-	jac.Set(11, 28, 1) // B3/D3
+	// m.B3 = s.H3 + s.D3
+	s.h.Set(11, 12, 1) // B3/H3
+	s.h.Set(11, 28, 1) // B3/D3
 
 	return
 }
@@ -286,16 +294,36 @@ func (s *Kalman1State) calcJacobianMeasurement() (jac *matrix.DenseMatrix) {
 func (s *Kalman1State) updateLogMap(m *Measurement, p map[string]interface{}) {
 	s.State.updateLogMap(m, s.logMap)
 
+	/*
 	rv, pv, hv := s.State.RollPitchHeadingUncertainty()
 	p["RollVar"] = rv / Deg
 	p["PitchVar"] = pv / Deg
 	p["HeadingVar"] = hv / Deg
+	*/
 
-	for i := 0; i < 32; i++ {
-		for j := 0; j < 32; j++ {
-			p[fmt.Sprintf("M[%02d_%02d]", i, j)] = s.M.Get(i, j)
+	for k, v := range map[string]*matrix.DenseMatrix {
+		"f": s.f,   // f is the State Jacobian
+		"y": s.y,   // y is the correction betweeen actual and predicted measurements
+		"h": s.h,   // h is
+		"ss": s.ss, // ss is
+		"kk": s.kk, // kk is
+	} {
+		r, c := v.GetSize()
+		for i := 0; i < r; i++ {
+			for j := 0; j < c; j++ {
+				p[fmt.Sprintf("%s[%02d_%02d]", k, i, j)] = v.Get(i, j)
+			}
 		}
 	}
+
+	// z is the predicted measurement
+	p["zA1"] = s.z.A1
+	p["zA2"] = s.z.A2
+	p["zA3"] = s.z.A3
+	p["zB1"] = s.z.B1
+	p["zB2"] = s.z.B2
+	p["zB3"] = s.z.B3
+
 }
 
 var Kalman1JSONConfig = `{
