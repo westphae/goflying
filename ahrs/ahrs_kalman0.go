@@ -1,10 +1,11 @@
 /*
 Package ahrs implements a Kalman filter for determining aircraft kinematic state
 based on gyro (H) only
-* Stage 1: gyro + accel
-(Stage 2: gyro + accel + magnetometer)
-(Stage 3: gyro + accel + magnetometer + GPS/baro)
-(Stage 4: gyro + accel + magnetometer + GPS/baro + airspeed)
+* Stage 0: gyro + accel in one dimension
+Stage 1: gyro + accel in three dimensions
+Stage 2: gyro + accel + magnetometer
+Stage 3: gyro + accel + magnetometer + GPS/baro
+Stage 4: gyro + accel + magnetometer + GPS/baro + airspeed
 
 E is a quaternion translating from aircraft frame to earth frame (i.e. E_{ea}).
 H is the gyro rates in the aircraft frame
@@ -15,13 +16,14 @@ E -> E + 0.5*E*H*dt
 H -> H
 D -> D
 
-s.E0 += 0.5*dt*(-s.E1*s.H1 - s.E2*s.H2 - s.E3*s.H3)*Deg
-s.E1 += 0.5*dt*(+s.E0*s.H1 - s.E3*s.H2 + s.E2*s.H3)*Deg
-s.E2 += 0.5*dt*(+s.E3*s.H1 + s.E0*s.H2 - s.E1*s.H3)*Deg
-s.E3 += 0.5*dt*(-s.E2*s.H1 + s.E1*s.H2 + s.E0*s.H3)*Deg
+s.E0 += 0.5*dt*(-s.E1*s.H1)*Deg
+s.E1 += 0.5*dt*(+s.E0*s.H1)*Deg
+
+s.H1 += 0
+s.D1 += 0
 
 Measurement Predictions
-B = H + D
+B1 = H1 + D1
 */
 
 package ahrs
@@ -34,7 +36,7 @@ import (
 	"github.com/skelterjohn/go.matrix"
 )
 
-type Kalman1State struct {
+type Kalman0State struct {
 	State
 	f     *matrix.DenseMatrix
 	z     *Measurement
@@ -45,8 +47,8 @@ type Kalman1State struct {
 }
 
 // Initialize the state at the start of the Kalman filter, based on current measurements
-func NewKalman1AHRS() (s *Kalman1State) {
-	s = new(Kalman1State)
+func NewKalman0AHRS() (s *Kalman0State) {
+	s = new(Kalman0State)
 	s.needsInitialization = true
 	s.aNorm = 1
 	s.E0 = 1 // Initial guess is East
@@ -67,7 +69,7 @@ func NewKalman1AHRS() (s *Kalman1State) {
 	return
 }
 
-func (s *Kalman1State) init(m *Measurement) {
+func (s *Kalman0State) init(m *Measurement) {
 	s.needsInitialization = false
 
 	s.E0, s.E1, s.E2, s.E3 = 1, 0, 0, 0 // Initial guess is East
@@ -113,12 +115,12 @@ func (s *Kalman1State) init(m *Measurement) {
 
 	s.updateLogMap(m, s.logMap)
 
-	log.Println("Kalman1 Initialized")
+	log.Println("Kalman0 Initialized")
 	return
 }
 
 // Compute runs first the prediction and then the update phases of the Kalman filter
-func (s *Kalman1State) Compute(m *Measurement) {
+func (s *Kalman0State) Compute(m *Measurement) {
 	m.A1, m.A2, m.A3 = s.rotateByF(m.A1, m.A2, m.A3, false)
 	m.B1, m.B2, m.B3 = s.rotateByF(m.B1, m.B2, m.B3, false)
 
@@ -134,7 +136,7 @@ func (s *Kalman1State) Compute(m *Measurement) {
 }
 
 // predict performs the prediction phase of the Kalman filter
-func (s *Kalman1State) predict(t float64) {
+func (s *Kalman0State) predict(t float64) {
 	dt := t - s.T
 
 	// State vectors H and D are unchanged; only E evolves.
@@ -146,7 +148,7 @@ func (s *Kalman1State) predict(t float64) {
 }
 
 // predictMeasurement returns the measurement expected given the current state.
-func (s *Kalman1State) predictMeasurement() (m *Measurement) {
+func (s *Kalman0State) predictMeasurement() (m *Measurement) {
 	m = NewMeasurement()
 
 	m.SValid = true
@@ -159,7 +161,7 @@ func (s *Kalman1State) predictMeasurement() (m *Measurement) {
 }
 
 // update applies the Kalman filter corrections given the measurements
-func (s *Kalman1State) update(m *Measurement) {
+func (s *Kalman0State) update(m *Measurement) {
 	s.z = s.predictMeasurement()
 
 	s.y.Set(6, 0, m.A1-s.z.A1)
@@ -210,7 +212,7 @@ func (s *Kalman1State) update(m *Measurement) {
 	s.normalize()
 }
 
-func (s *Kalman1State) calcJacobianState(t float64) {
+func (s *Kalman0State) calcJacobianState(t float64) {
 	dt := t - s.T
 
 	// U*3, Z*3, E*4, H*3, N*3,
@@ -253,7 +255,7 @@ func (s *Kalman1State) calcJacobianState(t float64) {
 	return
 }
 
-func (s *Kalman1State) calcJacobianMeasurement() {
+func (s *Kalman0State) calcJacobianMeasurement() {
 
 	// U*3, Z*3, E*4, H*3, N*3,
 	// V*3, C*3, F*4, D*3, L*3
@@ -293,11 +295,11 @@ func (s *Kalman1State) calcJacobianMeasurement() {
 }
 
 // SetCalibrations sets the AHRS accelerometer calibrations to c and gyro calibrations to d.
-func (s *Kalman1State) SetCalibrations(c, d *[3]float64) {
+func (s *Kalman0State) SetCalibrations(c, d *[3]float64) {
 	return
 }
 
-func (s *Kalman1State) updateLogMap(m *Measurement, p map[string]interface{}) {
+func (s *Kalman0State) updateLogMap(m *Measurement, p map[string]interface{}) {
 	s.State.updateLogMap(m, s.logMap)
 
 	/*
@@ -334,7 +336,7 @@ func (s *Kalman1State) updateLogMap(m *Measurement, p map[string]interface{}) {
 
 }
 
-var Kalman1JSONConfig = `{
+var Kalman0JSONConfig = `{
   "State": [
     ["Roll", "RollActual", 0],
     ["Pitch", "PitchActual", 0],
