@@ -217,36 +217,36 @@ func (s *Kalman1State) calcJacobianState(t float64) {
 	// V*3, C*3, F*4, D*3, L*3
 
 	//s.E0 += 0.5*dt*(-s.E1*s.H1 - s.E2*s.H2 - s.E3*s.H3)*Deg
-	s.f.Set(6, 7, 1-0.5*dt*s.H1*Deg) // E0/E1
-	s.f.Set(6, 8, 1-0.5*dt*s.H2*Deg) // E0/E2
-	s.f.Set(6, 9, 1-0.5*dt*s.H3*Deg) // E0/E3
-	s.f.Set(6, 10, 1-0.5*dt*s.E1*Deg) // E0/H1
-	s.f.Set(6, 11, 1-0.5*dt*s.E2*Deg) // E0/H2
-	s.f.Set(6, 12, 1-0.5*dt*s.E3*Deg) // E0/H3
+	s.f.Set(6, 7, -0.5*dt*s.H1*Deg) // E0/E1
+	s.f.Set(6, 8, -0.5*dt*s.H2*Deg) // E0/E2
+	s.f.Set(6, 9, -0.5*dt*s.H3*Deg) // E0/E3
+	s.f.Set(6, 10, -0.5*dt*s.E1*Deg) // E0/H1
+	s.f.Set(6, 11, -0.5*dt*s.E2*Deg) // E0/H2
+	s.f.Set(6, 12, -0.5*dt*s.E3*Deg) // E0/H3
 
 	//s.E1 += 0.5*dt*(+s.E0*s.H1 - s.E3*s.H2 + s.E2*s.H3)*Deg
-	s.f.Set(7, 6, 1+0.5*dt*s.H1*Deg) // E1/E0
-	s.f.Set(7, 8, 1+0.5*dt*s.H3*Deg) // E1/E2
-	s.f.Set(7, 9, 1-0.5*dt*s.H2*Deg) // E1/E3
-	s.f.Set(7, 10, 1+0.5*dt*s.E0*Deg) // E1/H1
-	s.f.Set(7, 11, 1-0.5*dt*s.E3*Deg) // E1/H2
-	s.f.Set(7, 12, 1+0.5*dt*s.E2*Deg) // E1/H3
+	s.f.Set(7, 6, +0.5*dt*s.H1*Deg) // E1/E0
+	s.f.Set(7, 8, +0.5*dt*s.H3*Deg) // E1/E2
+	s.f.Set(7, 9, -0.5*dt*s.H2*Deg) // E1/E3
+	s.f.Set(7, 10, +0.5*dt*s.E0*Deg) // E1/H1
+	s.f.Set(7, 11, -0.5*dt*s.E3*Deg) // E1/H2
+	s.f.Set(7, 12, +0.5*dt*s.E2*Deg) // E1/H3
 
 	//s.E2 += 0.5*dt*(+s.E3*s.H1 + s.E0*s.H2 - s.E1*s.H3)*Deg
-	s.f.Set(8, 6, 1+0.5*dt*s.H2*Deg) // E2/E0
-	s.f.Set(8, 7, 1-0.5*dt*s.H3*Deg) // E2/E1
-	s.f.Set(8, 9, 1+0.5*dt*s.H1*Deg) // E2/E3
-	s.f.Set(8, 10, 1+0.5*dt*s.E3*Deg) // E2/H1
-	s.f.Set(8, 11, 1+0.5*dt*s.E0*Deg) // E2/H2
-	s.f.Set(8, 12, 1-0.5*dt*s.E1*Deg) // E2/H3
+	s.f.Set(8, 6, +0.5*dt*s.H2*Deg) // E2/E0
+	s.f.Set(8, 7, -0.5*dt*s.H3*Deg) // E2/E1
+	s.f.Set(8, 9, +0.5*dt*s.H1*Deg) // E2/E3
+	s.f.Set(8, 10, +0.5*dt*s.E3*Deg) // E2/H1
+	s.f.Set(8, 11, +0.5*dt*s.E0*Deg) // E2/H2
+	s.f.Set(8, 12, -0.5*dt*s.E1*Deg) // E2/H3
 
 	//s.E3 += 0.5*dt*(-s.E2*s.H1 + s.E1*s.H2 + s.E0*s.H3)*Deg
-	s.f.Set(9, 6, 1+0.5*dt*s.H3*Deg) // E3/E0
-	s.f.Set(9, 7, 1+0.5*dt*s.H2*Deg) // E3/E1
-	s.f.Set(9, 8, 1-0.5*dt*s.H1*Deg) // E3/E2
-	s.f.Set(9, 10, 1-0.5*dt*s.E2*Deg) // E3/H1
-	s.f.Set(9, 11, 1+0.5*dt*s.E1*Deg) // E3/H2
-	s.f.Set(9, 12, 1+0.5*dt*s.E0*Deg) // E3/H3
+	s.f.Set(9, 6, +0.5*dt*s.H3*Deg) // E3/E0
+	s.f.Set(9, 7, +0.5*dt*s.H2*Deg) // E3/E1
+	s.f.Set(9, 8, -0.5*dt*s.H1*Deg) // E3/E2
+	s.f.Set(9, 10, -0.5*dt*s.E2*Deg) // E3/H1
+	s.f.Set(9, 11, +0.5*dt*s.E1*Deg) // E3/H2
+	s.f.Set(9, 12, +0.5*dt*s.E0*Deg) // E3/H3
 
 	// H and D are constant.
 
