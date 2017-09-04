@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"../mpu9250"
+	"../../mpu9250"
 	"github.com/gorilla/websocket"
 )
 
