@@ -10,13 +10,14 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"../ahrs"
-	"io/ioutil"
-	"strconv"
+	"encoding/json"
 )
 
 func parseFloatArrayString(str string, a *[]float64) (err error) {
@@ -39,19 +40,22 @@ func main() {
 		gyroBias, accelBias, magBias                        []float64
 		gpsInop, magInop, asiInop                           bool
 		algo                                                string
+		ahrsConfigStr                                       string
+		ahrsConfig                                          map[string]float64
 		s                                                   ahrs.AHRSProvider
 		scenario                                            string
 		sit                                                 Situation
 		err                                                 error
 	)
+
 	gyroBias = make([]float64, 3)
 	accelBias = make([]float64, 3)
 	magBias = make([]float64, 3)
 
 	const (
-		defaultPdt        = 0.1
+		defaultPdt        = 0.05
 		pdtUsage          = "Kalman filter predict period, seconds"
-		defaultUdt        = 0.1
+		defaultUdt        = 0.05
 		udtUsage          = "Kalman filter update period, seconds"
 		defaultGyroNoise  = 0.0
 		gyroNoiseUsage    = "Amount of noise to add to gyro measurements, °/s"
@@ -81,6 +85,8 @@ func main() {
 		scenarioUsage     = "Scenario to use: filename or \"takeoff\" or \"turn\""
 		defaultAlgo       = "simple"
 		algoUsage         = "Algo to use for AHRS: simple (default), heuristic, kalman, kalman1, kalman2"
+		defaultConfig     = ""
+		configUsage       = "json-formatted map for AHRS Config"
 	)
 
 	flag.Float64Var(&pdt, "pdt", defaultPdt, pdtUsage)
@@ -109,13 +115,17 @@ func main() {
 	flag.StringVar(&scenario, "scenario", defaultScenario, scenarioUsage)
 	flag.StringVar(&scenario, "s", defaultScenario, scenarioUsage)
 	flag.StringVar(&algo, "algo", defaultAlgo, algoUsage)
+	flag.StringVar(&ahrsConfigStr, "config", defaultConfig, configUsage)
+	flag.StringVar(&ahrsConfigStr, "c", defaultConfig, configUsage)
 	flag.Parse()
 
 	switch scenario {
+	/*
 	case "takeoff":
 		sit = sitTakeoffDef
 	case "turn":
 		sit = sitTurnDef
+	*/
 	default:
 		log.Printf("Loading data from %s\n", scenario)
 		sit, err = NewSituationFromFile(scenario)
@@ -129,29 +139,18 @@ func main() {
 
 	fmt.Println("Simulation parameters:")
 	switch strings.ToLower(algo) {
-	case "simple":
-		fmt.Println("Running simple AHRS")
-		ioutil.WriteFile("config.json", []byte(ahrs.SimpleJSONConfig), 0644)
-		s = ahrs.InitializeSimple(m, "ahrs.csv")
-	case "heuristic":
-		fmt.Println("Running heuristic AHRS")
-		ioutil.WriteFile("config.json", []byte(ahrs.HeuristicJSONConfig), 0644)
-		s = ahrs.InitializeHeuristic(m)
+	/*
 	case "kalman":
 		fmt.Println("Running Kalman AHRS")
 		ioutil.WriteFile("config.json", []byte(ahrs.KalmanJSONConfig), 0644)
 		s = ahrs.InitializeKalman(m)
-	case "kalman1":
-		fmt.Println("Running Kalman1 AHRS")
-		ioutil.WriteFile("config.json", []byte(ahrs.Kalman1JSONConfig), 0644)
-		s = ahrs.InitializeKalman1(m)
-	case "kalman2":
-		fmt.Println("Running Kalman2 AHRS")
-		ioutil.WriteFile("config.json", []byte(ahrs.Kalman2JSONConfig), 0644)
-		s = ahrs.InitializeKalman2(m)
+	*/
+	case "simple":
+		fallthrough // simple is the default.
 	default:
-		fmt.Printf("No such AHRS implementation: %s\n", algo)
-		return
+		fmt.Println("Running simple AHRS")
+		ioutil.WriteFile("config.json", []byte(ahrs.SimpleJSONConfig), 0644)
+		s = ahrs.NewSimpleAHRS()
 	}
 
 	if err := parseFloatArrayString(gyroBiasStr, &gyroBias); err != nil {
@@ -189,44 +188,58 @@ func main() {
 
 	uBias := []float64{asiBias, 0, 0}
 
+	if err := json.Unmarshal([]byte(ahrsConfigStr), &ahrsConfig); err != nil {
+		log.Printf("Bad config: %s\n", err.Error())
+	}
+	log.Printf("ahrs config: %v\n", ahrsConfig)
+	s.SetConfig(ahrsConfig)
+
+	// Set up logging
+	logMap := s.GetLogMap()
+	logMapActual := sit.GetLogMap()
+	var transferLogMap = func() {
+		for k, v := range logMapActual {
+			logMap[k + "Actual"] = v
+		}
+	}
+	transferLogMap()
+	ahrsLogger := ahrs.NewAHRSLogger("ahrs.csv", logMap)
+
 	// This is where it all happens
 	fmt.Println("Running Simulation")
-	t := sit.BeginTime()
-	tNextUpdate := t + udt
-	sit.Measurement(t, m, !asiInop, !gpsInop, true, !magInop,
+	sit.BeginTime()
+	sit.UpdateMeasurement(m, !asiInop, !gpsInop, true, !magInop,
 		asiNoise, gpsNoise, accelNoise, gyroNoise, magNoise,
 		uBias, accelBias, gyroBias, magBias)
 
 	for {
-		if t > tNextUpdate-1e-9 {
-			t = tNextUpdate
-		}
-
 		// Peek behind the curtain: the "actual" state, which the algorithm doesn't know
-		if err := sit.Interpolate(t, s0, accelBias, gyroBias, magBias); err != nil {
-			log.Printf("Interpolation error at time %f: %s\n", t, err)
+		if err := sit.UpdateState(s0, accelBias, gyroBias, magBias); err != nil {
+			log.Printf("Interpolation error at time %f: %s\n", m.T, err)
 			break
 		}
 		//TODO westphae: log actual state
 
 		// Take sensor measurements
-		if err := sit.Measurement(t, m, !asiInop, !gpsInop, true, !magInop,
+		if err := sit.UpdateMeasurement(m, !asiInop, !gpsInop, true, !magInop,
 			asiNoise, gpsNoise, accelNoise, gyroNoise, magNoise,
 			uBias, accelBias, gyroBias, magBias); err != nil {
-			log.Printf("Measurement error at time %f: %s\n", t, err)
+			log.Printf("Measurement error at time %f: %s\n", m.T, err)
 			break
 		}
 
-		// Predict stage of Kalman filter
-		s.Predict(t)
+		s.Compute(m)
 
-		// Update stage of Kalman filter
-		if t > tNextUpdate-1e-9 {
-			tNextUpdate += udt
-			s.Update(m)
+		// Log to csv for serving
+		transferLogMap()
+		ahrsLogger.Log()
+
+		err = sit.NextTime()
+		if err != nil {
+			log.Println(err)
+			break
 		}
 
-		t += pdt
 	}
 
 	// Run analysis web server

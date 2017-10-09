@@ -7,7 +7,7 @@ This book is highly recommended!
 package main
 
 import (
-	"../../ahrsweb"
+	"../../../ahrsweb"
 	"flag"
 	"fmt"
 	"html/template"

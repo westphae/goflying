@@ -37,5 +37,8 @@ out/
 *.lyx~
 
 mpu9250/motion_driver_6_1/
-sim/sim
+sim/ahrs_sim
 public
+ahrsweb_server
+calibration
+AHRS_Math.pdf

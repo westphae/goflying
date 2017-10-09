@@ -460,12 +460,17 @@ Using the Taylor Series expansion of
 \end_inset
 
 .
- We must get the same rotation whether we simply rotate by 
+ We must get the same rotation whether we rotate by the new rotation quaternion
+ 
+\begin_inset Formula $q_{ea}+\dot{q}_{ea}dt$
+\end_inset
+
+ or if we first rotate into the earth frame with the old rotation 
 \begin_inset Formula $q_{ea}$
 \end_inset
 
- or if we first applying the gyro rate 
-\begin_inset Formula $h_{a}$
+ and then apply the gyro rate in the earth frame 
+\begin_inset Formula $h_{e}$
 \end_inset
 
  for an infinitesimal time (the factor 
@@ -473,22 +478,17 @@ Using the Taylor Series expansion of
 \end_inset
 
  in the formula below is the usual factor in the relation of quaternion
- to rotation angles) and then rotating into the airplane frame with the
- new rotation 
-\begin_inset Formula $q_{ea}+\dot{q}_{ea}dt$
-\end_inset
-
-, so
+ to rotation angles), so
 \end_layout
 
 \begin_layout Standard
 \begin_inset Formula 
 \begin{eqnarray*}
-q_{ea} & = & (q_{ea}+\dot{q}_{ea}dt)(1+\tfrac{1}{2}h_{a}dt)\\
-q_{ea} & = & q_{ea}+\tfrac{1}{2}q_{ea}h_{a}dt+\dot{q}_{ea}dt\\
-\dot{q}_{ea} & = & -\tfrac{1}{2}q_{ea}h_{a}\\
-\dot{q}_{ea} & = & -\tfrac{1}{2}q_{ea}q_{as}h_{s}q_{sa}\\
-q_{ae}\dot{q}_{ea} & = & -\tfrac{1}{2}q_{as}h_{s}q_{sa}
+q_{ea}+\dot{q}_{ea}dt & = & (1+\tfrac{1}{2}h_{e}dt)q_{ea}\\
+q_{ea}+\dot{q}_{ea}dt & = & q_{ea}+\tfrac{1}{2}h_{e}q_{ea}dt\\
+\dot{q}_{ea} & = & \tfrac{1}{2}h_{e}q_{ea}\\
+\dot{q}_{ea} & = & \tfrac{1}{2}q_{ea}h_{a}\\
+\dot{q}_{ea} & = & \tfrac{1}{2}q_{ea}q_{as}h_{s}q_{sa}
 \end{eqnarray*}
 
 \end_inset
@@ -514,7 +514,7 @@ So our kinematic equations are
 \begin_layout Standard
 \begin_inset Formula 
 \[
-\dot{q}_{ea}=-\tfrac{1}{2}q_{ea}q_{as}h_{s}q_{sa}
+\dot{q}_{ea}=\tfrac{1}{2}q_{ea}q_{as}h_{s}q_{sa}
 \]
 
 \end_inset

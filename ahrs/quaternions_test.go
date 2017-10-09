@@ -71,18 +71,18 @@ func TestRoundTrips(t *testing.T) {
 }
 
 func TestSpecificToQuaternion(t *testing.T) {
-	phis :=   []float64{ 0,    0,  0,      0,      0,    0,        0,  Pi/3, Pi/3, -2*Pi/3}
-	thetas := []float64{ 0,    0,  0,      0,      0, Pi/3,    -Pi/3,     0,    0,       0}
-	psis :=   []float64{ 0, Pi/2, Pi, 4*Pi/3, 3*Pi/2, Pi/2,   5*Pi/3,  Pi/2,    0,      Pi}
-	u1s :=    []float64{ 0,    1,  0,   -c30,     -1,  c60, -c30*c60,     1,    0,       0}
-	u2s :=    []float64{ 1,    0, -1,   -c60,      0,    0,  c60*c60,     0,    1,      -1}
-	u3s :=    []float64{ 0,    0,  0,      0,      0,  c30,     -c30,     0,    0,       0}
-	v1s :=    []float64{-1,    0,  1,    c60,      0,    0,     -c60,     0, -c60,    -c60}
-	v2s :=    []float64{ 0,    1,  0,   -c30,     -1,    1,     -c30,   c60,    0,       0}
-	v3s :=    []float64{ 0,    0,  0,      0,      0,    0,        0,   c30,  c30,    -c30}
-	w1s :=    []float64{ 0,    0,  0,      0,      0, -c30, -c30*c30,     0,  c30,     c30}
-	w2s :=    []float64{ 0,    0,  0,      0,      0,    0,  c60*c30,  -c30,    0,       0}
-	w3s :=    []float64{ 1,    1,  1,      1,      1,  c60,      c60,   c60,  c60,    -c60}
+	phis := []float64{0, 0, 0, 0, 0, 0, 0, Pi / 3, Pi / 3, -2 * Pi / 3}
+	thetas := []float64{0, 0, 0, 0, 0, Pi / 3, -Pi / 3, 0, 0, 0}
+	psis := []float64{0, Pi / 2, Pi, 4 * Pi / 3, 3 * Pi / 2, Pi / 2, 5 * Pi / 3, Pi / 2, 0, Pi}
+	u1s := []float64{0, 1, 0, -c30, -1, c60, -c30 * c60, 1, 0, 0}
+	u2s := []float64{1, 0, -1, -c60, 0, 0, c60 * c60, 0, 1, -1}
+	u3s := []float64{0, 0, 0, 0, 0, c30, -c30, 0, 0, 0}
+	v1s := []float64{-1, 0, 1, c60, 0, 0, -c60, 0, -c60, -c60}
+	v2s := []float64{0, 1, 0, -c30, -1, 1, -c30, c60, 0, 0}
+	v3s := []float64{0, 0, 0, 0, 0, 0, 0, c30, c30, -c30}
+	w1s := []float64{0, 0, 0, 0, 0, -c30, -c30 * c30, 0, c30, c30}
+	w2s := []float64{0, 0, 0, 0, 0, 0, c60 * c30, -c30, 0, 0}
+	w3s := []float64{1, 1, 1, 1, 1, c60, c60, c60, c60, -c60}
 
 	x := quaternion.Quaternion{X: 1}
 	y := quaternion.Quaternion{Y: 1}
