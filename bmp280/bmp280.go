@@ -6,10 +6,10 @@ Reference 2: https://forums.adafruit.com/viewtopic.php?f=19&t=89049
 package bmp280
 
 import (
+	"../embd"
+	_ "../embd/host/all"
+	_ "../embd/host/rpi"
 	"fmt"
-	"github.com/kidoman/embd"
-	_ "github.com/kidoman/embd/host/all"
-	_ "github.com/kidoman/embd/host/rpi"
 	"log"
 	"math"
 	"time"
@@ -17,16 +17,16 @@ import (
 
 const (
 	// I2C Address Definitions
-	Address1  = 0x76
-	Address2  = 0x77
+	Address1 = 0x76
+	Address2 = 0x77
 	// Chip ID Definitions
-	ChipID1   = 0x56
-	ChipID2   = 0x57
-	ChipID3   = 0x58
+	ChipID1 = 0x56
+	ChipID2 = 0x57
+	ChipID3 = 0x58
 	// Power Mode Definitions
-	SleepMode = 0x00
-	ForcedMode = 0x01
-	NormalMode = 0x03
+	SleepMode     = 0x00
+	ForcedMode    = 0x01
+	NormalMode    = 0x03
 	SoftResetCode = 0xB6
 	// Standby Time Definitions
 	StandbyTime1ms    = 0x00
@@ -52,7 +52,7 @@ const (
 	Oversamp16x     = 0x05
 	// Working Mode Definitions
 	UltraLowPowerMode       = 0X00
-	LowPowerMode	        = 0X01
+	LowPowerMode            = 0X01
 	StandardResolutionMode  = 0X02
 	HighResolutionMode      = 0X03
 	UltraHighResolutionMode = 0x04
@@ -91,14 +91,14 @@ type BMPData struct {
 }
 
 type BMP280 struct {
-	i2cbus    *embd.I2CBus
+	i2cbus *embd.I2CBus
 
 	address byte
 	chipID  byte
 	config  byte
 	control byte
 
-	t       time.Time
+	t time.Time
 
 	Delay time.Duration
 
@@ -148,7 +148,7 @@ func NewBMP280(i2cbus *embd.I2CBus, address, powerMode, standby, filter, tempRes
 	fmt.Printf("BMP280: Successful connection, ChipID %x\n", v[0])
 	bmp.chipID = v[0]
 
-	bmp.config = (standby << 5) + (filter << 2)              // combine bits for config
+	bmp.config = (standby << 5) + (filter << 2)               // combine bits for config
 	bmp.control = (tempRes << 5) + (presRes << 2) + powerMode // combine bits for control
 
 	bmp.t = time.Now()
@@ -184,7 +184,7 @@ func delayFromStandby(standby byte) (delay time.Duration) {
 	} else if standby == 1 {
 		delay = 62500 * time.Microsecond
 	} else {
-		delay = time.Duration(int(4000) >> uint(7 - standby)) * time.Millisecond
+		delay = time.Duration(int(4000)>>uint(7-standby)) * time.Millisecond
 	}
 	return
 }
@@ -197,14 +197,14 @@ func (bmp *BMP280) ReadCorrectionSettings() (err error) {
 		err = fmt.Errorf("BMP280: Error reading calibration: %s", errf)
 	}
 
-	bmp.DigT[1] = int32(raw[1]) << 8 + int32(raw[0])
-	for i:=1; i<3; i++ {
-		bmp.DigT[i+1] = int32(int16(raw[2*i+1]) << 8 + int16(raw[2*i]))
+	bmp.DigT[1] = int32(raw[1])<<8 + int32(raw[0])
+	for i := 1; i < 3; i++ {
+		bmp.DigT[i+1] = int32(int16(raw[2*i+1])<<8 + int16(raw[2*i]))
 	}
 
-	bmp.DigP[1] = int64(raw[7]) << 8 + int64(raw[6])
-	for i:=1; i<9; i++ {
-		bmp.DigP[i+1] = int64(int16(raw[2*i+7]) << 8 + int16(raw[2*i+6]))
+	bmp.DigP[1] = int64(raw[7])<<8 + int64(raw[6])
+	for i := 1; i < 9; i++ {
+		bmp.DigP[i+1] = int64(int16(raw[2*i+7])<<8 + int16(raw[2*i+6]))
 	}
 
 	return
@@ -438,4 +438,3 @@ func (bmp *BMP280) i2cReadBytes(register byte, value []byte) (err error) {
 	}
 	return
 }
-

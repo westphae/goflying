@@ -10,14 +10,14 @@ import (
 	"math"
 	"time"
 
-	"github.com/kidoman/embd"
-	_ "github.com/kidoman/embd/host/all" // Empty import needed to initialize embd library.
-	_ "github.com/kidoman/embd/host/rpi" // Empty import needed to initialize embd library.
+	"../embd"
+	_ "../embd/host/all"
+	_ "../embd/host/rpi"
 )
 
 const (
-	bufSize         = 250 // Size of buffer storing instantaneous sensor values
-	scaleMag        = 9830.0 / 65536
+	bufSize  = 250 // Size of buffer storing instantaneous sensor values
+	scaleMag = 9830.0 / 65536
 )
 
 // MPUData contains all the values measured by an MPU9250.
@@ -305,9 +305,9 @@ func (mpu *MPU9250) readSensors() {
 			d.GAError = errors.New("MPU9250 Warning: No new accel/gyro values")
 		}
 		if nm > 0 {
-			d.M1 = float64(avm1)*mpu.mcal1/nm
-			d.M2 = float64(avm2)*mpu.mcal2/nm
-			d.M3 = float64(avm3)*mpu.mcal3/nm
+			d.M1 = float64(avm1) * mpu.mcal1 / nm
+			d.M2 = float64(avm2) * mpu.mcal2 / nm
+			d.M3 = float64(avm3) * mpu.mcal3 / nm
 			d.NM = int(nm + 0.5)
 			d.TM = tm
 			d.DTM = t.Sub(t0m)

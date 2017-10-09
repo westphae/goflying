@@ -2,8 +2,8 @@ package main
 
 import (
 	"../../bmp280"
+	"../../embd"
 	"fmt"
-	"github.com/kidoman/embd"
 	"time"
 )
 
