@@ -53,13 +53,13 @@ func (d *mpuCalData) reset() {
 func (d *mpuCalData) save() {
 	fd, err := os.OpenFile(calDataLocation, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(0644))
 	if err != nil {
-		log.Errorf("MPU9250: Error saving calibration data to %s: %s", calDataLocation, err.Error())
+		log.Printf("MPU9250: Error saving calibration data to %s: %s", calDataLocation, err.Error())
 		return
 	}
 	defer fd.Close()
 	calData, err := json.Marshal(d)
 	if err != nil {
-		log.Errorf("MPU9250: Error marshaling calibration data: %s", err)
+		log.Printf("MPU9250: Error marshaling calibration data: %s", err)
 		return
 	}
 	fd.Write(calData)

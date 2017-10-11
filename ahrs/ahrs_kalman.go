@@ -137,7 +137,7 @@ func (s *KalmanState) Valid() (ok bool) {
 	roll, pitch, heading := s.CalcRollPitchHeading()
 	droll, dpitch, dheading := s.CalcRollPitchHeadingUncertainty()
 	if droll > 2.5*Deg || dpitch > 2.5*Deg {
-		log.Errorf("AHRS too uncertain: roll %5.1f +/- %3.1f, pitch %4.1f +/- %3.1f, heading %5.1f +/- %3.1f\n",
+		log.Printf("AHRS too uncertain: roll %5.1f +/- %3.1f, pitch %4.1f +/- %3.1f, heading %5.1f +/- %3.1f\n",
 			roll/Deg, droll/Deg, pitch/Deg, dpitch/Deg, heading/Deg, dheading/Deg)
 		ok = false
 	}

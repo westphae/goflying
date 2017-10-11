@@ -205,7 +205,7 @@ func (s *SimpleState) Update(m *Measurement) {
 	// rotmat maps the current IMU acceleration to the GPS-acceleration and the x-axis to the GPS-velocity.
 	rotmat, err := MakeHardSoftRotationMatrix(*ha, [3]float64{1, 0, 0}, *he, *se)
 	if err != nil {
-		log.Errorf("AHRS Error: %s\n", err)
+		log.Printf("AHRS Error: %s\n", err)
 		return
 	}
 
