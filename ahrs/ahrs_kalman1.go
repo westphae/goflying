@@ -31,7 +31,6 @@ package ahrs
 
 import (
 	"github.com/skelterjohn/go.matrix"
-	"log"
 	"math"
 )
 
