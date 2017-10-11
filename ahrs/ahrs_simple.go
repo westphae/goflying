@@ -105,7 +105,7 @@ func (s *SimpleState) init(m *Measurement) {
 
 	// Initialize Magnetic Heading.
 	_, a2, a3 := s.rotateByF(-m.A1, -m.A2, -m.A3)
-	_, _, b3 := s.rotateByF(m.B1 - s.D1, m.B2 - s.D2, m.B3 - s.D3)
+	_, _, b3 := s.rotateByF(m.B1-s.D1, m.B2-s.D2, m.B3-s.D3)
 	m1, m2, _ := s.rotateByF(m.M1, m.M2, m.M3)
 	s.headingMag = math.Atan2(m1, -m2)
 	for s.headingMag < 0 {
@@ -150,14 +150,13 @@ func (s *SimpleState) Update(m *Measurement) {
 	dtw := m.TW - s.tW
 
 	if dt > maxDT || dtw > maxDT {
-		log.Printf("AHRS Info: Reinitializing at %f\n", m.T)
 		s.init(m)
 		return
 	}
 
 	// Rotate measurements from sensor frame to aircraft frame
 	a1, a2, a3 := s.rotateByF(-m.A1, -m.A2, -m.A3)
-	b1, b2, b3 := s.rotateByF(m.B1 - s.D1, m.B2 - s.D2, m.B3 - s.D3)
+	b1, b2, b3 := s.rotateByF(m.B1-s.D1, m.B2-s.D2, m.B3-s.D3)
 	m1, m2, m3 := s.rotateByF(m.M1, m.M2, m.M3)
 
 	// Update estimates of current gyro  and accel rates
@@ -185,7 +184,6 @@ func (s *SimpleState) Update(m *Measurement) {
 			return
 		}
 		if dtw < minDT {
-			log.Printf("No GPS update at %f\n", m.T)
 			return
 		}
 		ve = [3]float64{m.W1, m.W2, m.W3} // Instantaneous groundspeed in earth frame
@@ -197,7 +195,6 @@ func (s *SimpleState) Update(m *Measurement) {
 
 	ha, err := MakeUnitVector([3]float64{s.Z1, s.Z2, s.Z3})
 	if err != nil {
-		log.Println("AHRS Error: IMU-measured acceleration was zero")
 		return
 	}
 
@@ -208,7 +205,7 @@ func (s *SimpleState) Update(m *Measurement) {
 	// rotmat maps the current IMU acceleration to the GPS-acceleration and the x-axis to the GPS-velocity.
 	rotmat, err := MakeHardSoftRotationMatrix(*ha, [3]float64{1, 0, 0}, *he, *se)
 	if err != nil {
-		log.Printf("AHRS Error: %s\n", err)
+		log.Errorf("AHRS Error: %s\n", err)
 		return
 	}
 
@@ -264,7 +261,7 @@ func (s *SimpleState) Update(m *Measurement) {
 	}
 
 	// Update GLoad
-	s.gLoad += slowSmoothConst * (-a3 / s.aNorm - s.gLoad)
+	s.gLoad += slowSmoothConst * (-a3/s.aNorm - s.gLoad)
 
 	updateLogMap(s, m, s.logMap)
 
@@ -433,18 +430,18 @@ func updateLogMap(s *SimpleState, m *Measurement, p map[string]interface{}) {
 		"EGyr1":      func(s *SimpleState, m *Measurement) float64 { return s.eGyr1 },
 		"EGyr2":      func(s *SimpleState, m *Measurement) float64 { return s.eGyr2 },
 		"EGyr3":      func(s *SimpleState, m *Measurement) float64 { return s.eGyr3 },
-		"Z1":        func(s *SimpleState, m *Measurement) float64 { return s.Z1 },
-		"Z2":        func(s *SimpleState, m *Measurement) float64 { return s.Z2 },
-		"Z3":        func(s *SimpleState, m *Measurement) float64 { return s.Z3 },
-		"C1":        func(s *SimpleState, m *Measurement) float64 { return s.C1 },
-		"C2":        func(s *SimpleState, m *Measurement) float64 { return s.C2 },
-		"C3":        func(s *SimpleState, m *Measurement) float64 { return s.C3 },
+		"Z1":         func(s *SimpleState, m *Measurement) float64 { return s.Z1 },
+		"Z2":         func(s *SimpleState, m *Measurement) float64 { return s.Z2 },
+		"Z3":         func(s *SimpleState, m *Measurement) float64 { return s.Z3 },
+		"C1":         func(s *SimpleState, m *Measurement) float64 { return s.C1 },
+		"C2":         func(s *SimpleState, m *Measurement) float64 { return s.C2 },
+		"C3":         func(s *SimpleState, m *Measurement) float64 { return s.C3 },
 		"A1":         func(s *SimpleState, m *Measurement) float64 { return m.A1 },
 		"A2":         func(s *SimpleState, m *Measurement) float64 { return m.A2 },
 		"A3":         func(s *SimpleState, m *Measurement) float64 { return m.A3 },
-		"H1":        func(s *SimpleState, m *Measurement) float64 { return s.H1 },
-		"H2":        func(s *SimpleState, m *Measurement) float64 { return s.H2 },
-		"H3":        func(s *SimpleState, m *Measurement) float64 { return s.H3 },
+		"H1":         func(s *SimpleState, m *Measurement) float64 { return s.H1 },
+		"H2":         func(s *SimpleState, m *Measurement) float64 { return s.H2 },
+		"H3":         func(s *SimpleState, m *Measurement) float64 { return s.H3 },
 		"D1":         func(s *SimpleState, m *Measurement) float64 { return s.D1 },
 		"D2":         func(s *SimpleState, m *Measurement) float64 { return s.D2 },
 		"D3":         func(s *SimpleState, m *Measurement) float64 { return s.D3 },

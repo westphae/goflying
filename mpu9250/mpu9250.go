@@ -53,18 +53,16 @@ func (d *mpuCalData) reset() {
 func (d *mpuCalData) save() {
 	fd, err := os.OpenFile(calDataLocation, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(0644))
 	if err != nil {
-		log.Printf("MPU9250: Error saving calibration data to %s: %s", calDataLocation, err.Error())
+		log.Errorf("MPU9250: Error saving calibration data to %s: %s", calDataLocation, err.Error())
 		return
 	}
 	defer fd.Close()
 	calData, err := json.Marshal(d)
 	if err != nil {
-		log.Printf("MPU9250: Error marshaling calibration data: %s", err)
+		log.Errorf("MPU9250: Error marshaling calibration data: %s", err)
 		return
 	}
 	fd.Write(calData)
-	log.Println("MPU9250: Wrote calibration data:")
-	log.Println(string(calData))
 }
 
 func (d *mpuCalData) load() (err error) {
@@ -94,8 +92,6 @@ func (d *mpuCalData) load() (err error) {
 		err = fmt.Errorf(errstr, calDataLocation, rerr.Error())
 		return
 	}
-	log.Println("MPU9250: read calibration data:")
-	log.Println(*d)
 	return
 }
 
@@ -123,7 +119,6 @@ is an error creating the object, an error is returned.
 func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, enableMag bool, applyHWOffsets bool) (*MPU9250, error) {
 	var mpu = new(MPU9250)
 	if err := mpu.mpuCalData.load(); err != nil {
-		log.Println(err)
 		mpu.mpuCalData.reset()
 	}
 
@@ -667,7 +662,6 @@ func (mpu *MPU9250) ReadAccelBias(sensitivityAccel int) error {
 		return fmt.Errorf("MPU9250 Error: %d is not a valid acceleration sensitivity", sensitivityAccel)
 	}
 
-	log.Printf("MPU9250 accel bias read: %6f %6f %6f\n", mpu.A01, mpu.A02, mpu.A03)
 	return nil
 }
 
@@ -708,7 +702,6 @@ func (mpu *MPU9250) ReadGyroBias(sensitivityGyro int) error {
 		return fmt.Errorf("MPU9250 Error: %d is not a valid gyro sensitivity", sensitivityGyro)
 	}
 
-	log.Printf("MPU9250 Gyro  bias read: %6f %6f %6f\n", mpu.G01, mpu.G02, mpu.G03)
 	return nil
 }
 
@@ -764,7 +757,6 @@ func (mpu *MPU9250) ReadMagCalibration() error {
 		return errors.New("ReadMagCalibration error reading chip")
 	}
 
-	log.Printf("Raw mag calibrations: %d %d %d\n", mcal1, mcal2, mcal3)
 	mpu.mcal1 = float64(int16(mcal1)+128) / 256 * scaleMag
 	mpu.mcal2 = float64(int16(mcal2)+128) / 256 * scaleMag
 	mpu.mcal3 = float64(int16(mcal3)+128) / 256 * scaleMag
@@ -790,7 +782,6 @@ func (mpu *MPU9250) ReadMagCalibration() error {
 	}
 	time.Sleep(3 * time.Millisecond)
 
-	log.Printf("MPU9250 Mag bias: %f %f %f\n", mpu.mcal1, mpu.mcal2, mpu.mcal3)
 	return nil
 }
 
