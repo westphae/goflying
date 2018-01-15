@@ -6,13 +6,14 @@ Reference 2: https://forums.adafruit.com/viewtopic.php?f=19&t=89049
 package bmp280
 
 import (
-	"../embd"
-	_ "../embd/host/all"
-	_ "../embd/host/rpi"
 	"fmt"
 	"log"
 	"math"
 	"time"
+
+	"github.com/kidoman/embd"
+	_ "github.com/kidoman/embd/host/all"
+	_ "github.com/kidoman/embd/host/rpi"
 )
 
 const (

@@ -10,9 +10,9 @@ import (
 	"math"
 	"time"
 
-	"../embd"
-	_ "../embd/host/all"
-	_ "../embd/host/rpi"
+	"github.com/kidoman/embd"
+	_ "github.com/kidoman/embd/host/all"
+	_ "github.com/kidoman/embd/host/rpi"
 )
 
 const (
