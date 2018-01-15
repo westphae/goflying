@@ -7,9 +7,9 @@ import (
 	//"math"
 	"net/url"
 
-	"../ahrs"
 	"fmt"
 	"github.com/gorilla/websocket"
+	"github.com/westphae/goflying/ahrs"
 )
 
 type KalmanListener struct {
