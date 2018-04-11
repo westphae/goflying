@@ -13,11 +13,12 @@ import (
 	"os"
 	"time"
 
-	"../../ahrsweb"
 	"fmt"
-	"github.com/gorilla/websocket"
 	"net/url"
 	"os/signal"
+
+	"github.com/gorilla/websocket"
+	"github.com/westphae/goflying/ahrsweb"
 )
 
 func update(data *ahrsweb.AHRSData) {

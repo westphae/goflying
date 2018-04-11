@@ -382,7 +382,7 @@
                 msg = JSON.parse(e.data);
                 magCal(msg);
                 hdgdipRaw = calcHdgDip(msg['M1'], msg['M2'], msg['M3']);
-                sg['HDGRaw'] = hdgdipRaw.hdg;
+                msg['HDGRaw'] = hdgdipRaw.hdg;
                 msg['DIPRaw'] = hdgdipRaw.dip;
                 msg['MM1'] = (msg['M1']-msg['O1'])/msg['S1'];
                 msg['MM2'] = (msg['M2']-msg['O2'])/msg['S2'];

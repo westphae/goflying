@@ -2,12 +2,12 @@ package ahrsweb
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
-	"time"
 	//"math"
 	"net/url"
+	"time"
 
-	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/westphae/goflying/ahrs"
 )
