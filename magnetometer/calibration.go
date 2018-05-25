@@ -50,6 +50,8 @@ func main() {
 	http.Handle("/", &templateHandler{filename: "index.html"})
 	http.HandleFunc("/d3.min.js",
 		func(w http.ResponseWriter, r *http.Request) { http.ServeFile(w, r, "res/d3.min.js") })
+	http.HandleFunc("/magkal.js",
+		func(w http.ResponseWriter, r *http.Request) { http.ServeFile(w, r, "res/magkal.js") })
 	http.HandleFunc("/websocket", func(w http.ResponseWriter, r *http.Request) { sendData(w, r, reqData) })
 	log.Println("Listening for websocket connections on port 8000")
 	log.Fatal(http.ListenAndServe(":8000", nil))
