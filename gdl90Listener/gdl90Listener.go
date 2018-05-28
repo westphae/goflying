@@ -1,15 +1,3 @@
-/* Parse and monitor the gdl90 stream.
-   stratux only sends the gdl90 stream to wifi-connected devices
-   (i.e. those with a dhcp lease on the 192.168.10.x network).
-
-   To use it, connect to stratux over wifi, determine the wifi stratux
-   ip address, e.g. 192.168.10.24, and then run
-   `gdl90listener 192.168.10.24`.
-
-   Stratux stops sending gdl90 messages after the message buffer overflows.
-   If you don't receive any messages, `systemctl restart stratux.service`
-   after gdl90listener is running.
-*/
 package main
 
 import (
@@ -205,6 +193,15 @@ func main() {
 		pAlt        float64
 		vertSpeed   float64
 	)
+
+	flag.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), `gdl90Listener [ip-address]
+Parse and monitor the GDL90 stream.
+Stratux only sends the GDL90 stream to wifi-connected devices (i.e. those with a DHCP lease on the 192.168.10.x network).
+		
+To use it, connect to Stratux over wifi, determine the wifi Stratux ip address, e.g. 192.168.10.24, and then run gdl90listener 192.168.10.24.
+`)
+	}
 
 	flag.Parse()
 	if len(flag.Args()) == 0 {
