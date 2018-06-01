@@ -11,9 +11,11 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/westphae/goflying/mpu9250"
+	"io"
+	"io/ioutil"
 )
 
-const numRetries int = 5
+const numMPURetries int = 5
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -58,10 +60,10 @@ func main() {
 }
 
 func openMPU9250() (mpu *mpu9250.MPU9250, err error) {
-	for i := 0; i < numRetries && mpu == nil; i++ {
+	for i := 0; i < numMPURetries && mpu == nil; i++ {
 		mpu, err = mpu9250.NewMPU9250(250, 4, 50, true, false)
 		if err != nil {
-			log.Printf("Couldn't initialize MPU9250, attempt %d of %d: %v\n", i, numRetries, err)
+			log.Printf("Couldn't initialize MPU9250, attempt %d of %d: %v\n", i, numMPURetries, err)
 			time.Sleep(100 * time.Millisecond)
 		}
 	}
@@ -86,7 +88,6 @@ func readData(mpu *mpu9250.MPU9250) (reqData chan chan map[string]interface{}) {
 			<-ticker.C
 
 			cur = <-mpu.CAvg
-			log.Printf("Data read from IMU, sending to %d clients.\n", len(reqData))
 
 			// Data processing goes here.
 
@@ -106,7 +107,55 @@ func sendData(w http.ResponseWriter, r *http.Request, reqData chan chan map[stri
 		log.Printf("Error upgrading to websocket: %s\n", err)
 		return
 	}
-	log.Println("New client opened a connection.")
+	defer conn.Close()
+	log.Printf("Client %d opened a connection", len(reqData))
+
+	// Handle ping-pong
+	go func() {
+		pingTime := time.NewTicker(5 * time.Second)
+		for {
+			<-pingTime.C
+			if err = conn.WriteControl(websocket.PingMessage, []byte("ping"), time.Now().Add(10*time.Second)); err != nil {
+				log.Printf("ws error sending ping: %s\n", err)
+				break
+			}
+			log.Println("ping sent")
+		}
+	}()
+	conn.SetPongHandler(func(appData string) error {
+		log.Println("Pong received")
+		return nil
+	})
+
+	// Set up goroutine to read control messages from the client
+	go func() {
+		var (
+			mType int
+			r     io.Reader
+			s     []byte
+			err   error
+		)
+
+		log.Println("Listening for messages from a client")
+		for {
+			mType, r, err = conn.NextReader()
+			if err != nil {
+				log.Println("Error reading from websocket")
+				break
+			}
+			switch mType {
+			case websocket.PingMessage:
+				log.Println("ping received")
+			case websocket.CloseMessage:
+				log.Println("close received")
+			case websocket.PongMessage:
+				log.Println("pong received")
+			default:
+				s, err = ioutil.ReadAll(r)
+				log.Printf("unknown message type %d received: %s\n", mType, s)
+			}
+		}
+	}()
 
 	myData := make(chan map[string]interface{})
 	for {

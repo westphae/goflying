@@ -128,25 +128,27 @@
             updateMagXY = updateMagXS(1, 2),
             updateMagXZ = updateMagXS(3, 1),
             updateMagYZ = updateMagXS(2, 3),
-            setConnectedIndicator = connectedIndicator(document.getElementById("connected"));
+            setConnectedIndicator = connectedIndicator(document.getElementById("connected")),
+            socket,
+            msgCount = 0;
 
-    function reconnectLoop() {
-        setConnectedIndicator(false);
+    function connectWS(host) {
         console.log("Socket is closed.  Trying to connect.");
-        let socket = new WebSocket("ws://{{.Host}}/websocket"),
-                msg, hdgDip, hdgDipRaw, tm;
+        let socket = new WebSocket("ws://"+host+"/websocket"),
+                msg, hdgDip, hdgDipRaw;
+
         socket.onopen = function() {
-            setInterval(function() {
-                tm = setTimeout(reconnectLoop, 30000);
-                socket.send('__ping__');
-            }, 10000);
-        };
-        socket.onmessage = function(e) {
             setConnectedIndicator(true);
-            if (e.data === '__pong__') {
-                clearTimeout(tm);
-                return;
-            }
+            console.log("Websocket opened")
+        };
+
+        socket.onclose = function() {
+            setConnectedIndicator(false);
+            console.log("Websocket closed");
+        };
+
+        socket.onmessage = function(e) {
+            msgCount++;
             msg = JSON.parse(e.data);
             hdgDipRaw = calcHdgDip(msg['M1'], msg['M2'], msg['M3']);
             msg['HDGRaw'] = hdgDipRaw.hdg;
@@ -163,12 +165,22 @@
             updateMagXZ(msg);
             updateMagYZ(msg);
         };
+        return socket;
     }
 
+    setConnectedIndicator(false);
     if (!window["WebSocket"]) {
         alert("Error: Your browser does not support web sockets.")
     } else {
-        reconnectLoop()
+        socket = connectWS({{.Host}});
+
+        setInterval(function() {
+            if (msgCount === 0) {
+                socket.close();
+                socket = connectWS({{.Host}});
+            }
+            msgCount = 0;
+        }, 10000)
     }
 </script>
 </body>
