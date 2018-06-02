@@ -74,14 +74,15 @@ func openMPU9250() (mpu *mpu9250.MPU9250, err error) {
 }
 
 func readData(mpu *mpu9250.MPU9250) (reqData chan chan map[string]interface{}) {
-	var (
-		cur    *mpu9250.MPUData
-		logMap = make(map[string]interface{})
-	)
-	reqData = make(chan chan map[string]interface{}, 100)
+	reqData = make(chan chan map[string]interface{}, 128)
 
 	go func() {
-		var ch chan map[string]interface{}
+		var (
+			ch chan map[string]interface{}
+			cur    *mpu9250.MPUData
+			logMap = make(map[string]interface{})
+		)
+
 		t0 := time.Now()
 		ticker := time.NewTicker(100 * time.Millisecond)
 		for {
@@ -94,7 +95,7 @@ func readData(mpu *mpu9250.MPU9250) (reqData chan chan map[string]interface{}) {
 			updateLogMap(t0, cur, logMap)
 			for len(reqData) > 0 {
 				ch = <-reqData
-				ch <- logMap
+				ch<- logMap
 			}
 		}
 	}()
@@ -111,23 +112,34 @@ func sendData(w http.ResponseWriter, r *http.Request, reqData chan chan map[stri
 	log.Printf("Client %d opened a connection", len(reqData))
 
 	// Handle ping-pong
+	var timeout *time.Timer
 	go func() {
 		pingTime := time.NewTicker(5 * time.Second)
 		for {
-			<-pingTime.C
 			if err = conn.WriteControl(websocket.PingMessage, []byte("ping"), time.Now().Add(10*time.Second)); err != nil {
 				log.Printf("ws error sending ping: %s\n", err)
 				break
 			}
-			log.Println("ping sent")
+			timeout = time.NewTimer(4 * time.Second)
+
+			select {
+			case <-pingTime.C:
+				timeout.Stop()
+			case <-timeout.C:
+				log.Println("ping timeout")
+				pingTime.Stop()
+				conn.Close()
+				break
+			}
 		}
+		log.Println("Stopping ping")
 	}()
 	conn.SetPongHandler(func(appData string) error {
-		log.Println("Pong received")
+		timeout.Stop()
 		return nil
 	})
 
-	// Set up goroutine to read control messages from the client
+	// Set up goroutine to read messages from the client, necessary to receive control messages
 	go func() {
 		var (
 			mType int
@@ -136,35 +148,27 @@ func sendData(w http.ResponseWriter, r *http.Request, reqData chan chan map[stri
 			err   error
 		)
 
-		log.Println("Listening for messages from a client")
+		log.Println("Listening for messages from a new client")
 		for {
 			mType, r, err = conn.NextReader()
 			if err != nil {
-				log.Println("Error reading from websocket")
+				log.Printf("Error reading from websocket: %s\n", err)
 				break
 			}
-			switch mType {
-			case websocket.PingMessage:
-				log.Println("ping received")
-			case websocket.CloseMessage:
-				log.Println("close received")
-			case websocket.PongMessage:
-				log.Println("pong received")
-			default:
-				s, err = ioutil.ReadAll(r)
-				log.Printf("unknown message type %d received: %s\n", mType, s)
-			}
+			s, err = ioutil.ReadAll(r)
+			log.Printf("Unknown message (type %d) received: %s\n", mType, s)
 		}
 	}()
 
 	myData := make(chan map[string]interface{})
 	for {
-		reqData <- myData
+		reqData<- myData
 		if err = conn.WriteJSON(<-myData); err != nil {
 			log.Printf("Error writing to websocket: %s\n", err)
 			break
 		}
 	}
+	log.Println("Closing client")
 }
 
 func updateLogMap(t0 time.Time, m *mpu9250.MPUData, p map[string]interface{}) {
