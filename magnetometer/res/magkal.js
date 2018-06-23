@@ -1,4 +1,5 @@
-const DEG = Math.PI/180;
+const DEG = Math.PI/180,
+    DELAY = 250;
 
 function calcHdgDip(m1, m2, m3) {
     let hdg = Math.atan2(-m2, m1) / DEG;
@@ -23,7 +24,7 @@ let connectedIndicator = function(el) {
     }
 };
 
-let updateTable = (function() {
+let updateTable = function() {
     function formatVar(k, v) {
         let fmt;
         switch (k) {
@@ -49,7 +50,7 @@ let updateTable = (function() {
             d3.select("#"+f).text(formatVar(f, data[f]));
         }
     }
-})();
+}();
 
 // Draw Magnetometer cross-sections
 function updateMagXS(ax, ay) {
@@ -210,7 +211,7 @@ function makeRollingPlot(el, v) {
     let getLine = function(dim) {
         return d3.svg.line()
             .x(function (d, i) {
-                return x(i / 10);
+                return x(d["TM"]);
             })
             .y(function (d, i) {
                 return y(d[v + dim]);
@@ -250,68 +251,63 @@ function makeRollingPlot(el, v) {
         .attr("clip-path", "url(#"+el+"Clip)")
         .append("path")
         .attr("class", "line x")
-        .datum(D0)
-        .attr("d", getLine("1"));
+        .datum(D0);
 
     let ypath = svg.append("g")
         .attr("clip-path", "url(#"+el+"Clip)")
         .append("path")
         .attr("class", "line y")
-        .datum(D0)
-        .attr("d", getLine("2"));
+        .datum(D0);
 
     let zpath = svg.append("g")
         .attr("clip-path", "url(#"+el+"Clip)")
         .append("path")
         .attr("class", "line z")
-        .datum(D0)
-        .attr("d", getLine("3"));
+        .datum(D0);
 
-    return function(data) {
-        if (data[v+"1"] < bLim) {
-            bLim = data[v+"1"];
+    let rescale = function(val) {
+        if (val < bLim) {
+            bLim = val;
+        } else if (val > tLim) {
+            tLim = val;
+        } else {
+            return
         }
-        if (data[v+"2"] < bLim) {
-            bLim = data[v+"2"];
-        }
-        if (data[v+"3"] < bLim) {
-            bLim = data[v+"3"];
-        }
-        if (data[v+"1"] > tLim) {
-            tLim = data[v+"1"];
-        }
-        if (data[v+"2"] > tLim) {
-            tLim = data[v+"2"];
-        }
-        if (data[v+"3"] > tLim) {
-            tLim = data[v+"3"];
-        }
+
         y.domain([bLim, tLim]);
-        xAxisLine.attr("transform", "translate(0," + y(0) + ")").call(xAxis);
         yAxis.scale(y);
         yAxisLine.call(yAxis);
+    };
 
+    return function(data) {
+        rescale(data[v+"1"]);
+        rescale(data[v+"2"]);
+        rescale(data[v+"3"]);
+
+        x.domain([data.TM-TMAX, data.TM]);
         D0.push(data);
-        xpath.attr("d", getLine("1"))
-            .attr("transform", null)
+
+        xAxisLine
             .transition()
-            .duration(100)
+            .duration(DELAY)
             .ease("linear")
-            .attr("transform", "translate(" + x(TMAX-D0.length/10-0.1) + ",0)");
-        ypath.attr("d", getLine("2"))
-            .attr("transform", null)
+            .call(xAxis);
+        xpath
             .transition()
-            .duration(100)
+            .duration(DELAY)
             .ease("linear")
-            .attr("transform", "translate(" + x(TMAX-D0.length/10-0.1) + ",0)");
-        zpath.attr("d", getLine("3"))
-            .attr("transform", null)
-            .transition()
-            .duration(100)
+            .attr("d", getLine("1"));
+        ypath
+            .transition(DELAY)
             .ease("linear")
-            .attr("transform", "translate(" + x(TMAX-D0.length/10-0.1) + ",0)");
-        if (D0.length>10*TMAX) {
-            D0.shift();
+            .attr("d", getLine("2"));
+        zpath
+            .transition(DELAY)
+            .ease("linear")
+            .attr("d", getLine("3"));
+
+        if (D0.length>20*TMAX) {
+            D0.splice(0, 11*TMAX);
         }
     }
 

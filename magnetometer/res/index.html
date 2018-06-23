@@ -42,13 +42,16 @@
 
         .line.x {
             stroke: Red;
+            color: Red;
         }
 
         .line.y {
             stroke: Green;
+            color: Green;
         }
         .line.z {
             stroke: Blue;
+            color: Blue;
         }
 
         .axis path,
@@ -65,12 +68,16 @@
             stroke: black;
             height: 1em;
             width: 7em;
+            text-align: center;
+            border: black;
+            border-style: solid;
         }
         #connected.connected {
             background-color: lawngreen;
         }
         #connected.disconnected {
-            background-color: mediumvioletred;
+            background-color: red;
+            color: white;
         }
     </style>
 </head>
@@ -79,9 +86,9 @@
 <table>
     <tr>
         <th></th>
-        <th>M1</th>
-        <th>M2</th>
-        <th>M3</th>
+        <th class="line x">M1</th>
+        <th class="line y">M2</th>
+        <th class="line z">M3</th>
         <th>HDG</th>
         <th>DIP</th>
         <th>Raw HDG</th>
@@ -164,6 +171,7 @@
             updateMagXY(msg);
             updateMagXZ(msg);
             updateMagYZ(msg);
+            updateTable(msg);
         };
         return socket;
     }
