@@ -1,21 +1,29 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"html/template"
+	"io"
+	"io/ioutil"
 	"log"
+	"math"
+	"math/rand"
 	"net/http"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/westphae/goflying/ahrs"
 	"github.com/westphae/goflying/mpu9250"
-	"io"
-	"io/ioutil"
 )
 
-const numMPURetries int = 5
+const (
+	numMPURetries = 5 // Number of retries for connecting to MPU
+	freq = 250 * time.Millisecond // Polling frequency
+	M0 = 56000 // Some default Earth magnetic field
+)
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -39,15 +47,34 @@ func (t *templateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	mpu, err := openMPU9250()
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	defer mpu.CloseMPU()
-	log.Println("MPU9250 initialized successfully.")
+	var reqData chan chan map[string]interface{} // A chan over which we send a chan to receive data
 
-	reqData := readData(mpu)
+	// Which kind of system to run: real (default) or random?
+	flag.Parse()
+	log.Println(flag.Arg(0))
+	switch flag.Arg(0) {
+	case "rand":
+		res := [6]float64{
+			0.2*rand.NormFloat64(), // M1-offset
+			1+0.2*rand.NormFloat64(), // M1-scaling
+			0.2*rand.NormFloat64(), // M2-offset
+			1+0.2*rand.NormFloat64(), // M2-scaling
+			0.2*rand.NormFloat64(), // M3-offset
+			1+0.2*rand.NormFloat64(), // M3-scaling
+		}
+		log.Printf("Sending random data for true mag %v\n", res)
+		reqData = readMPUData(genRandomData(res), freq)
+	default:
+		mpu, err := openMPU9250()
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		defer mpu.CloseMPU()
+		log.Println("MPU9250 initialized successfully.")
+
+		reqData = readMPUData(mpu.CAvg, freq)
+	}
 
 	http.Handle("/", &templateHandler{filename: "index.html"})
 	http.HandleFunc("/d3.min.js",
@@ -73,7 +100,7 @@ func openMPU9250() (mpu *mpu9250.MPU9250, err error) {
 	return mpu, nil
 }
 
-func readData(mpu *mpu9250.MPU9250) (reqData chan chan map[string]interface{}) {
+func readMPUData(data <-chan *mpu9250.MPUData, freq time.Duration) (reqData chan chan map[string]interface{}) {
 	reqData = make(chan chan map[string]interface{}, 128)
 
 	go func() {
@@ -84,11 +111,11 @@ func readData(mpu *mpu9250.MPU9250) (reqData chan chan map[string]interface{}) {
 		)
 
 		t0 := time.Now()
-		ticker := time.NewTicker(100 * time.Millisecond)
+		ticker := time.NewTicker(freq)
 		for {
 			<-ticker.C
 
-			cur = <-mpu.CAvg
+			cur = <-data
 
 			// Data processing goes here.
 
@@ -96,6 +123,30 @@ func readData(mpu *mpu9250.MPU9250) (reqData chan chan map[string]interface{}) {
 			for len(reqData) > 0 {
 				ch = <-reqData
 				ch<- logMap
+			}
+		}
+	}()
+	return
+}
+
+func genRandomData(magVals [6]float64) (out chan *mpu9250.MPUData) {
+	out = make(chan *mpu9250.MPUData)
+
+	go func() {
+		var (
+			psi, theta float64
+		)
+
+		for {
+			psi = 2 * ahrs.Pi * rand.Float64()
+			theta = ahrs.Pi * rand.Float64()
+
+			out<- &mpu9250.MPUData{
+				T: time.Now(),
+				TM: time.Now(),
+				M1: M0 * (magVals[0] + magVals[1]*math.Cos(psi)*math.Cos(theta)),
+				M2: M0 * (magVals[2] + magVals[3]*math.Sin(psi)*math.Cos(theta)),
+				M3: M0 * (magVals[4] + magVals[5]*math.Sin(theta)),
 			}
 		}
 	}()
