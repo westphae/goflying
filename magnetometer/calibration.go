@@ -17,11 +17,14 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/westphae/goflying/ahrs"
 	"github.com/westphae/goflying/mpu9250"
+	"os"
+	"encoding/csv"
+	"strconv"
 )
 
 const (
 	numMPURetries = 5 // Number of retries for connecting to MPU
-	freq = 250 * time.Millisecond // Polling frequency
+	freqDefault = 4 // Polling frequency
 	M0 = 56000 // Some default Earth magnetic field
 )
 
@@ -47,13 +50,59 @@ func (t *templateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	var reqData chan chan map[string]interface{} // A chan over which we send a chan to receive data
+	var (
+		freq           float64
+		startTM, endTM float64
+		usage          string
+		reqData        chan chan map[string]interface{} // A chan over which we send a chan to receive data
+	)
 
-	// Which kind of system to run: real (default) or random?
-	flag.Parse()
-	log.Println(flag.Arg(0))
-	switch flag.Arg(0) {
+	// Which kind of system to run: real (default) or random or replay?
+	// calibrate hw [-f | --freq freq]
+	// calibrate rand [-f } --freq freq]
+	// calibrate replay [-s | --start start_time] [-e | --end end_time]
+	hwCmd := flag.NewFlagSet("hw", flag.ExitOnError)
+	usage = "Frequency to read hardware at, Hz"
+	hwCmd.Float64Var(&freq, "freq", freqDefault, usage)
+	hwCmd.Float64Var(&freq, "f", freqDefault, usage + " (shorthand)")
+
+	randCmd := flag.NewFlagSet("rand", flag.ExitOnError)
+	usage = "Frequency to read hardware at, Hz"
+	randCmd.Float64Var(&freq, "freq", freqDefault, usage)
+	randCmd.Float64Var(&freq, "f", freqDefault, usage + " (shorthand)")
+
+	replayCmd := flag.NewFlagSet("replay", flag.ExitOnError)
+	usage = "Frequency to send data at, Hz"
+	replayCmd.Float64Var(&freq, "freq", freqDefault, usage)
+	replayCmd.Float64Var(&freq, "f", freqDefault, usage + " (shorthand)")
+	usage = "file TM value at which to start simulating, default 0"
+	replayCmd.Float64Var(&startTM, "start", 0, usage)
+	replayCmd.Float64Var(&startTM, "s", 0, usage)
+	usage = "file TM value at which to end simulating, default 0"
+	replayCmd.Float64Var(&endTM, "end", 0, usage)
+	replayCmd.Float64Var(&endTM, "e", -1, usage)
+
+	if len(os.Args) < 2 {
+		fmt.Println("You must enter a command: hw, rand, or replay")
+		os.Exit(1)
+	}
+
+	switch os.Args[1] {
+	case "hw":
+		hwCmd.Parse(os.Args[2:])
+
+		mpu, err := openMPU9250()
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		defer mpu.CloseMPU()
+		log.Println("MPU9250 initialized successfully.")
+
+		reqData = readMPUData(mpu.CAvg, time.Duration(1000/freq) * time.Millisecond)
 	case "rand":
+		randCmd.Parse(os.Args[2:])
+
 		res := [6]float64{
 			0.2*rand.NormFloat64(), // M1-offset
 			1+0.2*rand.NormFloat64(), // M1-scaling
@@ -63,17 +112,20 @@ func main() {
 			1+0.2*rand.NormFloat64(), // M3-scaling
 		}
 		log.Printf("Sending random data for true mag %v\n", res)
-		reqData = readMPUData(genRandomData(res), freq)
-	default:
-		mpu, err := openMPU9250()
+
+		reqData = readMPUData(genRandomData(res), time.Duration(1000/freq) * time.Millisecond)
+	case "replay":
+		replayCmd.Parse(os.Args[2:])
+		fn := replayCmd.Arg(0)
+		csvFile, err := os.Open(fn)
 		if err != nil {
 			log.Println(err)
-			return
+			os.Exit(1)
 		}
-		defer mpu.CloseMPU()
-		log.Println("MPU9250 initialized successfully.")
+		defer csvFile.Close()
+		log.Printf("Sending data from file %s from timestamp %f to %f\n", fn, startTM, endTM)
 
-		reqData = readMPUData(mpu.CAvg, freq)
+		reqData = readMPUData(genFileData(csvFile, startTM, endTM), time.Duration(1000/freq) * time.Millisecond)
 	}
 
 	http.Handle("/", &templateHandler{filename: "index.html"})
@@ -150,6 +202,97 @@ func genRandomData(magVals [6]float64) (out chan *mpu9250.MPUData) {
 			}
 		}
 	}()
+	return
+}
+
+func genFileData(f io.Reader, start float64, end float64) (out chan *mpu9250.MPUData) {
+	out = make(chan *mpu9250.MPUData)
+
+	var (
+		err                              error
+		colT, colTM, colM1, colM2, colM3 int
+		t0, t, tm0, tm, m1, m2, m3       float64
+		tn                               time.Time
+		foundTM                          bool
+	)
+	csvReader := csv.NewReader(f)
+	header, err := csvReader.Read()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	for i, s := range(header) {
+		switch s {
+		case "T":
+			colT = i
+		case "TM":
+			colTM = i
+			foundTM = true
+		case "M1":
+			colM1 = i
+		case "M2":
+			colM2 = i
+		case "M3":
+			colM3 = i
+		}
+	}
+	if !foundTM {
+		colTM = colT
+	}
+
+	go func() {
+		for {
+			r, err := csvReader.Read()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			t, err = strconv.ParseFloat(r[colT], 64)
+			if err != nil {
+				break
+			}
+			if (start!=0 && t<start) || (end!=0 && t>end) {
+				continue
+			}
+			if t0==0 {
+				tn = time.Now()
+				t0 = t
+			}
+			tm, err = strconv.ParseFloat(r[colTM], 64)
+			if err != nil {
+				break
+			}
+			if tm0==0 {
+				tm0 = tm
+			}
+			m1, err = strconv.ParseFloat(r[colM1], 64)
+			if err != nil {
+				break
+			}
+			m2, err = strconv.ParseFloat(r[colM2], 64)
+			if err != nil {
+				break
+			}
+			m3, err = strconv.ParseFloat(r[colM3], 64)
+			if err != nil {
+				break
+			}
+
+			log.Printf("T: %f, TM: %f\n", t-t0, tm-tm0)
+			out<- &mpu9250.MPUData{
+				T: tn.Add(time.Duration((t-t0)*1000) * time.Millisecond),
+				TM: tn.Add(time.Duration((tm-tm0)*1000) * time.Millisecond),
+				M1: m1,
+				M2: m2,
+				M3: m3,
+			}
+
+		}
+	}()
+
 	return
 }
 
