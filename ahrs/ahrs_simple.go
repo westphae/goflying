@@ -125,7 +125,7 @@ func (s *SimpleState) Compute(m *Measurement) {
 	// Rotate measurements from sensor frame to aircraft frame
 	a1, a2, a3 := s.rotateByF(-m.A1, -m.A2, -m.A3, false)
 	b1, b2, b3 := s.rotateByF(m.B1-s.D1, m.B2-s.D2, m.B3-s.D3, false)
-	m1, m2, m3 := s.rotateByF(m.M1, m.M2, m.M3, false)
+	m1, m2, _ := s.rotateByF(s.K1*m.M1+s.L1, s.K2*m.M2+s.L2, s.K3*m.M3+s.L3, false)
 
 	// Update estimates of current gyro  and accel rates
 	s.Z1 += fastSmoothConst * (a1/s.aNorm - s.Z1)
@@ -213,7 +213,7 @@ func (s *SimpleState) Compute(m *Measurement) {
 	s.rollGyr, s.pitchGyr, s.headingGyr = FromQuaternion(s.eGyr0, s.eGyr1, s.eGyr2, s.eGyr3)
 
 	// Update Magnetic Heading
-	dhM := AngleDiff(math.Atan2(m1, -m2), s.headingMag) + 0*m3
+	dhM := AngleDiff(math.Atan2(m1, m2), s.headingMag)
 	s.headingMag += slowSmoothConst * dhM
 	for s.headingMag < 0 {
 		s.headingMag += 2 * Pi

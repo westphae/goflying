@@ -34,9 +34,9 @@ let updateTable = function() {
             case "DIPRaw":
                 fmt = ".1f";
                 break;
-            case "S1":
-            case "S2":
-            case "S3":
+            case "K1":
+            case "K2":
+            case "K3":
                 fmt = ".2f";
                 break;
             default:

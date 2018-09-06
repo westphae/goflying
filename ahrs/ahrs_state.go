@@ -21,6 +21,7 @@ type State struct {
 	C1, C2, C3     float64 // Bias vector for accelerometer, sensor frame, G
 	F0, F1, F2, F3 float64 // (Bias) quaternion rotating aircraft frame to sensor frame
 	D1, D2, D3     float64 // Bias vector for gyro rates, sensor frame, °/s
+	K1, K2, K3     float64 // Bias vector for magnetometer direction, sensor frame, µT
 	L1, L2, L3     float64 // Bias vector for magnetometer direction, sensor frame, µT
 
 	T float64 // Time when state last updated
@@ -95,8 +96,9 @@ func (s *State) GetSensorQuaternion() *[4]float64 {
 	return &[4]float64{s.F0, s.F1, s.F2, s.F3}
 }
 
-// SetCalibrations sets the AHRS accelerometer calibrations to c and gyro calibrations to d.
-func (s *State) SetCalibrations(c, d *[3]float64) {
+// SetCalibrations sets the AHRS accelerometer calibrations to c, gyro calibrations to d,
+// mag scaling to k and mag offset to l.
+func (s *State) SetCalibrations(c, d, k, l *[3]float64) {
 	if c != nil {
 		aNorm := math.Sqrt(c[0]*c[0] + c[1]*c[1] + c[2]*c[2])
 		if aNorm > 0.5 {
@@ -113,11 +115,26 @@ func (s *State) SetCalibrations(c, d *[3]float64) {
 		s.D2 = d[1]
 		s.D3 = d[2]
 	}
+	if k != nil {
+		kNorm := math.Sqrt(k[0]*k[0] + k[1]*k[1] + k[2]*k[2])
+		if kNorm > 0.1 {
+			s.K1 = k[0]
+			s.K2 = k[1]
+			s.K3 = k[2]
+		}
+	}
+	if l != nil {
+		s.L1 = l[0]
+		s.L2 = l[1]
+		s.L3 = l[2]
+	}
 }
 
-// GetCalibrations sets the AHRS accelerometer calibrations to c and gyro calibrations to d.
-func (s *State) GetCalibrations() (c, d *[3]float64) {
-	return &[3]float64{s.C1, s.C2, s.C3}, &[3]float64{s.D1, s.D2, s.D3}
+// GetCalibrations returns the AHRS accelerometer calibrations c, gyro calibrations d,
+// mag scaling k and mag offset l.
+func (s *State) GetCalibrations() (c, d, k, l *[3]float64) {
+	return &[3]float64{s.C1, s.C2, s.C3}, &[3]float64{s.D1, s.D2, s.D3},
+		&[3]float64{s.K1, s.K2, s.K3}, &[3]float64{s.L1, s.L2, s.L3}
 }
 
 // SetConfig lets the user alter some of the configuration settings.
@@ -133,6 +150,8 @@ func (s *State) Valid() (ok bool) {
 // init puts the algorithm into a known state, on startup or after a reset.
 func (s *State) init(m *Measurement) {
 	s.needsInitialization = false
+
+	s.K1, s.K2, s.K3 = 1, 1, 1
 	s.T = m.T
 
 	s.roll = 0
@@ -147,7 +166,7 @@ func (s *State) init(m *Measurement) {
 	m1, m2, _ := s.rotateByF(m.M1, m.M2, m.M3, false)
 
 	// Initialize Magnetic Heading, Slip/Skid, Rate of Turn, and GLoad.
-	_, _, s.headingMag = Regularize(0, 0, math.Atan2(m1, -m2))
+	_, _, s.headingMag = Regularize(0, 0, math.Atan2(m1, m2))
 	s.slipSkid = math.Atan2(a2, -a3)
 	s.turnRate = b3 * Deg
 	s.gLoad = -a3 / s.aNorm

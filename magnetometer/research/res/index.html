@@ -105,16 +105,28 @@
         <td id="DIPRaw">0</td>
     </tr>
     <tr>
-        <td>Offset</td>
-        <td id="O1">0</td>
-        <td id="O2">0</td>
-        <td id="O3">0</td>
+        <td>Min</td>
+        <td id="MMin1">0</td>
+        <td id="MMin2">0</td>
+        <td id="MMin3">0</td>
     </tr>
     <tr>
-        <td>Scale</td>
-        <td id="S1">0</td>
-        <td id="S2">0</td>
-        <td id="S3">0</td>
+        <td>Max</td>
+        <td id="MMax1">0</td>
+        <td id="MMax2">0</td>
+        <td id="MMax3">0</td>
+    </tr>
+    <tr>
+        <td>Scale K</td>
+        <td id="K1">0</td>
+        <td id="K2">0</td>
+        <td id="K3">0</td>
+    </tr>
+    <tr>
+        <td>Offset L</td>
+        <td id="L1">0</td>
+        <td id="L2">0</td>
+        <td id="L3">0</td>
     </tr>
 </table>
 
@@ -160,9 +172,6 @@
             hdgDipRaw = calcHdgDip(msg['M1'], msg['M2'], msg['M3']);
             msg['HDGRaw'] = hdgDipRaw.hdg;
             msg['DIPRaw'] = hdgDipRaw.dip;
-            msg['MM1'] = (msg['M1']-msg['O1'])/msg['S1'];
-            msg['MM2'] = (msg['M2']-msg['O2'])/msg['S2'];
-            msg['MM3'] = (msg['M3']-msg['O3'])/msg['S3'];
             hdgDip = calcHdgDip(msg['MM1'], msg['MM2'], msg['MM3']);
             msg['HDG'] = hdgDip.hdg;
             msg['DIP'] = hdgDip.dip;
