@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/csv"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"html/template"
@@ -34,6 +35,8 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 	CheckOrigin:     func(r *http.Request) bool { return true },
 }
+
+var k, l [3]float64
 
 // templ represents a single template
 type templateHandler struct {
@@ -86,6 +89,30 @@ func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("You must enter a command: hw, rand, or replay")
 		os.Exit(1)
+	}
+
+	if stratuxConf, err := ioutil.ReadFile("/etc/stratux.conf"); err != nil {
+		log.Printf("couldn't open stratux.conf: %s", err)
+		k = [3]float64{1, 1, 1}
+		l = [3]float64{0, 0, 0}
+	} else {
+		var (
+			conf map[string]*json.RawMessage
+		)
+		if err :=json.Unmarshal(stratuxConf, &conf); err != nil {
+			log.Printf("error parsing stratux.conf: %s", err)
+			k = [3]float64{1, 1, 1}
+			l = [3]float64{0, 0, 0}
+		} else {
+			if err = json.Unmarshal(*conf["K"], &k); err != nil {
+				log.Printf("No k in stratux.conf")
+				k = [3]float64{1, 1, 1}
+			}
+			if err = json.Unmarshal(*conf["L"], &l); err != nil {
+				log.Printf("No l in stratux.conf")
+				l = [3]float64{0, 0, 0}
+			}
+		}
 	}
 
 	switch os.Args[1] {
@@ -157,6 +184,7 @@ func readMPUData(data <-chan *mpu9250.MPUData, freq time.Duration) (reqData chan
 	reqData = make(chan chan map[string]interface{}, 128)
 
 	n := magkal.NewSimpleMagKal()
+	n.SetCalibrations(&k, &l)
 
 	go func() {
 		var (
