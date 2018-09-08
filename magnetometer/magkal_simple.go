@@ -1,3 +1,5 @@
+// The Simple procedure bases K, L on the measured min/max value along each axis.
+// It can provide a useful calibration but requires careful manual manipulation.
 package magkal
 
 import (
@@ -6,50 +8,41 @@ import (
 	"../ahrs"
 )
 
-type SimpleMagKalState struct {
-	MagKalState
-	m1Min, m1Max float64
-	m2Min, m2Max float64
-	m3Min, m3Max float64
-}
 
-//NewSimpleMagKal returns a new MagKal object that just maintains a constant K,L.
-func NewSimpleMagKal() (s *SimpleMagKalState) {
-	s = new(SimpleMagKalState)
-	s.Reset()
+func ComputeSimple(s MagKalState, cIn chan ahrs.Measurement, cOut chan MagKalState) {
+	var (
+		m1Min, m1Max = Big, -Big
+		m2Min, m2Max = Big, -Big
+		m3Min, m3Max = Big, -Big
+	)
 
-	s.m1Min, s.m1Max = Big, -Big
-	s.m2Min, s.m2Max = Big, -Big
-	s.m3Min, s.m3Max = Big, -Big
+	for m := range cIn { // Receive input measurements
+		s.T = m.T // Update the MagKalState
+		m1Min, m1Max = math.Min(m1Min, m.M1), math.Max(m1Max, m.M1)
+		m2Min, m2Max = math.Min(m2Min, m.M2), math.Max(m2Max, m.M2)
+		m3Min, m3Max = math.Min(m3Min, m.M3), math.Max(m3Max, m.M3)
 
-	s.updateLogMap(ahrs.NewMeasurement(), s.logMap)
-	return
-}
+		if m1Max-m1Min > 2*AvgMagField/s.K[0] {
+			s.K[0] = 2 * AvgMagField / (m1Max - m1Min)
+			s.L[0] = -s.K[0] * (m1Max + m1Min) / 2
+		}
 
-// Compute performs the MagKalSimple calculations for the trivial calibration procedure.
-// The Simple procedure bases K, L on the measured min/max value along each axis.
-// It can provide a useful calibration but requires careful manual manipulation.
-func (s *SimpleMagKalState) Compute(m *ahrs.Measurement) {
-	s.T = m.T
+		if m2Max-m2Min > 2*AvgMagField/s.K[1] {
+			s.K[1] = 2 * AvgMagField / (m2Max - m2Min)
+			s.L[1] = -s.K[1] * (m2Max + m2Min) / 2
+		}
 
-	s.m1Min, s.m1Max = math.Min(s.m1Min, m.M1), math.Max(s.m1Max, m.M1)
-	s.m2Min, s.m2Max = math.Min(s.m2Min, m.M2), math.Max(s.m2Max, m.M2)
-	s.m3Min, s.m3Max = math.Min(s.m3Min, m.M3), math.Max(s.m3Max, m.M3)
+		if m3Max-m3Min > 2*AvgMagField/s.K[2] {
+			s.K[2] = 2 * AvgMagField / (m3Max - m3Min)
+			s.L[2] = -s.K[2] * (m3Max + m3Min) / 2
+		}
 
-	if s.m1Max-s.m1Min > 2*AvgMagField/s.K1 {
-		s.K1 = 2 * AvgMagField / (s.m1Max - s.m1Min)
-		s.L1 = -s.K1 * (s.m1Max + s.m1Min) / 2
+		s.updateLogMap(&m, s.LogMap)
+		select {
+		case cOut <- s: // Send results when requested, non-blocking
+		default:
+		}
 	}
 
-	if s.m2Max-s.m2Min > 2*AvgMagField/s.K2 {
-		s.K2 = 2 * AvgMagField / (s.m2Max - s.m2Min)
-		s.L2 = -s.K2 * (s.m2Max + s.m2Min) / 2
-	}
-
-	if s.m3Max-s.m3Min > 2*AvgMagField/s.K3 {
-		s.K3 = 2 * AvgMagField / (s.m3Max - s.m3Min)
-		s.L3 = -s.K3 * (s.m3Max + s.m3Min) / 2
-	}
-
-	s.updateLogMap(m, s.logMap)
+	close(cOut) // When cIn is closed, close cOut
 }

@@ -2,7 +2,7 @@ const DEG = Math.PI/180,
     DELAY = 250;
 
 function calcHdgDip(m1, m2, m3) {
-    let hdg = Math.atan2(-m2, m1) / DEG;
+    let hdg = Math.atan2(-m2, -m1) / DEG;
     if (hdg < 0) { hdg += 360}
     return {hdg: hdg,
         dip: Math.atan2(m3, Math.sqrt(m1*m1 + m2*m2)) / DEG

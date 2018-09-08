@@ -1,29 +1,18 @@
-package magkal
-
-import (
-	"../ahrs"
-)
-
-type TrivialMagKalState struct {
-	MagKalState
-}
-
-//NewTrivialMagKal returns a new MagKal object that just maintains a constant K,L.
-func NewTrivialMagKal() (s *TrivialMagKalState) {
-	s = new(TrivialMagKalState)
-
-	s.Reset()
-	s.updateLogMap(ahrs.NewMeasurement(), s.logMap)
-	return
-}
-
-// Compute performs the MagKalTrivial calculations for the trivial calibration procedure.
 // The Trivial procedure is just maintaining constant K, L.
 // This is mainly used for testing the integration with Stratux.
-func (s *TrivialMagKalState) Compute(m *ahrs.Measurement) {
-	s.T = m.T
+package magkal
 
-	// K, L are unaltered for the trivial MagKal.
+import "../ahrs"
 
-	s.updateLogMap(m, s.logMap)
+func ComputeTrivial(s MagKalState, cIn chan ahrs.Measurement, cOut chan MagKalState) {
+	for m := range cIn { // Receive input measurements
+		s.T = m.T // Update the MagKalState
+		s.updateLogMap(&m, s.LogMap)
+		select {
+		case cOut <- s: // Send results when requested, non-blocking
+		default:
+		}
+	}
+
+	close(cOut) // When cIn is closed, close cOut
 }

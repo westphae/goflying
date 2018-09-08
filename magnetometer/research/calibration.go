@@ -93,24 +93,20 @@ func main() {
 
 	if stratuxConf, err := ioutil.ReadFile("/etc/stratux.conf"); err != nil {
 		log.Printf("couldn't open stratux.conf: %s", err)
-		k = [3]float64{1, 1, 1}
-		l = [3]float64{0, 0, 0}
 	} else {
-		var (
-			conf map[string]*json.RawMessage
-		)
+		var conf map[string]*json.RawMessage
 		if err :=json.Unmarshal(stratuxConf, &conf); err != nil {
 			log.Printf("error parsing stratux.conf: %s", err)
-			k = [3]float64{1, 1, 1}
-			l = [3]float64{0, 0, 0}
 		} else {
-			if err = json.Unmarshal(*conf["K"], &k); err != nil {
-				log.Printf("No k in stratux.conf")
-				k = [3]float64{1, 1, 1}
+			if byteK, ok := conf["K"]; ok {
+				if err = json.Unmarshal(*byteK, &k); err != nil {
+					log.Printf("No k in stratux.conf")
+				}
 			}
-			if err = json.Unmarshal(*conf["L"], &l); err != nil {
-				log.Printf("No l in stratux.conf")
-				l = [3]float64{0, 0, 0}
+			if byteL, ok := conf["L"]; ok {
+				if err = json.Unmarshal(*byteL, &l); err != nil {
+					log.Printf("No l in stratux.conf")
+				}
 			}
 		}
 	}
@@ -183,14 +179,14 @@ func openMPU9250() (mpu *mpu9250.MPU9250, err error) {
 func readMPUData(data <-chan *mpu9250.MPUData, freq time.Duration) (reqData chan chan map[string]interface{}) {
 	reqData = make(chan chan map[string]interface{}, 128)
 
-	n := magkal.NewSimpleMagKal()
-	n.SetCalibrations(&k, &l)
+	cM, cMagKal := magkal.NewMagKal(&k, &l, magkal.ComputeSimple)
 
 	go func() {
 		var (
 			ch     chan map[string]interface{}
 			cur    *mpu9250.MPUData
 			logMap = make(map[string]interface{})
+			n      magkal.MagKalState
 		)
 
 		t0 := time.Now()
@@ -201,10 +197,13 @@ func readMPUData(data <-chan *mpu9250.MPUData, freq time.Duration) (reqData chan
 			cur = <-data
 
 			// Data processing goes here.
-			n.Compute(&ahrs.Measurement{T: float64(cur.T.Sub(t0).Nanoseconds()/1000000) / 1000,
-				M1: cur.M1, M2: cur.M2, M3: cur.M3})
+			cM <- *&ahrs.Measurement{T: float64(cur.T.Sub(t0).Nanoseconds()/1000000) / 1000,
+				M1: cur.M1, M2: cur.M2, M3: cur.M3}
+			n = <- cMagKal
+			k = n.K
+			l = n.L
 
-			updateLogMap(t0, cur, &n.MagKalState, logMap)
+			updateLogMap(t0, cur, &n, logMap)
 			for len(reqData) > 0 {
 				ch = <-reqData
 				ch <- logMap
@@ -428,15 +427,15 @@ func updateLogMap(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState, p map
 		"MMax2": func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return m2Max },
 		"MMin3": func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return m3Min },
 		"MMax3": func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return m3Max },
-		"K1":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.K1 },
-		"K2":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.K2 },
-		"K3":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.K3 },
-		"L1":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.L1 },
-		"L2":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.L2 },
-		"L3":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.L3 },
-		"MM1":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.K1*m.M1+n.L1 },
-		"MM2":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.K2*m.M2+n.L2 },
-		"MM3":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.K3*m.M3+n.L3 },
+		"K1":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.K[0] },
+		"K2":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.K[1] },
+		"K3":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.K[2] },
+		"L1":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.L[0] },
+		"L2":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.L[1] },
+		"L3":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.L[2] },
+		"MM1":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.K[0]*m.M1+n.L[0] },
+		"MM2":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.K[1]*m.M2+n.L[1] },
+		"MM3":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.K[2]*m.M3+n.L[2] },
 	}
 
 	for k := range sensorLogMap {
