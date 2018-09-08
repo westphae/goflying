@@ -95,7 +95,7 @@ func main() {
 		log.Printf("couldn't open stratux.conf: %s", err)
 	} else {
 		var conf map[string]*json.RawMessage
-		if err :=json.Unmarshal(stratuxConf, &conf); err != nil {
+		if err := json.Unmarshal(stratuxConf, &conf); err != nil {
 			log.Printf("error parsing stratux.conf: %s", err)
 		} else {
 			if byteK, ok := conf["K"]; ok {
@@ -199,7 +199,7 @@ func readMPUData(data <-chan *mpu9250.MPUData, freq time.Duration) (reqData chan
 			// Data processing goes here.
 			cM <- *&ahrs.Measurement{T: float64(cur.T.Sub(t0).Nanoseconds()/1000000) / 1000,
 				M1: cur.M1, M2: cur.M2, M3: cur.M3}
-			n = <- cMagKal
+			n = <-cMagKal
 			k = n.K
 			l = n.L
 
@@ -433,9 +433,9 @@ func updateLogMap(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState, p map
 		"L1":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.L[0] },
 		"L2":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.L[1] },
 		"L3":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.L[2] },
-		"MM1":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.K[0]*m.M1+n.L[0] },
-		"MM2":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.K[1]*m.M2+n.L[1] },
-		"MM3":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.K[2]*m.M3+n.L[2] },
+		"MM1":   func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.K[0]*m.M1 + n.L[0] },
+		"MM2":   func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.K[1]*m.M2 + n.L[1] },
+		"MM3":   func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.K[2]*m.M3 + n.L[2] },
 	}
 
 	for k := range sensorLogMap {
