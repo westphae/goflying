@@ -25,22 +25,10 @@ type MagKalState struct {
 
 // NewMagKal returns a new MagKal object that runs the algorithm passed to it.
 // It is initialized with the starting K, L.
-func NewMagKal(k, l *[3]float64, f func(MagKalState, chan ahrs.Measurement, chan MagKalState)) (cIn chan ahrs.Measurement, cOut chan MagKalState) {
+func NewMagKal(k, l [3]float64, f func(MagKalState, chan ahrs.Measurement, chan MagKalState)) (cIn chan ahrs.Measurement, cOut chan MagKalState) {
 	cIn = make(chan ahrs.Measurement)
 	cOut = make(chan MagKalState)
-	s := MagKalState{K: [3]float64{Big, Big, Big}}
-
-	if k != nil {
-		kNorm := k[0]*k[0] + k[1]*k[1] + k[2]*k[2]
-		if kNorm > 0 {
-			s.K = *k
-		}
-	}
-	if l != nil {
-		s.L = *l
-	}
-
-	s.LogMap = make(map[string]interface{})
+	s := MagKalState{K: k, L: l, LogMap: make(map[string]interface{})}
 	s.updateLogMap(ahrs.NewMeasurement(), s.LogMap)
 
 	go f(s, cIn, cOut)
@@ -89,6 +77,15 @@ func (s *MagKalState) updateLogMap(m *ahrs.Measurement, p map[string]interface{}
 func NormDiff(v1, v2 *[3]float64) (res float64) {
 	for i := 0; i < 3; i++ {
 		res += (v1[i] - v2[i]) * (v1[i] - v2[i])
+	}
+	res = math.Sqrt(res)
+	return
+}
+
+// NormVec calculates the norm of a 3-vector.
+func NormVec(v1 [3]float64) (res float64) {
+	for i := 0; i < 3; i++ {
+		res += v1[i] * v1[i]
 	}
 	res = math.Sqrt(res)
 	return

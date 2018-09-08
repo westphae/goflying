@@ -179,7 +179,7 @@ func openMPU9250() (mpu *mpu9250.MPU9250, err error) {
 func readMPUData(data <-chan *mpu9250.MPUData, freq time.Duration) (reqData chan chan map[string]interface{}) {
 	reqData = make(chan chan map[string]interface{}, 128)
 
-	cM, cMagKal := magkal.NewMagKal(&k, &l, magkal.ComputeSimple)
+	cM, cMagKal := magkal.NewMagKal(k, l, magkal.ComputeKalman)
 
 	go func() {
 		var (

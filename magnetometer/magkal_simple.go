@@ -16,6 +16,11 @@ func ComputeSimple(s MagKalState, cIn chan ahrs.Measurement, cOut chan MagKalSta
 		m3Min, m3Max = Big, -Big
 	)
 
+	if NormVec(s.K) < Small {
+		s.K = [3]float64{Big, Big, Big}
+		s.L = [3]float64{0, 0, 0}
+	}
+
 	for m := range cIn { // Receive input measurements
 		s.T = m.T // Update the MagKalState
 		m1Min, m1Max = math.Min(m1Min, m.M1), math.Max(m1Max, m.M1)
