@@ -66,6 +66,9 @@ func (s *MagKalState) updateLogMap(m *ahrs.Measurement, p map[string]interface{}
 		"L1": func(s *MagKalState, m *ahrs.Measurement) float64 { return s.L[0] },
 		"L2": func(s *MagKalState, m *ahrs.Measurement) float64 { return s.L[1] },
 		"L3": func(s *MagKalState, m *ahrs.Measurement) float64 { return s.L[2] },
+		"MM1":   func(s *MagKalState, m *ahrs.Measurement) float64 { return s.K[0]*m.M1 + s.L[0] },
+		"MM2":   func(s *MagKalState, m *ahrs.Measurement) float64 { return s.K[1]*m.M2 + s.L[1] },
+		"MM3":   func(s *MagKalState, m *ahrs.Measurement) float64 { return s.K[2]*m.M3 + s.L[2] },
 	}
 
 	for k := range logMapFunc {

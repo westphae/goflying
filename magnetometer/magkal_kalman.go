@@ -2,14 +2,29 @@
 // It works by using the measurement of the magnitude of the magnetic field
 package magkal
 
-import "../ahrs"
+import (
+	"fmt"
 
-const (
-	NSigma = 0.1     // Initial uncertainty scale
-	Epsilon = 1e-2   // Some tiny noise scale
+	"../ahrs"
 )
 
-func ComputeKalman(n MagKalState, cIn chan ahrs.Measurement, cOut chan MagKalState) {
+const (
+	magNoise     = 0.1 // Typical magnetometer noise scale TODO measure as it comes in
+	kUncertainty = 0.2 // Initial uncertainty of K
+	lUncertainty = 0.5 // Initial uncertainty of L
+	processNoise = 0.1 // Amount by which K, L vary on a daily timescale, should be small
+)
+
+type MagKalStateKalman struct {
+	MagKalState
+	x, p, q, r, s, u, kk, nHat, h [][]float64
+	y                             float64
+}
+
+func ComputeKalman(nn MagKalState, cIn chan ahrs.Measurement, cOut chan MagKalState) {
+	n := new(MagKalStateKalman)
+	n.MagKalState = nn
+
 	if NormVec(n.K) < Small {
 		n.K = [3]float64{1, 1, 1}
 		n.L = [3]float64{0, 0, 0}
@@ -17,86 +32,77 @@ func ComputeKalman(n MagKalState, cIn chan ahrs.Measurement, cOut chan MagKalSta
 
 	// Initialize the Kalman state x
 	// This is just {K1,L1,K2,L2,K3,L3}
-	x := [][]float64{{n.K[0]}, {n.L[0]/AvgMagField}, {n.K[1]}, {n.L[1]/AvgMagField}, {n.K[2]}, {n.L[2]/AvgMagField}}
+	n.x = [][]float64{{n.K[0]}, {n.L[0]/AvgMagField}, {n.K[1]}, {n.L[1]/AvgMagField}, {n.K[2]}, {n.L[2]/AvgMagField}}
 
 	// Initialize the Kalman uncertainty P and process noise Q
-	p := make([][]float64, 6)
-	q := make([][]float64, 6)
+	n.p = make([][]float64, 6)
+	n.q = make([][]float64, 6)
 	for i:=0; i<3; i++ {
-		p[2*i] = make([]float64, 6)
-		p[2*i+1] = make([]float64, 6)
-		p[2*i][2*i] = NSigma * NSigma
-		p[2*i+1][2*i+1] = NSigma * NSigma
+		n.p[2*i] = make([]float64, 6)
+		n.p[2*i+1] = make([]float64, 6)
+		n.p[2*i][2*i] = kUncertainty * kUncertainty
+		n.p[2*i+1][2*i+1] = lUncertainty * lUncertainty
 
-		q[2*i] = make([]float64, 6)
-		q[2*i+1] = make([]float64, 6)
-		q[2*i][2*i] = Epsilon * Epsilon / (86400*10)
-		q[2*i+1][2*i+1] = Epsilon * Epsilon  / (86400*10)
+		n.q[2*i] = make([]float64, 6)
+		n.q[2*i+1] = make([]float64, 6)
+		n.q[2*i][2*i] = processNoise * processNoise / 86400
+		n.q[2*i+1][2*i+1] = processNoise * processNoise  / 86400
 	}
 
-	r := [][]float64{{Epsilon*Epsilon}}
+	n.r = [][]float64{{magNoise * magNoise}}
 
-	var (
-		y              float64 // Kalman measurement error
-		s, u, kk, nHat [][]float64
-	)
-
-	h := make([][]float64, 1) // Kalman noise Jacobian
-	h[0] = make([]float64, 6)
-	id := make([][]float64, 6) // Identity matrix
-
-	for i:=0; i<6; i++ {
-		id[i] = make([]float64, 6)
-		id[i][i] = 1
-	}
+	n.h = make([][]float64, 1) // Kalman noise Jacobian
+	n.h[0] = make([]float64, 6)
+	id := matIdentity(6)
 
 	for m := range cIn { // Receive input measurements
-		u = [][]float64{{m.M1/AvgMagField}, {m.M2/AvgMagField}, {m.M3/AvgMagField}}
+		n.u = [][]float64{{m.M1/AvgMagField}, {m.M2/AvgMagField}, {m.M3/AvgMagField}}
 
 		// Calculate estimated measurement
-		nHat = calcMagField(x, u)
+		n.nHat = calcMagField(n.x, n.u)
 
 		// No evolution for x
 
 		// Evolve p
 		for i:=0; i<6; i++ {
 			for j:=0; j<6; j++ {
-				p[i][j] += q[i][j]
+				n.p[i][j] += n.q[i][j]
 			}
 		}
 
 		// Calculate measurement residual
-		y = 1 // In natural units
+		n.y = 1 // In natural units
 		for i:=0; i<3; i++ {
-			y -= nHat[i][0]*nHat[i][0]
+			n.y -= n.nHat[i][0]*n.nHat[i][0]
 		}
 
 		// Calculate Jacobian
 		for i:=0; i<3; i++ {
-			h[0][2*i] = 2*nHat[i][0]*u[i][0]
-			h[0][2*i+1] = 2 * nHat[i][0]
+			n.h[0][2*i] = 2*n.nHat[i][0]*n.u[i][0]
+			n.h[0][2*i+1] = 2*n.nHat[i][0]
 		}
 
 		// Calculate S
-		s = matAdd(r, matMul(h, matMul(p, matTranspose(h))))
+		n.s = matAdd(n.r, matMul(n.h, matMul(n.p, matTranspose(n.h))))
 
 		// Kalman Gain
-		kk = matSMul(1/s[0][0], matMul(p, matTranspose(h)))
+		n.kk = matSMul(1/n.s[0][0], matMul(n.p, matTranspose(n.h)))
 
 		// State correction
-		x = matAdd(x, matSMul(y, kk))
+		n.x = matAdd(n.x, matSMul(n.y, n.kk))
 
 		// State covariance correction
-		p = matMul(matAdd(id, matSMul(-1, matMul(kk, h))), p)
+		n.p = matMul(matAdd(id, matSMul(-1, matMul(n.kk, n.h))), n.p)
 
 		// Copy all the internal values to the MagKalState
 		n.T = m.T
-		n.K = [3]float64{x[0][0], x[2][0], x[4][0]}
-		n.L = [3]float64{x[1][0]*AvgMagField, x[3][0]*AvgMagField, x[5][0]*AvgMagField}
+		n.K = [3]float64{n.x[0][0], n.x[2][0], n.x[4][0]}
+		n.L = [3]float64{n.x[1][0]*AvgMagField, n.x[3][0]*AvgMagField, n.x[5][0]*AvgMagField}
 		n.updateLogMap(&m, n.LogMap)
+		n.updateKalmanLogMap()
 
 		select {
-		case cOut <- n: // Send results when requested, non-blocking
+		case cOut <- n.MagKalState: // Send results when requested, non-blocking
 		default:
 		}
 	}
@@ -104,6 +110,48 @@ func ComputeKalman(n MagKalState, cIn chan ahrs.Measurement, cOut chan MagKalSta
 	close(cOut) // When cIn is closed, close cOut
 }
 
+func (n *MagKalStateKalman) updateKalmanLogMap() {
+	n.LogMap["r"] = n.r[0][0]
+	n.LogMap["s"] = n.s[0][0]
+	for i:=0; i<3; i++ {
+		n.LogMap[fmt.Sprintf("u%d", i+1)] = n.u[i][0]
+		n.LogMap[fmt.Sprintf("nHat%d", i+1)] = n.nHat[i][0]
+		n.LogMap[fmt.Sprintf("k%d", i+1)] = n.x[2*i][0]
+		n.LogMap[fmt.Sprintf("l%d", i+1)] = n.x[2*i+1][0]
+		n.LogMap[fmt.Sprintf("hk%d", i+1)] = n.h[0][2*i]
+		n.LogMap[fmt.Sprintf("hl%d", i+1)] = n.h[0][2*i+1]
+		n.LogMap[fmt.Sprintf("kkk%d", i+1)] = n.kk[2*i][0]
+		n.LogMap[fmt.Sprintf("kkl%d", i+1)] = n.kk[2*i+1][0]
+		for j:=0; j<3; j++ {
+			n.LogMap[fmt.Sprintf("pk%dk%d", i+1, j+1)] = n.p[2*i][2*j]
+			n.LogMap[fmt.Sprintf("pk%dl%d", i+1, j+1)] = n.p[2*i][2*j+1]
+			n.LogMap[fmt.Sprintf("pl%dk%d", i+1, j+1)] = n.p[2*i+1][2*j]
+			n.LogMap[fmt.Sprintf("pl%dl%d", i+1, j+1)] = n.p[2*i+1][2*j+1]
+			n.LogMap[fmt.Sprintf("qk%dk%d", i+1, j+1)] = n.p[2*i][2*j]
+			n.LogMap[fmt.Sprintf("qk%dl%d", i+1, j+1)] = n.p[2*i][2*j+1]
+			n.LogMap[fmt.Sprintf("ql%dk%d", i+1, j+1)] = n.p[2*i+1][2*j]
+			n.LogMap[fmt.Sprintf("ql%dl%d", i+1, j+1)] = n.p[2*i+1][2*j+1]
+		}
+	}
+}
+
+func (n *MagKalStateKalman) updateKalmanLogMap2() {
+	for i:=0; i<6; i++ {
+		n.LogMap[fmt.Sprintf("x%d", i)] = n.x[i][0]
+		n.LogMap[fmt.Sprintf("h%d", i)] = n.h[0][i]
+		n.LogMap[fmt.Sprintf("kk%d", i)] = n.kk[i][0]
+		for j:=0; j<6; j++ {
+			n.LogMap[fmt.Sprintf("p%d%d", i)] = n.p[i][j]
+			n.LogMap[fmt.Sprintf("q%d%d", i)] = n.p[i][j]
+		}
+	}
+	n.LogMap["r"] = n.r[0][0]
+	n.LogMap["s"] = n.s[0][0]
+	for i:=0; i<3; i++ {
+		n.LogMap[fmt.Sprintf("u%d", i)] = n.u[i][0]
+		n.LogMap[fmt.Sprintf("nHat%d", i)] = n.nHat[i][0]
+	}
+}
 
 func calcMagField(x, u [][]float64) (n [][]float64) {
 	n = make([][]float64, len(u))
@@ -158,4 +206,14 @@ func matTranspose(a [][]float64) (x [][]float64) {
 		}
 	}
 	return x
+}
+
+func matIdentity(n int) (id [][]float64) {
+	id = make([][]float64, n) // Identity matrix
+
+	for i:=0; i<n; i++ {
+		id[i] = make([]float64, n)
+		id[i][i] = 1
+	}
+	return
 }
