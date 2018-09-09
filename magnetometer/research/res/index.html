@@ -40,18 +40,35 @@
             fill: none;
         }
 
+        .area {
+            fill-opacity: 0.4;
+        }
+
         .line.x {
             stroke: Red;
             color: Red;
+        }
+
+        .area.x {
+            fill: Red;
         }
 
         .line.y {
             stroke: Green;
             color: Green;
         }
+
+        .area.y {
+            fill: Green;
+        }
+
         .line.z {
             stroke: Blue;
             color: Blue;
+        }
+
+        .area.z {
+            fill: Blue;
         }
 
         .axis path,
@@ -105,18 +122,6 @@
         <td id="DIPRaw">0</td>
     </tr>
     <tr>
-        <td>Min</td>
-        <td id="MMin1">0</td>
-        <td id="MMin2">0</td>
-        <td id="MMin3">0</td>
-    </tr>
-    <tr>
-        <td>Max</td>
-        <td id="MMax1">0</td>
-        <td id="MMax2">0</td>
-        <td id="MMax3">0</td>
-    </tr>
-    <tr>
         <td>Scale K</td>
         <td id="K1">0</td>
         <td id="K2">0</td>
@@ -131,8 +136,12 @@
 </table>
 
 <div>
-    <span id="m_mag"></span>
-    <span id="mm_mag"></span>
+    <span id="u_mag"></span>
+    <span id="nHat_mag"></span>
+</div>
+<div>
+    <span id="k_mag"><</span>
+    <span id="l_mag"><</span>
 </div>
 <div>
     <span id="m1m2"></span>
@@ -142,8 +151,10 @@
 <script src="d3.min.js" charset="utf-8"></script>
 <script src="magkal.js" charset="utf-8"></script>
 <script charset="utf-8">
-    let updateMMag = makeRollingPlot("m_mag", "M"),
-            updateMMMag = makeRollingPlot("mm_mag", "MM"),
+    let updateUMag = makeRollingPlot("u_mag", "u"),
+            updateNHatMag = makeRollingPlot("nHat_mag", "nHat"),
+            updateKMag = makeRollingPlot("k_mag", "k", "p"),
+            updateLMag = makeRollingPlot("l_mag", "l", "p"),
             updateMagXY = updateMagXS(1, 2),
             updateMagXZ = updateMagXS(3, 1),
             updateMagYZ = updateMagXS(2, 3),
@@ -175,8 +186,10 @@
             hdgDip = calcHdgDip(msg['MM1'], msg['MM2'], msg['MM3']);
             msg['HDG'] = hdgDip.hdg;
             msg['DIP'] = hdgDip.dip;
-            updateMMag(msg);
-            updateMMMag(msg);
+            updateUMag(msg);
+            updateNHatMag(msg);
+            updateKMag(msg);
+            updateLMag(msg);
             updateMagXY(msg);
             updateMagXZ(msg);
             updateMagYZ(msg);
