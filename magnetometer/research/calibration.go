@@ -185,7 +185,6 @@ func readMPUData(data <-chan *mpu9250.MPUData, freq time.Duration) (reqData chan
 		var (
 			ch     chan map[string]interface{}
 			cur    *mpu9250.MPUData
-			logMap = make(map[string]interface{})
 			n      magkal.MagKalState
 		)
 
@@ -203,10 +202,9 @@ func readMPUData(data <-chan *mpu9250.MPUData, freq time.Duration) (reqData chan
 			k = n.K
 			l = n.L
 
-			updateLogMap(t0, cur, &n, logMap)
 			for len(reqData) > 0 {
 				ch = <-reqData
-				ch <- logMap
+				ch <- n.LogMap
 			}
 		}
 	}()
@@ -395,50 +393,4 @@ func sendData(w http.ResponseWriter, r *http.Request, reqData chan chan map[stri
 		}
 	}
 	log.Println("Closing client")
-}
-
-var (
-	m1Min = ahrs.Big
-	m1Max = -ahrs.Big
-	m2Min = ahrs.Big
-	m2Max = -ahrs.Big
-	m3Min = ahrs.Big
-	m3Max = -ahrs.Big
-)
-
-func updateLogMap(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState, p map[string]interface{}) {
-	m1Min, m1Max = math.Min(m1Min, m.M1), math.Max(m1Max, m.M1)
-	m2Min, m2Max = math.Min(m2Min, m.M2), math.Max(m2Max, m.M2)
-	m3Min, m3Max = math.Min(m3Min, m.M3), math.Max(m3Max, m.M3)
-
-	var sensorLogMap = map[string]func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64{
-		"T": func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 {
-			return float64(m.T.Sub(t0).Nanoseconds()/1000000) / 1000
-		},
-		"TM": func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 {
-			return float64(m.TM.Sub(t0).Nanoseconds()/1000000) / 1000
-		},
-		"M1":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return m.M1 },
-		"M2":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return m.M2 },
-		"M3":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return m.M3 },
-		"MMin1": func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return m1Min },
-		"MMax1": func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return m1Max },
-		"MMin2": func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return m2Min },
-		"MMax2": func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return m2Max },
-		"MMin3": func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return m3Min },
-		"MMax3": func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return m3Max },
-		"K1":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.K[0] },
-		"K2":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.K[1] },
-		"K3":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.K[2] },
-		"L1":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.L[0] },
-		"L2":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.L[1] },
-		"L3":    func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.L[2] },
-		"MM1":   func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.K[0]*m.M1 + n.L[0] },
-		"MM2":   func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.K[1]*m.M2 + n.L[1] },
-		"MM3":   func(t0 time.Time, m *mpu9250.MPUData, n *magkal.MagKalState) float64 { return n.K[2]*m.M3 + n.L[2] },
-	}
-
-	for k := range sensorLogMap {
-		p[k] = sensorLogMap[k](t0, m, n)
-	}
 }
