@@ -138,8 +138,8 @@ func (n *MagKalStateKalman) updateKalmanLogMap2() {
 		n.LogMap[fmt.Sprintf("h%d", i)] = n.h[0][i]
 		n.LogMap[fmt.Sprintf("kk%d", i)] = n.kk[i][0]
 		for j:=0; j<6; j++ {
-			n.LogMap[fmt.Sprintf("p%d%d", i)] = n.p[i][j]
-			n.LogMap[fmt.Sprintf("q%d%d", i)] = n.p[i][j]
+			n.LogMap[fmt.Sprintf("p%d%d", i, j)] = n.p[i][j]
+			n.LogMap[fmt.Sprintf("q%d%d", i, j)] = n.p[i][j]
 		}
 	}
 	n.LogMap["r"] = n.r[0][0]
@@ -156,61 +156,4 @@ func calcMagField(x, u [][]float64) (n [][]float64) {
 		n[i] = []float64{x[2*i][0]*u[i][0] + x[2*i+1][0]}
 	}
 	return n
-}
-
-// Lightweight minimal matrix algebra functions
-func matAdd(a, b [][]float64) (x[][]float64) {
-	x = make([][]float64, len(a))
-	for i:=0; i<len(a); i++ {
-		x[i] = make([]float64, len(a[0]))
-		for j := 0; j < len(b[0]); j++ {
-			x[i][j] = a[i][j] + b[i][j]
-		}
-	}
-	return x
-}
-
-func matSMul(k float64, a [][]float64) (x [][]float64) {
-	x = make([][]float64, len(a))
-	for i:=0; i<len(a); i++ {
-		x[i] = make([]float64, len(a[0]))
-		for j:=0; j<len(a[0]); j++ {
-			x[i][j] = k*a[i][j]
-		}
-	}
-	return x
-}
-
-func matMul(a, b [][]float64) (x [][]float64) {
-	x = make([][]float64, len(a))
-	for i:=0; i<len(a); i++ {
-		x[i] = make([]float64, len(b[0]))
-		for j:=0; j<len(b[0]); j++ {
-			for k:=0; k<len(b); k++ {
-				x[i][j] += a[i][k]*b[k][j]
-			}
-		}
-	}
-	return x
-}
-
-func matTranspose(a [][]float64) (x [][]float64) {
-	x = make([][]float64, len(a[0]))
-	for i:=0; i<len(x); i++ {
-		x[i] = make([]float64, len(a))
-		for j:=0; j<len(x[0]); j++ {
-			x[i][j] = a[j][i]
-		}
-	}
-	return x
-}
-
-func matIdentity(n int) (id [][]float64) {
-	id = make([][]float64, n) // Identity matrix
-
-	for i:=0; i<n; i++ {
-		id[i] = make([]float64, n)
-		id[i][i] = 1
-	}
-	return
 }
