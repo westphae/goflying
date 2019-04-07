@@ -17,6 +17,7 @@ const (
 
 type MagKalState struct {
 	T float64 // Time when state last updated
+	// MagActual = K*MagMeasured + L
 	K [3]float64 // Scaling factor for magnetometer
 	L [3]float64 // Offset for magnetometer
 	LogMap map[string]interface{} // Map only for analysis/debugging
