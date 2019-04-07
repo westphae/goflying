@@ -13,10 +13,7 @@ func ComputeTrivial(s MagKalState, cIn chan ahrs.Measurement, cOut chan MagKalSt
 	for m := range cIn { // Receive input measurements
 		s.T = m.T // Update the MagKalState
 		s.updateLogMap(&m, s.LogMap)
-		select {
-		case cOut <- s: // Send results when requested, non-blocking
-		default:
-		}
+		cOut <- s // Send results when requested, blocking
 	}
 
 	close(cOut) // When cIn is closed, close cOut

@@ -101,10 +101,7 @@ func ComputeKalman(nn MagKalState, cIn chan ahrs.Measurement, cOut chan MagKalSt
 		n.updateLogMap(&m, n.LogMap)
 		n.updateKalmanLogMap()
 
-		select {
-		case cOut <- n.MagKalState: // Send results when requested, non-blocking
-		default:
-		}
+		cOut <- n.MagKalState // Send results when requested, blocking
 	}
 
 	close(cOut) // When cIn is closed, close cOut
