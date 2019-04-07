@@ -1,4 +1,4 @@
-package mpu9250
+package mpu
 
 const (
 	MPU_ADDRESS               = 0x68

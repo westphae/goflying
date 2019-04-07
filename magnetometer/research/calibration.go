@@ -20,7 +20,7 @@ import (
 
 	".."
 	"../../ahrs"
-	"../../mpu9250"
+	"../../mpu"
 	"github.com/gorilla/websocket"
 )
 
@@ -115,15 +115,15 @@ func main() {
 	case "hw":
 		hwCmd.Parse(os.Args[2:])
 
-		mpu, err := openMPU9250()
+		mmpu, err := openMPU9250()
 		if err != nil {
 			log.Println(err)
 			return
 		}
-		defer mpu.CloseMPU()
+		defer mmpu.CloseMPU()
 		log.Println("MPU9250 initialized successfully.")
 
-		reqData = readMPUData(mpu.CAvg, time.Duration(1000/freq)*time.Millisecond)
+		reqData = readMPUData(mmpu.CAvg, time.Duration(1000/freq)*time.Millisecond)
 	case "rand":
 		randCmd.Parse(os.Args[2:])
 
@@ -162,9 +162,9 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8000", nil))
 }
 
-func openMPU9250() (mpu *mpu9250.MPU9250, err error) {
-	for i := 0; i < numMPURetries && mpu == nil; i++ {
-		mpu, err = mpu9250.NewMPU9250(250, 4, 50, true, false)
+func openMPU9250() (mmpu *mpu.MPU9250, err error) {
+	for i := 0; i < numMPURetries && mmpu == nil; i++ {
+		mmpu, err = mpu.NewMPU9250(250, 4, 50, true, false)
 		if err != nil {
 			log.Printf("Couldn't initialize MPU9250, attempt %d of %d: %v\n", i, numMPURetries, err)
 			time.Sleep(100 * time.Millisecond)
@@ -173,10 +173,10 @@ func openMPU9250() (mpu *mpu9250.MPU9250, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("error connecting to MPU9250: %v", err)
 	}
-	return mpu, nil
+	return mmpu, nil
 }
 
-func readMPUData(data <-chan *mpu9250.MPUData, freq time.Duration) (reqData chan chan map[string]interface{}) {
+func readMPUData(data <-chan *mpu.MPUData, freq time.Duration) (reqData chan chan map[string]interface{}) {
 	reqData = make(chan chan map[string]interface{}, 128)
 
 	cM, cMagKal := magkal.NewMagKal(k, l, magkal.ComputeKalman)
@@ -184,7 +184,7 @@ func readMPUData(data <-chan *mpu9250.MPUData, freq time.Duration) (reqData chan
 	go func() {
 		var (
 			ch     chan map[string]interface{}
-			cur    *mpu9250.MPUData
+			cur    *mpu.MPUData
 			n      magkal.MagKalState
 		)
 
@@ -211,8 +211,8 @@ func readMPUData(data <-chan *mpu9250.MPUData, freq time.Duration) (reqData chan
 	return
 }
 
-func genRandomData(magVals [6]float64) (out chan *mpu9250.MPUData) {
-	out = make(chan *mpu9250.MPUData)
+func genRandomData(magVals [6]float64) (out chan *mpu.MPUData) {
+	out = make(chan *mpu.MPUData)
 
 	go func() {
 		var (
@@ -223,7 +223,7 @@ func genRandomData(magVals [6]float64) (out chan *mpu9250.MPUData) {
 			psi = 2 * ahrs.Pi * rand.Float64()
 			theta = ahrs.Pi * rand.Float64()
 
-			out <- &mpu9250.MPUData{
+			out <- &mpu.MPUData{
 				T:  time.Now(),
 				TM: time.Now(),
 				M1: M0 * (magVals[0] + magVals[1]*math.Cos(psi)*math.Cos(theta)),
@@ -235,8 +235,8 @@ func genRandomData(magVals [6]float64) (out chan *mpu9250.MPUData) {
 	return
 }
 
-func genFileData(f io.Reader, start float64, end float64) (out chan *mpu9250.MPUData) {
-	out = make(chan *mpu9250.MPUData)
+func genFileData(f io.Reader, start float64, end float64) (out chan *mpu.MPUData) {
+	out = make(chan *mpu.MPUData)
 
 	var (
 		err                              error
@@ -312,7 +312,7 @@ func genFileData(f io.Reader, start float64, end float64) (out chan *mpu9250.MPU
 			}
 
 			log.Printf("T: %f, TM: %f\n", t-t0, tm-tm0)
-			out <- &mpu9250.MPUData{
+			out <- &mpu.MPUData{
 				T:  tn.Add(time.Duration((t-t0)*1000) * time.Millisecond),
 				TM: tn.Add(time.Duration((tm-tm0)*1000) * time.Millisecond),
 				M1: m1,

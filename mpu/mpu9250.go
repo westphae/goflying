@@ -1,4 +1,4 @@
-package mpu9250
+package mpu
 
 // Approach adapted from the InvenSense DMP 6.1 drivers
 // Also referenced https://github.com/brianc118/MPU9250/blob/master/MPU9250.cpp
@@ -15,23 +15,6 @@ import (
 	_ "github.com/kidoman/embd/host/rpi"
 )
 
-const (
-	bufSize  = 250 // Size of buffer storing instantaneous sensor values
-	scaleMag = 9830.0 / 65536
-)
-
-// MPUData contains all the values measured by an MPU9250.
-type MPUData struct {
-	G1, G2, G3        float64
-	A1, A2, A3        float64
-	M1, M2, M3        float64
-	Temp              float64
-	GAError, MagError error
-	N, NM             int
-	T, TM             time.Time
-	DT, DTM           time.Duration
-}
-
 /*
 MPU9250 represents an InvenSense MPU9250 9DoF chip.
 All communication is via channels.
@@ -44,10 +27,8 @@ type MPU9250 struct {
 	mcal1, mcal2, mcal3   float64         // Hardware magnetometer calibration values, uT
 	a01, a02, a03         float64         // Hardware accelerometer calibration values, G
 	g01, g02, g03         float64         // Hardware gyro calibration values, °/s
-	C                     <-chan *MPUData // Current instantaneous sensor values
-	CAvg                  <-chan *MPUData // Average sensor values (since CAvg last read)
-	CBuf                  <-chan *MPUData // Buffer of instantaneous sensor values
 	cClose                chan bool       // Turn off MPU polling
+	MPUReader
 }
 
 /*
