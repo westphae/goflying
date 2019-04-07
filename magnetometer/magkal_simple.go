@@ -48,10 +48,7 @@ func ComputeSimple(s MagKalState, cIn chan ahrs.Measurement, cOut chan MagKalSta
 		}
 
 		s.updateLogMap(&m, s.LogMap)
-		select {
-		case cOut <- s: // Send results when requested, non-blocking
-		default:
-		}
+		cOut<- s // Send results when requested, blocking
 	}
 
 	close(cOut) // When cIn is closed, close cOut
