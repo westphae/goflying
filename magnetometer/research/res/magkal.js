@@ -2,7 +2,7 @@ const DEG = Math.PI/180,
     DELAY = 250;
 
 function calcHdgDip(m1, m2, m3) {
-    let hdg = Math.atan2(-m2, m1) / DEG;
+    let hdg = Math.atan2(-m2, -m1) / DEG;
     if (hdg < 0) { hdg += 360}
     return {hdg: hdg,
         dip: Math.atan2(m3, Math.sqrt(m1*m1 + m2*m2)) / DEG
@@ -34,9 +34,9 @@ let updateTable = function() {
             case "DIPRaw":
                 fmt = ".1f";
                 break;
-            case "S1":
-            case "S2":
-            case "S3":
+            case "K1":
+            case "K2":
+            case "K3":
                 fmt = ".2f";
                 break;
             default:
@@ -187,7 +187,11 @@ function updateMagXS(ax, ay) {
 
 }
 
-function makeRollingPlot(el, v) {
+function makeRollingPlot(el, v, w) {
+    // el is HTML element where the plot will go
+    // v is the variable to plot (from the logmap), e.g. "k"
+    // w is the covariance matrix corresponding to the variable, e.g. "p"
+    // so v="k", w="p" will look for k1 and pk1k1 etc.
     const TMAX = 10;
 
     let D0 = [], bLim = -1, tLim = 1;
@@ -211,10 +215,26 @@ function makeRollingPlot(el, v) {
     let getLine = function(dim) {
         return d3.svg.line()
             .x(function (d, i) {
-                return x(d["TM"]);
+                return x(d["T"]);
             })
             .y(function (d, i) {
                 return y(d[v + dim]);
+            });
+    };
+
+    let getArea = function(dim) {
+        return d3.svg.area()
+            .x0(function (d, i) {
+                return x(d["T"]);
+            })
+            .x1(function (d, i) {
+                return x(d["T"]);
+            })
+            .y0(function (d, i) {
+                return y(d[v + dim]-Math.sqrt(d[w+v+dim+v+dim]));
+            })
+            .y1(function (d, i) {
+                return y(d[v + dim]+Math.sqrt(d[w+v+dim+v+dim]));
             });
     };
 
@@ -265,6 +285,27 @@ function makeRollingPlot(el, v) {
         .attr("class", "line z")
         .datum(D0);
 
+    let xarea, yarea, zarea;
+    if (w != null) {
+        xarea = svg.append("g")
+            .attr("clip-path", "url(#" + el + "Clip)")
+            .append("path")
+            .attr("class", "area x")
+            .datum(D0);
+
+        yarea = svg.append("g")
+            .attr("clip-path", "url(#" + el + "Clip)")
+            .append("path")
+            .attr("class", "area y")
+            .datum(D0);
+
+        zarea = svg.append("g")
+            .attr("clip-path", "url(#" + el + "Clip)")
+            .append("path")
+            .attr("class", "area z")
+            .datum(D0);
+    }
+
     let rescale = function(val) {
         if (val < bLim) {
             bLim = val;
@@ -284,7 +325,7 @@ function makeRollingPlot(el, v) {
         rescale(data[v+"2"]);
         rescale(data[v+"3"]);
 
-        x.domain([data.TM-TMAX, data.TM]);
+        x.domain([data.T-TMAX, data.T]);
         D0.push(data);
 
         xAxisLine
@@ -292,19 +333,38 @@ function makeRollingPlot(el, v) {
             .duration(DELAY)
             .ease("linear")
             .call(xAxis);
+
         xpath
-            .transition()
-            .duration(DELAY)
+            .transition(DELAY)
             .ease("linear")
             .attr("d", getLine("1"));
+
         ypath
             .transition(DELAY)
             .ease("linear")
             .attr("d", getLine("2"));
+
         zpath
             .transition(DELAY)
             .ease("linear")
             .attr("d", getLine("3"));
+
+        if (w != null) {
+            xarea
+                .transition(DELAY)
+                .ease("linear")
+                .attr("d", getArea("1"));
+
+            yarea
+                .transition(DELAY)
+                .ease("linear")
+                .attr("d", getArea("2"));
+
+            zarea
+                .transition(DELAY)
+                .ease("linear")
+                .attr("d", getArea("3"));
+        }
 
         if (D0.length>20*TMAX) {
             D0.splice(0, 11*TMAX);
