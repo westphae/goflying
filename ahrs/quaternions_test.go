@@ -98,9 +98,9 @@ func TestSpecificToQuaternion(t *testing.T) {
 		w = quaternion.Quaternion{X: w1s[i], Y: w2s[i], Z: w3s[i]}
 		e0, e1, e2, e3 = ToQuaternion(phis[i], thetas[i], psis[i])
 		e = quaternion.Quaternion{W: e0, X: e1, Y: e2, Z: e3}
-		uu = quaternion.Prod(e, x, quaternion.Conj(e))
-		vv = quaternion.Prod(e, y, quaternion.Conj(e))
-		ww = quaternion.Prod(e, z, quaternion.Conj(e))
+		uu = quaternion.Prod(e, x, e.Conj())
+		vv = quaternion.Prod(e, y, e.Conj())
+		ww = quaternion.Prod(e, z, e.Conj())
 
 		if notSmall(u.W-uu.W) || notSmall(u.X-uu.X) ||
 			notSmall(u.Y-uu.Y) || notSmall(u.Z-uu.Z) {
@@ -136,10 +136,10 @@ func TestPitchRotationQuaternion(t *testing.T) {
 	q_ae := quaternion.Quaternion{1, 0, 0, 0} // headed East
 	h_a := quaternion.Quaternion{1, 0, -0.5 * Pi / 180, 0}
 
-	q_nose_pitched_a := quaternion.Prod(h_a, q_nose_aircraft, quaternion.Conj(h_a))
-	q_nose_pitched_e := quaternion.Prod(quaternion.Conj(q_ae), q_nose_pitched_a, q_ae)
-	q_rt_wing_pitched_a := quaternion.Prod(h_a, q_rt_wing_aircraft, quaternion.Conj(h_a))
-	q_rt_wing_pitched_e := quaternion.Prod(quaternion.Conj(q_ae), q_rt_wing_pitched_a, q_ae)
+	q_nose_pitched_a := quaternion.Prod(h_a, q_nose_aircraft, h_a.Conj())
+	q_nose_pitched_e := quaternion.Prod(q_ae.Conj(), q_nose_pitched_a, q_ae)
+	q_rt_wing_pitched_a := quaternion.Prod(h_a, q_rt_wing_aircraft, h_a.Conj())
+	q_rt_wing_pitched_e := quaternion.Prod(q_ae.Conj(), q_rt_wing_pitched_a, q_ae)
 	if q_nose_pitched_e.Z < Tolerance || notSmall(q_nose_pitched_e.Y) ||
 		notSmall(q_rt_wing_pitched_e.X) || notSmall(q_rt_wing_pitched_e.Z) {
 		fmt.Println("Testing pitch directionality")
@@ -157,10 +157,10 @@ func TestRollRotationQuaternion(t *testing.T) {
 	q_ae := quaternion.Quaternion{1, 0, 0, 0} // headed East
 	h_a := quaternion.Quaternion{1, 0.5 * Pi / 180, 0, 0}
 
-	q_nose_rolled_a := quaternion.Prod(h_a, q_nose_aircraft, quaternion.Conj(h_a))
-	q_nose_rolled_e := quaternion.Prod(quaternion.Conj(q_ae), q_nose_rolled_a, q_ae)
-	q_rt_wing_rolled_a := quaternion.Prod(h_a, q_rt_wing_aircraft, quaternion.Conj(h_a))
-	q_rt_wing_rolled_e := quaternion.Prod(quaternion.Conj(q_ae), q_rt_wing_rolled_a, q_ae)
+	q_nose_rolled_a := quaternion.Prod(h_a, q_nose_aircraft, h_a.Conj())
+	q_nose_rolled_e := quaternion.Prod(q_ae.Conj(), q_nose_rolled_a, q_ae)
+	q_rt_wing_rolled_a := quaternion.Prod(h_a, q_rt_wing_aircraft, h_a.Conj())
+	q_rt_wing_rolled_e := quaternion.Prod(q_ae.Conj(), q_rt_wing_rolled_a, q_ae)
 	if notSmall(q_nose_rolled_e.Z) || notSmall(q_nose_rolled_e.Y) ||
 		q_rt_wing_rolled_e.Z > Tolerance || notSmall(q_rt_wing_rolled_e.X) {
 		fmt.Println("Testing roll directionality")
@@ -178,10 +178,10 @@ func TestYawRotationQuaternion(t *testing.T) {
 	q_ae := quaternion.Quaternion{1, 0, 0, 0} // headed East
 	h_a := quaternion.Quaternion{1, 0, 0, -0.5 * Pi / 180}
 
-	q_nose_yawed_a := quaternion.Prod(h_a, q_nose_aircraft, quaternion.Conj(h_a))
-	q_nose_yawed_e := quaternion.Prod(quaternion.Conj(q_ae), q_nose_yawed_a, q_ae)
-	q_rt_wing_yawed_a := quaternion.Prod(h_a, q_rt_wing_aircraft, quaternion.Conj(h_a))
-	q_rt_wing_yawed_e := quaternion.Prod(quaternion.Conj(q_ae), q_rt_wing_yawed_a, q_ae)
+	q_nose_yawed_a := quaternion.Prod(h_a, q_nose_aircraft, h_a.Conj())
+	q_nose_yawed_e := quaternion.Prod(q_ae.Conj(), q_nose_yawed_a, q_ae)
+	q_rt_wing_yawed_a := quaternion.Prod(h_a, q_rt_wing_aircraft, h_a.Conj())
+	q_rt_wing_yawed_e := quaternion.Prod(q_ae.Conj(), q_rt_wing_yawed_a, q_ae)
 	if notSmall(q_nose_yawed_e.Z) || q_nose_yawed_e.X < Tolerance ||
 		notSmall(q_rt_wing_yawed_e.Z) || q_rt_wing_yawed_e.X > -Tolerance {
 		fmt.Println("Testing yaw directionality")
@@ -238,7 +238,7 @@ func TestQuaternionAToB(t *testing.T) {
 		q0, q1, q2, q3 = QuaternionAToB(a1, a2, a3, b1, b2, b3)
 		a = quaternion.Quaternion{0, a1 / aa, a2 / aa, a3 / aa}
 		q = quaternion.Quaternion{q0, q1, q2, q3}
-		z = quaternion.Prod(q, a, quaternion.Conj(q))
+		z = quaternion.Prod(q, a, q.Conj())
 		if notSmall(z.W) || notSmall(z.X-b1/bb) ||
 			notSmall(z.Y-b2/bb) || notSmall(z.Z-b3/bb) {
 			fmt.Printf("A:  %4f %4f %4f\n", a1, a2, a3)
@@ -252,7 +252,7 @@ func TestQuaternionAToB(t *testing.T) {
 	q0, q1, q2, q3 = QuaternionAToB(a1, a2, a3, -a1, -a2, -a3)
 	a = quaternion.Quaternion{0, a1, a2, a3}
 	q = quaternion.Quaternion{q0, q1, q2, q3}
-	z = quaternion.Prod(q, a, quaternion.Conj(q))
+	z = quaternion.Prod(q, a, q.Conj())
 	if notSmall(z.W) || notSmall(z.X+a1) ||
 		notSmall(z.Y+a2) || notSmall(z.Z+a3) {
 		fmt.Printf("A:  %4f %4f %4f\n", a1, a2, a3)
@@ -267,24 +267,24 @@ func TestQuaternionAToB(t *testing.T) {
 func TestMultipleRotations(t *testing.T) {
 	// Starting orientation: nose pointing East, no roll
 	q0 := quaternion.Quaternion{1, 0, 0, 0}
-	q0 = quaternion.Unit(q0)
+	q0 = q0.Unit()
 	p := Pi / 3  // Pitch up
 	r := Pi / 4  // Roll right
 	y := +Pi / 2 // Yaw left
 
 	// Define some rotations in appropriate frame
 	qap1 := quaternion.Quaternion{math.Cos(-p / 2), 0, math.Sin(-p / 2), 0}
-	qap2 := quaternion.Conj(qap1)                                         // Conj for opposite action
+	qap2 := qap1.Conj()                                                   // Conj for opposite action
 	qey := quaternion.Quaternion{math.Cos(y / 2), 0, 0, math.Sin(y / 2)}  // Yaw is always defined in the earth frame, no matter the attitude
 	qar1 := quaternion.Quaternion{math.Cos(r / 2), math.Sin(r / 2), 0, 0} // Roll is always defined in the aircraft frame, no matter the attitude
-	qar2 := quaternion.Conj(qar1)
+	qar2 := qar1.Conj()
 
 	// Earth frame
 	qe := qap1
 	if !checkQ(qe, 0, p, Pi/2) {
 		t.Fail()
 	}
-	qe = quaternion.Prod(quaternion.Prod(qe, qar1, quaternion.Conj(qe)), qe) // How we translate airplane frame to earth frame
+	qe = quaternion.Prod(quaternion.Prod(qe, qar1, qe.Conj()), qe) // How we translate airplane frame to earth frame
 	if !checkQ(qe, r, p, Pi/2) {
 		t.Fail()
 	}
@@ -292,11 +292,11 @@ func TestMultipleRotations(t *testing.T) {
 	if !checkQ(qe, r, p, Pi/2-y) {
 		t.Fail()
 	}
-	qe = quaternion.Prod(quaternion.Prod(qe, qar2, quaternion.Conj(qe)), qe)
+	qe = quaternion.Prod(quaternion.Prod(qe, qar2, qe.Conj()), qe)
 	if !checkQ(qe, 0, p, Pi/2-y) {
 		t.Fail()
 	}
-	qe = quaternion.Prod(quaternion.Prod(qe, qap2, quaternion.Conj(qe)), qe)
+	qe = quaternion.Prod(quaternion.Prod(qe, qap2, qe.Conj()), qe)
 	if !checkQ(qe, 0, 0, Pi/2-y) {
 		t.Fail()
 	}
@@ -311,7 +311,7 @@ func TestMultipleRotations(t *testing.T) {
 	if !checkQ(qa, r, p, Pi/2) {
 		t.Fail()
 	}
-	qa = quaternion.Prod(qa, quaternion.Prod(quaternion.Conj(qa), qey, qa)) // How we translate earth frame to airplane frame
+	qa = quaternion.Prod(qa, quaternion.Prod(qa.Conj(), qey, qa)) // How we translate earth frame to airplane frame
 	if !checkQ(qa, r, p, Pi/2-y) {
 		t.Fail()
 	}
@@ -351,14 +351,14 @@ func TestSmallCompositions(t *testing.T) {
 	for _, qq := range qqs {
 		for i := 0; i < n; i++ {
 			// Convert aircraft frame to earth frame
-			qqs[1] = quaternion.Prod(qq, qqs[1], quaternion.Conj(qq))
-			qqs[3] = quaternion.Prod(qq, qqs[3], quaternion.Conj(qq))
+			qqs[1] = quaternion.Prod(qq, qqs[1], qq.Conj())
+			qqs[3] = quaternion.Prod(qq, qqs[3], qq.Conj())
 
 			// Apply to current earth-frame orientation
 			qe = quaternion.Prod(qq, qe)
 
 			// Apply to current aircraft-frame orientation
-			qqa = quaternion.Prod(quaternion.Conj(qa), qq, qa) // Translate from earth to aircraft frame
+			qqa = quaternion.Prod(qa.Conj(), qq, qa) // Translate from earth to aircraft frame
 			qa0, qa1, qa2, qa3 := QuaternionRotate(qa.W, qa.X, qa.Y, qa.Z, 2*qqa.X, 2*qqa.Y, 2*qqa.Z)
 			qa = quaternion.Quaternion{qa0, qa1, qa2, qa3}
 		}
