@@ -128,14 +128,26 @@ func NewMPU9250(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleRa
 
 	mpu.i2cbus = *i2cbus
 
-	// Check if the chip is the ICM-20948. Assume it is the MPU-9250, if not.
-	if v, err := mpu.i2cRead(ICMREG_WHO_AM_I); err != nil {
+	// Check if the chip is the ICM-20948 or MPU-9250.
+	v, err := mpu.i2cRead(ICMREG_WHO_AM_I)
+	if err != nil {
 		return nil, errors.New(fmt.Sprintf("Error identifying IMU: %s", err))
+	}
+
+	v2, err := mpu.i2cRead(MPUREG_WHO_AM_I)
+	if err != nil {
+		return nil, errors.New(fmt.Sprintf("Error identifying IMU: %s", err))
+	}
+
+	if v == ICMREG_WHO_AM_I_VAL {
+		log.Println("ICM-20948 detected.")
+		mpu.chipVersion = IMU_ICM20948
+	} else if v2 == MPUREG_WHO_AM_I_VAL {
+		log.Println("MPU-9250 detected.")
 	} else {
-		if v == ICMREG_WHO_AM_I_VAL {
-			log.Println("ICM-20948 detected.") //FIXME.
-			mpu.chipVersion = IMU_ICM20948
-		}
+		s := fmt.Sprintf("Could not identify MPU. v=%02x, v2=%02x.", v, v2)
+		log.Println(s)
+		return nil, errors.New(s)
 	}
 
 	// Initialization of MPU
@@ -579,7 +591,7 @@ func (mpu *MPU9250) MagEnabled() bool {
 }
 
 // SetGyroSensitivity sets the gyro sensitivity of the MPU9250; it must be one of the following values:
-// 250, 500, 1000, 2000 (all in °/s).
+// 250, 500, 1000, 2000 (all in deg/s).
 func (mpu *MPU9250) SetGyroSensitivity(sensitivityGyro int) (err error) {
 	var sensGyro byte
 
