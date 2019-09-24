@@ -1,6 +1,18 @@
 package mpu9250
 
+type IMUChipType int
+
 const (
+	// Supported IMUs.
+	MPU9250 IMUChipType = iota
+	ICM20948
+
+	// WHO_AM_I values to differentiate between the different IMUs.
+	MPUREG_WHO_AM_I     = 0x75
+	MPUREG_WHO_AM_I_VAL = 0x71 // Expected value.
+	ICMREG_WHO_AM_I     = 0x00
+	ICMREG_WHO_AM_I_VAL = 0xEA // Expected value.
+
 	MPU_ADDRESS               = 0x68
 	MPUREG_XG_OFFS_TC         = 0x00
 	MPUREG_YG_OFFS_TC         = 0x01
@@ -118,8 +130,8 @@ const (
 	MPUREG_ZA_OFFSET_H        = 0x7D
 	MPUREG_ZA_OFFSET_L        = 0x7E
 	/* ---- AK8963 Reg In MPU9250 ----------------------------------------------- */
-	AK8963_I2C_ADDR  = 0x0C //0x18
-	AK8963_Device_ID = 0x48
+	AK8963_I2C_ADDR        = 0x0C //0x18
+	AK8963_Device_ID       = 0x48
 	AK8963_MAX_SAMPLE_RATE = 0x64 // 100 Hz
 	// Read-only Reg
 	AK8963_WIA  = 0x00
@@ -173,27 +185,25 @@ const (
 	BIT_I2C_IF_DIS             = 0x10
 
 	// Misc
-	READ_FLAG = 0x80
-	MPU_BANK_SIZE = 0xFF
-	CFG_MOTION_BIAS = 0x4B8 // Enable/disable gyro bias compensation
-	BIT_FIFO_SIZE_1024 = 0x40 // FIFO buffer size
-	BIT_AUX_IF_EN uint8 = 0x20
-	BIT_BYPASS_EN = 0x02
-	AKM_POWER_DOWN = 0x00
-	BIT_I2C_READ = 0x80
-	BIT_SLAVE_EN = 0x80
-	AKM_SINGLE_MEASUREMENT = 0x01
-	INV_CLK_PLL = 0x01
-	AK89xx_FSR = 9830
-	AKM_DATA_READY = 0x01
-	AKM_DATA_OVERRUN = 0x02
-	AKM_OVERFLOW = 0x80
-
+	READ_FLAG                    = 0x80
+	MPU_BANK_SIZE                = 0xFF
+	CFG_MOTION_BIAS              = 0x4B8 // Enable/disable gyro bias compensation
+	BIT_FIFO_SIZE_1024           = 0x40  // FIFO buffer size
+	BIT_AUX_IF_EN          uint8 = 0x20
+	BIT_BYPASS_EN                = 0x02
+	AKM_POWER_DOWN               = 0x00
+	BIT_I2C_READ                 = 0x80
+	BIT_SLAVE_EN                 = 0x80
+	AKM_SINGLE_MEASUREMENT       = 0x01
+	INV_CLK_PLL                  = 0x01
+	AK89xx_FSR                   = 9830
+	AKM_DATA_READY               = 0x01
+	AKM_DATA_OVERRUN             = 0x02
+	AKM_OVERFLOW                 = 0x80
 
 	/* = ---- Sensitivity --------------------------------------------------------- */
 
 	MPU9250M_4800uT                       = 0.6            // 0.6 uT/LSB
 	MPU9250T_85degC                       = 0.002995177763 // 0.002995177763 degC/LSB
 	Magnetometer_Sensitivity_Scale_Factor = 0.15
-
 )
