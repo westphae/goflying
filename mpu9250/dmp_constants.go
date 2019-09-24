@@ -4,8 +4,8 @@ type IMUChipType int
 
 const (
 	// Supported IMUs.
-	MPU9250 IMUChipType = iota
-	ICM20948
+	IMU_MPU9250 IMUChipType = iota
+	IMU_ICM20948
 
 	// WHO_AM_I values to differentiate between the different IMUs.
 	MPUREG_WHO_AM_I     = 0x75

@@ -134,7 +134,7 @@ func NewMPU9250(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleRa
 	} else {
 		if v == ICMREG_WHO_AM_I_VAL {
 			log.Println("ICM-20948 detected.") //FIXME.
-			mpu.chipVersion = ICM20948
+			mpu.chipVersion = IMU_ICM20948
 		}
 	}
 
