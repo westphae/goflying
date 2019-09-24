@@ -125,7 +125,7 @@ func NewMPU9250(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleRa
 	mpu.sampleRate = sampleRate
 	mpu.enableMag = enableMag
 
-	mpu.i2cbus = i2cbus
+	mpu.i2cbus = *i2cbus
 
 	// Initialization of MPU
 	// Reset device.
