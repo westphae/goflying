@@ -110,7 +110,6 @@ type MPU9250 struct {
 	CAvg                <-chan *MPUData // Average sensor values (since CAvg last read)
 	CBuf                <-chan *MPUData // Buffer of instantaneous sensor values
 	cClose              chan bool       // Turn off MPU polling
-	chipVersion         IMUChipType
 }
 
 /*
@@ -127,28 +126,6 @@ func NewMPU9250(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleRa
 	mpu.enableMag = enableMag
 
 	mpu.i2cbus = *i2cbus
-
-	// Check if the chip is the ICM-20948 or MPU-9250.
-	v, err := mpu.i2cRead(ICMREG_WHO_AM_I)
-	if err != nil {
-		return nil, errors.New(fmt.Sprintf("Error identifying IMU: %s", err))
-	}
-
-	v2, err := mpu.i2cRead(MPUREG_WHO_AM_I)
-	if err != nil {
-		return nil, errors.New(fmt.Sprintf("Error identifying IMU: %s", err))
-	}
-
-	if v == ICMREG_WHO_AM_I_VAL {
-		log.Println("ICM-20948 detected.")
-		mpu.chipVersion = IMU_ICM20948
-	} else if v2 == MPUREG_WHO_AM_I_VAL {
-		log.Println("MPU-9250 detected.")
-	} else {
-		s := fmt.Sprintf("Could not identify MPU. v=%02x, v2=%02x.", v, v2)
-		log.Println(s)
-		return nil, errors.New(s)
-	}
 
 	// Initialization of MPU
 	// Reset device.
