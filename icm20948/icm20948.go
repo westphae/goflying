@@ -569,13 +569,6 @@ func (mpu *ICM20948) SetAccelLPF(rate byte) (err error) {
 	}
 
 	switch {
-		r = BITS_DLPF_CFG_188HZ
-	case rate >= 99:
-		r = BITS_DLPF_CFG_98HZ
-	case rate >= 45:
-		r = BITS_DLPF_CFG_42HZ
-	case rate >= 21:
-		r = BITS_DLPF_CFG_20HZ
 	case rate >= 246:
 		r = BITS_DLPF_ACCEL_CFG_246HZ
 	case rate >= 111:
