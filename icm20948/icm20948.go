@@ -123,9 +123,11 @@ func NewICM20948(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleR
 	}
 
 	mpu.sampleRate = sampleRate
-	mpu.enableMag = enableMag
+	mpu.enableMag = false //FIXME: enableMag. Always disabling magnetometer now.
 
 	mpu.i2cbus = *i2cbus
+
+	mpu.setRegBank(0)
 
 	// Initialization of MPU
 	// Reset device.
@@ -133,10 +135,12 @@ func NewICM20948(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleR
 		return nil, errors.New("Error resetting ICM20948")
 	}
 
-	// Note: the following is in inv_mpu.c, but doesn't appear to be necessary from the MPU-9250 register map.
 	// Wake up chip.
 	time.Sleep(100 * time.Millisecond)
-	if err := mpu.i2cWrite(ICMREG_PWR_MGMT_1, 0x00); err != nil {
+	// CLKSEL = 1.
+	// From ICM-20948 register map (PWR_MGMT_1):
+	//  "NOTE: CLKSEL[2:0] should be set to 1~5 to achieve full gyroscope performance."
+	if err := mpu.i2cWrite(ICMREG_PWR_MGMT_1, 0x01); err != nil {
 		return nil, errors.New("Error waking ICM20948")
 	}
 
@@ -144,9 +148,9 @@ func NewICM20948(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleR
 	// It doesn't seem to be supported in the 1.6 version of the register map and we're not using FIFO anyway,
 	// so we skip this.
 	// Don't let FIFO overwrite DMP data
-	if err := mpu.i2cWrite(ICMREG_ACCEL_CONFIG_2, BIT_FIFO_SIZE_1024|0x8); err != nil {
-		return nil, errors.New("Error setting up ICM20948")
-	}
+	//if err := mpu.i2cWrite(ICMREG_ACCEL_CONFIG_2, BIT_FIFO_SIZE_1024|0x8); err != nil {
+	//	return nil, errors.New("Error setting up ICM20948")
+	//}
 
 	// Set Gyro and Accel sensitivities
 	if err := mpu.SetGyroSensitivity(sensitivityGyro); err != nil {
@@ -157,7 +161,7 @@ func NewICM20948(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleR
 		log.Println(err)
 	}
 
-	sampRate := byte(1000/mpu.sampleRate - 1)
+	sampRate := byte(1125/mpu.sampleRate - 1)
 	// Default: Set Gyro LPF to half of sample rate
 	if err := mpu.SetGyroLPF(sampRate >> 1); err != nil {
 		return nil, err
@@ -169,91 +173,79 @@ func NewICM20948(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleR
 	}
 
 	// Set sample rate to chosen
-	if err := mpu.SetSampleRate(sampRate); err != nil {
+	if err := mpu.SetGyroSampleRate(sampRate); err != nil {
 		return nil, err
 	}
 
-	// Turn off FIFO buffer
-	if err := mpu.i2cWrite(ICMREG_FIFO_EN, 0x00); err != nil {
-		return nil, errors.New("ICM20948 Error: couldn't disable FIFO")
+	if err := mpu.SetAccelSampleRate(sampRate); err != nil {
+		return nil, err
 	}
 
-	// Turn off interrupts
-	if err := mpu.i2cWrite(ICMREG_INT_ENABLE, 0x00); err != nil {
-		return nil, errors.New("ICM20948 Error: couldn't disable interrupts")
-	}
+	// Turn off FIFO buffer. Not necessary - default off.
 
+	// Turn off interrupts. Not necessary - default off.
+
+	//FIXME. Mag reading not set up.
 	// Set up magnetometer
-	if mpu.enableMag {
-		if err := mpu.ReadMagCalibration(); err != nil {
-			return nil, errors.New("Error reading calibration from magnetometer")
-		}
+	/*
+		if mpu.enableMag {
+			if err := mpu.ReadMagCalibration(); err != nil {
+				return nil, errors.New("Error reading calibration from magnetometer")
+			}
 
-		// Set up AK8963 master mode, master clock and ES bit
-		if err := mpu.i2cWrite(ICMREG_I2C_MST_CTRL, 0x40); err != nil {
-			return nil, errors.New("Error setting up AK8963")
-		}
-		// Slave 0 reads from AK8963
-		if err := mpu.i2cWrite(ICMREG_I2C_SLV0_ADDR, BIT_I2C_READ|AK8963_I2C_ADDR); err != nil {
-			return nil, errors.New("Error setting up AK8963")
-		}
-		// Compass reads start at this register
-		if err := mpu.i2cWrite(ICMREG_I2C_SLV0_REG, AK8963_ST1); err != nil {
-			return nil, errors.New("Error setting up AK8963")
-		}
-		// Enable 8-byte reads on slave 0
-		if err := mpu.i2cWrite(ICMREG_I2C_SLV0_CTRL, BIT_SLAVE_EN|8); err != nil {
-			return nil, errors.New("Error setting up AK8963")
-		}
-		// Slave 1 can change AK8963 measurement mode
-		if err := mpu.i2cWrite(ICMREG_I2C_SLV1_ADDR, AK8963_I2C_ADDR); err != nil {
-			return nil, errors.New("Error setting up AK8963")
-		}
-		if err := mpu.i2cWrite(ICMREG_I2C_SLV1_REG, AK8963_CNTL1); err != nil {
-			return nil, errors.New("Error setting up AK8963")
-		}
-		// Enable 1-byte reads on slave 1
-		if err := mpu.i2cWrite(ICMREG_I2C_SLV1_CTRL, BIT_SLAVE_EN|1); err != nil {
-			return nil, errors.New("Error setting up AK8963")
-		}
-		// Set slave 1 data
-		if err := mpu.i2cWrite(ICMREG_I2C_SLV1_DO, AKM_SINGLE_MEASUREMENT); err != nil {
-			return nil, errors.New("Error setting up AK8963")
-		}
-		// Triggers slave 0 and 1 actions at each sample
-		if err := mpu.i2cWrite(ICMREG_I2C_MST_DELAY_CTRL, 0x03); err != nil {
-			return nil, errors.New("Error setting up AK8963")
-		}
+			// Set up AK8963 master mode, master clock and ES bit
+			if err := mpu.i2cWrite(ICMREG_I2C_MST_CTRL, 0x40); err != nil {
+				return nil, errors.New("Error setting up AK8963")
+			}
+			// Slave 0 reads from AK8963
+			if err := mpu.i2cWrite(ICMREG_I2C_SLV0_ADDR, BIT_I2C_READ|AK8963_I2C_ADDR); err != nil {
+				return nil, errors.New("Error setting up AK8963")
+			}
+			// Compass reads start at this register
+			if err := mpu.i2cWrite(ICMREG_I2C_SLV0_REG, AK8963_ST1); err != nil {
+				return nil, errors.New("Error setting up AK8963")
+			}
+			// Enable 8-byte reads on slave 0
+			if err := mpu.i2cWrite(ICMREG_I2C_SLV0_CTRL, BIT_SLAVE_EN|8); err != nil {
+				return nil, errors.New("Error setting up AK8963")
+			}
+			// Slave 1 can change AK8963 measurement mode
+			if err := mpu.i2cWrite(ICMREG_I2C_SLV1_ADDR, AK8963_I2C_ADDR); err != nil {
+				return nil, errors.New("Error setting up AK8963")
+			}
+			if err := mpu.i2cWrite(ICMREG_I2C_SLV1_REG, AK8963_CNTL1); err != nil {
+				return nil, errors.New("Error setting up AK8963")
+			}
+			// Enable 1-byte reads on slave 1
+			if err := mpu.i2cWrite(ICMREG_I2C_SLV1_CTRL, BIT_SLAVE_EN|1); err != nil {
+				return nil, errors.New("Error setting up AK8963")
+			}
+			// Set slave 1 data
+			if err := mpu.i2cWrite(ICMREG_I2C_SLV1_DO, AKM_SINGLE_MEASUREMENT); err != nil {
+				return nil, errors.New("Error setting up AK8963")
+			}
+			// Triggers slave 0 and 1 actions at each sample
+			if err := mpu.i2cWrite(ICMREG_I2C_MST_DELAY_CTRL, 0x03); err != nil {
+				return nil, errors.New("Error setting up AK8963")
+			}
 
-		// Set AK8963 sample rate to same as gyro/accel sample rate, up to max
-		var ak8963Rate byte
-		if mpu.sampleRate < AK8963_MAX_SAMPLE_RATE {
-			ak8963Rate = 0
-		} else {
-			ak8963Rate = byte(mpu.sampleRate/AK8963_MAX_SAMPLE_RATE - 1)
+			// Set AK8963 sample rate to same as gyro/accel sample rate, up to max
+			var ak8963Rate byte
+			if mpu.sampleRate < AK8963_MAX_SAMPLE_RATE {
+				ak8963Rate = 0
+			} else {
+				ak8963Rate = byte(mpu.sampleRate/AK8963_MAX_SAMPLE_RATE - 1)
+			}
+
+			// Not so sure of this one--I2C Slave 4??!
+			if err := mpu.i2cWrite(ICMREG_I2C_SLV4_CTRL, ak8963Rate); err != nil {
+				return nil, errors.New("Error setting up AK8963")
+			}
+
+			time.Sleep(100 * time.Millisecond) // Make sure mag is ready
 		}
-
-		// Not so sure of this one--I2C Slave 4??!
-		if err := mpu.i2cWrite(ICMREG_I2C_SLV4_CTRL, ak8963Rate); err != nil {
-			return nil, errors.New("Error setting up AK8963")
-		}
-
-		time.Sleep(100 * time.Millisecond) // Make sure mag is ready
-	}
-
-	// Set clock source to PLL
-	if err := mpu.i2cWrite(ICMREG_PWR_MGMT_1, INV_CLK_PLL); err != nil {
-		return nil, errors.New("Error setting up ICM20948")
-	}
-	// Turn off all sensors -- Not sure if necessary, but it's in the InvenSense DMP driver
-	if err := mpu.i2cWrite(ICMREG_PWR_MGMT_2, 0x63); err != nil {
-		return nil, errors.New("Error setting up ICM20948")
-	}
-	time.Sleep(100 * time.Millisecond)
-	// Turn on all gyro, all accel
-	if err := mpu.i2cWrite(ICMREG_PWR_MGMT_2, 0x00); err != nil {
-		return nil, errors.New("Error setting up ICM20948")
-	}
+	*/
+	// Set clock source to PLL. Not necessary - default "auto select" (PLL when ready).
 
 	if applyHWOffsets {
 		if err := mpu.ReadAccelBias(sensitivityAccel); err != nil {
@@ -265,10 +257,10 @@ func NewICM20948(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleR
 	}
 
 	// Usually we don't want the automatic gyro bias compensation - it pollutes the gyro in a non-inertial frame.
-	if err := mpu.EnableGyroBiasCal(false); err != nil {
-		return nil, err
-	}
-
+	/*	if err := mpu.EnableGyroBiasCal(false); err != nil {
+			return nil, err
+		}
+	*/
 	go mpu.readSensors()
 
 	// Give the IMU time to fully initialize and then clear out any bad values from the averages.
@@ -291,6 +283,11 @@ func (mpu *ICM20948) readSensors() {
 		magSampleRate                               int
 		curdata                                     *MPUData
 	)
+
+	//FIXME: Temporary (testing).
+	//	mpu.setRegBank(2)
+	//	mpu.i2cWrite(ICMREG_TEMP_CONFIG, 0x04)
+	//	mpu.setRegBank(0)
 
 	acRegMap := map[*int16]byte{
 		&g1: ICMREG_GYRO_XOUT_H, &g2: ICMREG_GYRO_YOUT_H, &g3: ICMREG_GYRO_ZOUT_H,
@@ -319,11 +316,11 @@ func (mpu *ICM20948) readSensors() {
 	mpu.cClose = make(chan bool)
 	defer close(mpu.cClose)
 
-	clock := time.NewTicker(time.Duration(int(1000.0/float32(mpu.sampleRate)+0.5)) * time.Millisecond)
+	clock := time.NewTicker(time.Duration(int(1125.0/float32(mpu.sampleRate)+0.5)) * time.Millisecond)
 	//TODO westphae: use the clock to record actual time instead of a timer
 	defer clock.Stop()
 
-	clockMag := time.NewTicker(time.Duration(int(1000.0/float32(magSampleRate)+0.5)) * time.Millisecond)
+	clockMag := time.NewTicker(time.Duration(int(1125.0/float32(magSampleRate)+0.5)) * time.Millisecond)
 	t0 = time.Now()
 	t0m = time.Now()
 
@@ -331,6 +328,7 @@ func (mpu *ICM20948) readSensors() {
 		mm1 := float64(m1)*mpu.mcal1 - mpu.M01
 		mm2 := float64(m2)*mpu.mcal2 - mpu.M02
 		mm3 := float64(m3)*mpu.mcal3 - mpu.M03
+		//		fmt.Printf("a1=%d,a2=%d,a3=%d\n", a1, a2, a3)
 		d := MPUData{
 			G1:      (float64(g1) - mpu.G01) * mpu.scaleGyro,
 			G2:      (float64(g2) - mpu.G02) * mpu.scaleGyro,
@@ -341,7 +339,7 @@ func (mpu *ICM20948) readSensors() {
 			M1:      mpu.Ms11*mm1 + mpu.Ms12*mm2 + mpu.Ms13*mm3,
 			M2:      mpu.Ms21*mm1 + mpu.Ms22*mm2 + mpu.Ms23*mm3,
 			M3:      mpu.Ms31*mm1 + mpu.Ms32*mm2 + mpu.Ms33*mm3,
-			Temp:    float64(tmp)/340 + 36.53,
+			Temp:    float64(tmp)/333.87 + 21.0,
 			GAError: gaError, MagError: magError,
 			N: 1, NM: 1,
 			T: t, TM: tm,
@@ -368,7 +366,7 @@ func (mpu *ICM20948) readSensors() {
 			d.A1 = (ava1/n - mpu.A01) * mpu.scaleAccel
 			d.A2 = (ava2/n - mpu.A02) * mpu.scaleAccel
 			d.A3 = (ava3/n - mpu.A03) * mpu.scaleAccel
-			d.Temp = (float64(avtmp)/n)/340 + 36.53
+			d.Temp = (float64(avtmp)/n)/333.87 + 21.0
 			d.N = int(n + 0.5)
 			d.T = t
 			d.DT = t.Sub(t0)
@@ -479,9 +477,32 @@ func (mpu *ICM20948) CloseMPU() {
 	mpu.cClose <- true
 }
 
-// SetSampleRate changes the sampling rate of the MPU.
-func (mpu *ICM20948) SetSampleRate(rate byte) (err error) {
-	errWrite := mpu.i2cWrite(ICMREG_SMPLRT_DIV, byte(rate)) // Set sample rate to chosen
+// SetGyroSampleRate changes the sampling rate of the gyro on the MPU.
+func (mpu *ICM20948) SetGyroSampleRate(rate byte) (err error) {
+	// Gyro config registers on Bank 2.
+	if errWrite := mpu.setRegBank(2); errWrite != nil {
+		return errors.New("ICM20948 Error: change register bank.")
+	}
+
+	defer mpu.setRegBank(0)
+
+	errWrite := mpu.i2cWrite(ICMREG_GYRO_SMPLRT_DIV, byte(rate)) // Set sample rate to chosen
+	if errWrite != nil {
+		err = fmt.Errorf("ICM20948 Error: Couldn't set sample rate: %s", errWrite.Error())
+	}
+	return
+}
+
+// SetAccelSampleRate changes the sampling rate of the accelerometer on the MPU.
+func (mpu *ICM20948) SetAccelSampleRate(rate byte) (err error) {
+	// Gyro config registers on Bank 2.
+	if errWrite := mpu.setRegBank(2); errWrite != nil {
+		return errors.New("ICM20948 Error: change register bank.")
+	}
+
+	defer mpu.setRegBank(0)
+
+	errWrite := mpu.i2cWrite(ICMREG_ACCEL_SMPLRT_DIV_2, byte(rate)) // Set sample rate to chosen
 	if errWrite != nil {
 		err = fmt.Errorf("ICM20948 Error: Couldn't set sample rate: %s", errWrite.Error())
 	}
@@ -491,22 +512,40 @@ func (mpu *ICM20948) SetSampleRate(rate byte) (err error) {
 // SetGyroLPF sets the low pass filter for the gyro.
 func (mpu *ICM20948) SetGyroLPF(rate byte) (err error) {
 	var r byte
-	switch {
-	case rate >= 188:
-		r = BITS_DLPF_CFG_188HZ
-	case rate >= 98:
-		r = BITS_DLPF_CFG_98HZ
-	case rate >= 42:
-		r = BITS_DLPF_CFG_42HZ
-	case rate >= 20:
-		r = BITS_DLPF_CFG_20HZ
-	case rate >= 10:
-		r = BITS_DLPF_CFG_10HZ
-	default:
-		r = BITS_DLPF_CFG_5HZ
+
+	// Gyro config registers on Bank 2.
+	if errWrite := mpu.setRegBank(2); errWrite != nil {
+		return errors.New("ICM20948 Error: change register bank.")
 	}
 
-	errWrite := mpu.i2cWrite(ICMREG_CONFIG, r)
+	defer mpu.setRegBank(0)
+
+	cfg, err := mpu.i2cRead(ICMREG_GYRO_CONFIG)
+	if err != nil {
+		return errors.New("ICM20948 Error: SetGyroLPF error reading chip")
+	}
+
+	switch {
+	case rate >= 197:
+		r = BITS_DLPF_GYRO_CFG_197HZ
+	case rate >= 152:
+		r = BITS_DLPF_GYRO_CFG_152HZ
+	case rate >= 120:
+		r = BITS_DLPF_GYRO_CFG_120HZ
+	case rate >= 51:
+		r = BITS_DLPF_GYRO_CFG_51HZ
+	case rate >= 24:
+		r = BITS_DLPF_GYRO_CFG_24HZ
+	case rate >= 12:
+		r = BITS_DLPF_GYRO_CFG_12HZ
+	default:
+		r = BITS_DLPF_GYRO_CFG_6HZ
+	}
+
+	cfg = cfg & 0x01
+	cfg |= r
+
+	errWrite := mpu.i2cWrite(ICMREG_GYRO_CONFIG, cfg)
 	if errWrite != nil {
 		err = fmt.Errorf("ICM20948 Error: couldn't set Gyro LPF: %s", errWrite.Error())
 	}
@@ -516,8 +555,20 @@ func (mpu *ICM20948) SetGyroLPF(rate byte) (err error) {
 // SetAccelLPF sets the low pass filter for the accelerometer.
 func (mpu *ICM20948) SetAccelLPF(rate byte) (err error) {
 	var r byte
+
+	// Accel config registers on Bank 2.
+	if errWrite := mpu.setRegBank(2); errWrite != nil {
+		return errors.New("ICM20948 Error: change register bank.")
+	}
+
+	defer mpu.setRegBank(0)
+
+	cfg, err := mpu.i2cRead(ICMREG_ACCEL_CONFIG)
+	if err != nil {
+		return errors.New("ICM20948 Error: SetGyroLPF error reading chip")
+	}
+
 	switch {
-	case rate >= 218:
 		r = BITS_DLPF_CFG_188HZ
 	case rate >= 99:
 		r = BITS_DLPF_CFG_98HZ
@@ -525,13 +576,24 @@ func (mpu *ICM20948) SetAccelLPF(rate byte) (err error) {
 		r = BITS_DLPF_CFG_42HZ
 	case rate >= 21:
 		r = BITS_DLPF_CFG_20HZ
-	case rate >= 10:
-		r = BITS_DLPF_CFG_10HZ
+	case rate >= 246:
+		r = BITS_DLPF_ACCEL_CFG_246HZ
+	case rate >= 111:
+		r = BITS_DLPF_ACCEL_CFG_111HZ
+	case rate >= 50:
+		r = BITS_DLPF_ACCEL_CFG_50HZ
+	case rate >= 24:
+		r = BITS_DLPF_ACCEL_CFG_24HZ
+	case rate >= 12:
+		r = BITS_DLPF_ACCEL_CFG_12HZ
 	default:
-		r = BITS_DLPF_CFG_5HZ
+		r = BITS_DLPF_ACCEL_CFG_5HZ
 	}
 
-	errWrite := mpu.i2cWrite(ICMREG_ACCEL_CONFIG_2, r)
+	cfg = cfg & 0x01
+	cfg |= r
+
+	errWrite := mpu.i2cWrite(ICMREG_ACCEL_CONFIG, cfg)
 	if errWrite != nil {
 		err = fmt.Errorf("ICM20948 Error: couldn't set Accel LPF: %s", errWrite.Error())
 	}
@@ -572,6 +634,13 @@ func (mpu *ICM20948) MagEnabled() bool {
 func (mpu *ICM20948) SetGyroSensitivity(sensitivityGyro int) (err error) {
 	var sensGyro byte
 
+	// Gyro config registers on Bank 2.
+	if errWrite := mpu.setRegBank(2); errWrite != nil {
+		return errors.New("ICM20948 Error: change register bank.")
+	}
+
+	defer mpu.setRegBank(0)
+
 	switch sensitivityGyro {
 	case 2000:
 		sensGyro = BITS_FS_2000DPS
@@ -596,10 +665,21 @@ func (mpu *ICM20948) SetGyroSensitivity(sensitivityGyro int) (err error) {
 	return
 }
 
+func (mpu *ICM20948) setRegBank(bank byte) error {
+	return mpu.i2cWrite(ICMREG_BANK_SEL, bank<<4)
+}
+
 // SetAccelSensitivity sets the accelerometer sensitivity of the ICM20948; it must be one of the following values:
 // 2, 4, 8, 16, all in G (gravity).
-func (mpu *ICM20948) SetAccelSensitivity(sensitivityAccel int) (err error) {
+func (mpu *ICM20948) SetAccelSensitivity(sensitivityAccel int) error {
 	var sensAccel byte
+
+	// Accel config registers on Bank 2.
+	if errWrite := mpu.setRegBank(2); errWrite != nil {
+		return errors.New("ICM20948 Error: change register bank.")
+	}
+
+	defer mpu.setRegBank(0)
 
 	switch sensitivityAccel {
 	case 16:
@@ -615,19 +695,24 @@ func (mpu *ICM20948) SetAccelSensitivity(sensitivityAccel int) (err error) {
 		sensAccel = BITS_FS_2G
 		mpu.scaleAccel = 2.0 / float64(math.MaxInt16)
 	default:
-		err = fmt.Errorf("ICM20948 Error: %d is not a valid accel sensitivity", sensitivityAccel)
+		return fmt.Errorf("ICM20948 Error: %d is not a valid accel sensitivity", sensitivityAccel)
 	}
 
 	if errWrite := mpu.i2cWrite(ICMREG_ACCEL_CONFIG, sensAccel); errWrite != nil {
-		err = errors.New("ICM20948 Error: couldn't set accel sensitivity")
+		return errors.New("ICM20948 Error: couldn't set accel sensitivity")
 	}
 
-	return
+	return nil
 }
 
 // ReadAccelBias reads the bias accelerometer value stored on the chip.
 // These values are set at the factory.
 func (mpu *ICM20948) ReadAccelBias(sensitivityAccel int) error {
+	if errWrite := mpu.setRegBank(1); errWrite != nil {
+		return errors.New("ICM20948 Error: change register bank.")
+	}
+	defer mpu.setRegBank(0)
+
 	a0x, err := mpu.i2cRead2(ICMREG_XA_OFFSET_H)
 	if err != nil {
 		return errors.New("ICM20948 Error: ReadAccelBias error reading chip")
@@ -668,6 +753,11 @@ func (mpu *ICM20948) ReadAccelBias(sensitivityAccel int) error {
 // ReadGyroBias reads the bias gyro value stored on the chip.
 // These values are set at the factory.
 func (mpu *ICM20948) ReadGyroBias(sensitivityGyro int) error {
+	if errWrite := mpu.setRegBank(2); errWrite != nil {
+		return errors.New("ICM20948 Error: change register bank.")
+	}
+	defer mpu.setRegBank(0)
+
 	g0x, err := mpu.i2cRead2(ICMREG_XG_OFFS_USRH)
 	if err != nil {
 		return errors.New("ICM20948 Error: ReadGyroBias error reading chip")
