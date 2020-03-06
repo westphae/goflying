@@ -55,13 +55,13 @@ type MPU9250 struct {
 NewMPU9250 creates a new MPU9250 object according to the supplied parameters.  If there is no MPU9250 available or there
 is an error creating the object, an error is returned.
 */
-func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, enableMag bool, applyHWOffsets bool) (*MPU9250, error) {
+func NewMPU9250(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleRate int, enableMag bool, applyHWOffsets bool) (*MPU9250, error) {
 	var mpu = new(MPU9250)
 
 	mpu.sampleRate = sampleRate
 	mpu.enableMag = enableMag
 
-	mpu.i2cbus = embd.NewI2CBus(1)
+	mpu.i2cbus = *i2cbus
 
 	// Initialization of MPU
 	// Reset device.
@@ -179,16 +179,16 @@ func NewMPU9250(sensitivityGyro, sensitivityAccel, sampleRate int, enableMag boo
 
 	// Set clock source to PLL
 	if err := mpu.i2cWrite(MPUREG_PWR_MGMT_1, INV_CLK_PLL); err != nil {
-		return nil, errors.New(fmt.Sprintf("Error setting up MPU9250: %s", err))
+		return nil, errors.New("Error setting up MPU9250")
 	}
 	// Turn off all sensors -- Not sure if necessary, but it's in the InvenSense DMP driver
 	if err := mpu.i2cWrite(MPUREG_PWR_MGMT_2, 0x63); err != nil {
-		return nil, errors.New(fmt.Sprintf("Error setting up MPU9250: %s", err))
+		return nil, errors.New("Error setting up MPU9250")
 	}
 	time.Sleep(100 * time.Millisecond)
 	// Turn on all gyro, all accel
 	if err := mpu.i2cWrite(MPUREG_PWR_MGMT_2, 0x00); err != nil {
-		return nil, errors.New(fmt.Sprintf("Error setting up MPU9250: %s", err))
+		return nil, errors.New("Error setting up MPU9250")
 	}
 
 	if applyHWOffsets {
