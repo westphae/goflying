@@ -4,10 +4,12 @@ package mpu9250
 // Also referenced https://github.com/brianc118/MPU9250/blob/master/MPU9250.cpp
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"math"
+	"os"
 	"time"
 
 	"github.com/kidoman/embd"
@@ -33,22 +35,81 @@ type MPUData struct {
 	DT, DTM           time.Duration
 }
 
+type mpuCalData struct {
+	A01, A02, A03    float64 // Accelerometer hardware bias
+	G01, G02, G03    float64 // Gyro hardware bias
+	M01, M02, M03    float64 // Magnetometer hardware bias
+	Ms11, Ms12, Ms13 float64 // Magnetometer rescaling matrix
+	Ms21, Ms22, Ms23 float64 // (Only diagonal is used currently)
+	Ms31, Ms32, Ms33 float64
+}
+
+func (d *mpuCalData) reset() {
+	d.Ms11 = 1
+	d.Ms22 = 1
+	d.Ms33 = 1
+}
+
+func (d *mpuCalData) save() {
+	fd, err := os.OpenFile(calDataLocation, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(0644))
+	if err != nil {
+		log.Printf("MPU9250: Error saving calibration data to %s: %s", calDataLocation, err.Error())
+		return
+	}
+	defer fd.Close()
+	calData, err := json.Marshal(d)
+	if err != nil {
+		log.Printf("MPU9250: Error marshaling calibration data: %s", err)
+		return
+	}
+	fd.Write(calData)
+}
+
+func (d *mpuCalData) load() (err error) {
+	//d.M01 = 1638.0
+	//d.M02 = -589.0
+	//d.M03 = -2153.0
+	//d.Ms11 = 0.00031969309462915601
+	//d.Ms22 = 0.00035149384885764499
+	//d.Ms33 = 0.00028752156411730879
+	//d.save()
+	//return
+	errstr := "MPU9250: Error reading calibration data from %s: %s"
+	fd, rerr := os.Open(calDataLocation)
+	if rerr != nil {
+		err = fmt.Errorf(errstr, calDataLocation, rerr.Error())
+		return
+	}
+	defer fd.Close()
+	buf := make([]byte, 1024)
+	count, rerr := fd.Read(buf)
+	if rerr != nil {
+		err = fmt.Errorf(errstr, calDataLocation, rerr.Error())
+		return
+	}
+	rerr = json.Unmarshal(buf[0:count], d)
+	if rerr != nil {
+		err = fmt.Errorf(errstr, calDataLocation, rerr.Error())
+		return
+	}
+	return
+}
+
 /*
 MPU9250 represents an InvenSense MPU9250 9DoF chip.
 All communication is via channels.
 */
 type MPU9250 struct {
 	i2cbus                embd.I2CBus
-	scaleGyro, scaleAccel float64         // Max sensor reading for value 2**15-1
-	sampleRate            int             // Sample rate for sensor readings, Hz
-	enableMag             bool            // Read the magnetometer?
-	mcal1, mcal2, mcal3   float64         // Hardware magnetometer calibration values, uT
-	a01, a02, a03         float64         // Hardware accelerometer calibration values, G
-	g01, g02, g03         float64         // Hardware gyro calibration values, °/s
-	C                     <-chan *MPUData // Current instantaneous sensor values
-	CAvg                  <-chan *MPUData // Average sensor values (since CAvg last read)
-	CBuf                  <-chan *MPUData // Buffer of instantaneous sensor values
-	cClose                chan bool       // Turn off MPU polling
+	scaleGyro, scaleAccel float64 // Max sensor reading for value 2**15-1
+	sampleRate            int
+	enableMag             bool
+	mpuCalData
+	mcal1, mcal2, mcal3 float64         // Hardware magnetometer calibration values, uT
+	C                   <-chan *MPUData // Current instantaneous sensor values
+	CAvg                <-chan *MPUData // Average sensor values (since CAvg last read)
+	CBuf                <-chan *MPUData // Buffer of instantaneous sensor values
+	cClose              chan bool       // Turn off MPU polling
 }
 
 /*
@@ -57,6 +118,9 @@ is an error creating the object, an error is returned.
 */
 func NewMPU9250(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleRate int, enableMag bool, applyHWOffsets bool) (*MPU9250, error) {
 	var mpu = new(MPU9250)
+	if err := mpu.mpuCalData.load(); err != nil {
+		mpu.mpuCalData.reset()
+	}
 
 	mpu.sampleRate = sampleRate
 	mpu.enableMag = enableMag
