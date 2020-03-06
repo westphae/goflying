@@ -1,12 +1,13 @@
 package main
 
 import (
-	"../../bmp280"
 	"fmt"
-	"github.com/kidoman/embd"
 	"log"
 	"math"
 	"testing"
+
+	"../../bmp280"
+	"github.com/kidoman/embd"
 )
 
 func TestBMP280Math(t *testing.T) {

@@ -31,7 +31,7 @@ const (
 	SoftResetCode = 0xB6
 	// Standby Time Definitions
 	StandbyTime1ms    = 0x00
-	StandbyTime63ms   = 0X01
+	StandbyTime63ms   = 0x01
 	StandbyTime125ms  = 0x02
 	StandbyTime250ms  = 0x03
 	StandbyTime500ms  = 0x04
@@ -52,10 +52,10 @@ const (
 	Oversamp8x      = 0x04
 	Oversamp16x     = 0x05
 	// Working Mode Definitions
-	UltraLowPowerMode       = 0X00
-	LowPowerMode            = 0X01
-	StandardResolutionMode  = 0X02
-	HighResolutionMode      = 0X03
+	UltraLowPowerMode       = 0x00
+	LowPowerMode            = 0x01
+	StandardResolutionMode  = 0x02
+	HighResolutionMode      = 0x03
 	UltraHighResolutionMode = 0x04
 
 	// BMP280 registers
@@ -130,7 +130,6 @@ func NewBMP280(i2cbus *embd.I2CBus, address, powerMode, standby, filter, tempRes
 	// Make sure we can connect to the chip and read a valid ChipID
 	v := make([]byte, 1)
 	for n := 0; n < ConnAttempts; n++ {
-		log.Printf("BMP280 Connection Attempt %d\n", n+1)
 		if errv := bmp.i2cReadBytes(RegisterChipID, v); errv != nil {
 			time.Sleep(ReadDelay)
 			err = fmt.Errorf("BMP280: couldn't find chip at address %x: %s", address, errv)
@@ -146,7 +145,7 @@ func NewBMP280(i2cbus *embd.I2CBus, address, powerMode, standby, filter, tempRes
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("BMP280: Successful connection, ChipID %x\n", v[0])
+
 	bmp.chipID = v[0]
 
 	bmp.config = (standby << 5) + (filter << 2)               // combine bits for config
@@ -176,7 +175,6 @@ func NewBMP280(i2cbus *embd.I2CBus, address, powerMode, standby, filter, tempRes
 func (bmp *BMP280) Close() {
 	bmp.SetPowerMode(SleepMode)
 	bmp.cClose <- true
-	log.Println("BMP280 Closed")
 }
 
 func delayFromStandby(standby byte) (delay time.Duration) {

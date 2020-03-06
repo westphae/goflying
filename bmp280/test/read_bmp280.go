@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
-	"github.com/kidoman/embd"
 	"time"
 
 	"../../bmp280"
+	"github.com/kidoman/embd"
 )
 
 func main() {
