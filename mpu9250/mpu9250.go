@@ -11,13 +11,14 @@ import (
 	"time"
 
 	"github.com/kidoman/embd"
-	_ "github.com/kidoman/embd/host/all"
-	_ "github.com/kidoman/embd/host/rpi"
+	_ "github.com/kidoman/embd/host/all" // Empty import needed to initialize embd library.
+	_ "github.com/kidoman/embd/host/rpi" // Empty import needed to initialize embd library.
 )
 
 const (
-	bufSize  = 250 // Size of buffer storing instantaneous sensor values
-	scaleMag = 9830.0 / 65536
+	bufSize         = 250 // Size of buffer storing instantaneous sensor values
+	scaleMag        = 9830.0 / 65536
+	calDataLocation = "/etc/mpu9250cal.json"
 )
 
 // MPUData contains all the values measured by an MPU9250.
@@ -497,7 +498,7 @@ func (mpu *MPU9250) MagEnabled() bool {
 }
 
 // SetGyroSensitivity sets the gyro sensitivity of the MPU9250; it must be one of the following values:
-// 250, 500, 1000, 2000 (all in °/s).
+// 250, 500, 1000, 2000 (all in deg/s).
 func (mpu *MPU9250) SetGyroSensitivity(sensitivityGyro int) (err error) {
 	var sensGyro byte
 
@@ -722,7 +723,7 @@ func (mpu *MPU9250) i2cWrite(register, value byte) (err error) {
 
 	if errWrite := mpu.i2cbus.WriteByteToReg(MPU_ADDRESS, register, value); errWrite != nil {
 		err = fmt.Errorf("MPU9250 Error writing %X to %X: %s\n",
-			value, register, errWrite)
+			value, register, errWrite.Error())
 	} else {
 		time.Sleep(time.Millisecond)
 	}
@@ -732,7 +733,7 @@ func (mpu *MPU9250) i2cWrite(register, value byte) (err error) {
 func (mpu *MPU9250) i2cRead(register byte) (value uint8, err error) {
 	value, errWrite := mpu.i2cbus.ReadByteFromReg(MPU_ADDRESS, register)
 	if errWrite != nil {
-		err = fmt.Errorf("i2cRead error: %s", errWrite)
+		err = fmt.Errorf("i2cRead error: %s", errWrite.Error())
 	}
 	return
 }
@@ -741,7 +742,7 @@ func (mpu *MPU9250) i2cRead2(register byte) (value int16, err error) {
 
 	v, errWrite := mpu.i2cbus.ReadWordFromReg(MPU_ADDRESS, register)
 	if errWrite != nil {
-		err = fmt.Errorf("MPU9250 Error reading %x: %s\n", register, err)
+		err = fmt.Errorf("MPU9250 Error reading %x: %s\n", register, err.Error())
 	} else {
 		value = int16(v)
 	}
@@ -762,12 +763,12 @@ func (mpu *MPU9250) memWrite(addr uint16, data *[]byte) error {
 
 	err = mpu.i2cbus.WriteToReg(MPU_ADDRESS, MPUREG_BANK_SEL, tmp)
 	if err != nil {
-		return fmt.Errorf("MPU9250 Error selecting memory bank: %s\n", err)
+		return fmt.Errorf("MPU9250 Error selecting memory bank: %s\n", err.Error())
 	}
 
 	err = mpu.i2cbus.WriteToReg(MPU_ADDRESS, MPUREG_MEM_R_W, *data)
 	if err != nil {
-		return fmt.Errorf("MPU9250 Error writing to the memory bank: %s\n", err)
+		return fmt.Errorf("MPU9250 Error writing to the memory bank: %s\n", err.Error())
 	}
 
 	return nil
