@@ -130,14 +130,14 @@ func NewMPU9250(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleRa
 	// Initialization of MPU
 	// Reset device.
 	if err := mpu.i2cWrite(MPUREG_PWR_MGMT_1, BIT_H_RESET); err != nil {
-		return nil, errors.New("Error resetting MPU9250")
+		return nil, errors.New("error resetting MPU9250")
 	}
 
 	// Note: the following is in inv_mpu.c, but doesn't appear to be necessary from the MPU-9250 register map.
 	// Wake up chip.
 	time.Sleep(100 * time.Millisecond)
 	if err := mpu.i2cWrite(MPUREG_PWR_MGMT_1, 0x00); err != nil {
-		return nil, errors.New("Error waking MPU9250")
+		return nil, errors.New("error waking MPU9250")
 	}
 
 	// Note: inv_mpu.c sets some registers here to allocate 1kB to the FIFO buffer and 3kB to the DMP.
@@ -145,7 +145,7 @@ func NewMPU9250(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleRa
 	// so we skip this.
 	// Don't let FIFO overwrite DMP data
 	if err := mpu.i2cWrite(MPUREG_ACCEL_CONFIG_2, BIT_FIFO_SIZE_1024|0x8); err != nil {
-		return nil, errors.New("Error setting up MPU9250")
+		return nil, errors.New("error setting up MPU9250")
 	}
 
 	// Set Gyro and Accel sensitivities
@@ -186,43 +186,43 @@ func NewMPU9250(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleRa
 	// Set up magnetometer
 	if mpu.enableMag {
 		if err := mpu.ReadMagCalibration(); err != nil {
-			return nil, errors.New("Error reading calibration from magnetometer")
+			return nil, errors.New("error reading calibration from magnetometer")
 		}
 
 		// Set up AK8963 master mode, master clock and ES bit
 		if err := mpu.i2cWrite(MPUREG_I2C_MST_CTRL, 0x40); err != nil {
-			return nil, errors.New("Error setting up AK8963")
+			return nil, errors.New("error setting up AK8963")
 		}
 		// Slave 0 reads from AK8963
 		if err := mpu.i2cWrite(MPUREG_I2C_SLV0_ADDR, BIT_I2C_READ|AK8963_I2C_ADDR); err != nil {
-			return nil, errors.New("Error setting up AK8963")
+			return nil, errors.New("error setting up AK8963")
 		}
 		// Compass reads start at this register
 		if err := mpu.i2cWrite(MPUREG_I2C_SLV0_REG, AK8963_ST1); err != nil {
-			return nil, errors.New("Error setting up AK8963")
+			return nil, errors.New("error setting up AK8963")
 		}
 		// Enable 8-byte reads on slave 0
 		if err := mpu.i2cWrite(MPUREG_I2C_SLV0_CTRL, BIT_SLAVE_EN|8); err != nil {
-			return nil, errors.New("Error setting up AK8963")
+			return nil, errors.New("error setting up AK8963")
 		}
 		// Slave 1 can change AK8963 measurement mode
 		if err := mpu.i2cWrite(MPUREG_I2C_SLV1_ADDR, AK8963_I2C_ADDR); err != nil {
-			return nil, errors.New("Error setting up AK8963")
+			return nil, errors.New("error setting up AK8963")
 		}
 		if err := mpu.i2cWrite(MPUREG_I2C_SLV1_REG, AK8963_CNTL1); err != nil {
-			return nil, errors.New("Error setting up AK8963")
+			return nil, errors.New("error setting up AK8963")
 		}
 		// Enable 1-byte reads on slave 1
 		if err := mpu.i2cWrite(MPUREG_I2C_SLV1_CTRL, BIT_SLAVE_EN|1); err != nil {
-			return nil, errors.New("Error setting up AK8963")
+			return nil, errors.New("error setting up AK8963")
 		}
 		// Set slave 1 data
 		if err := mpu.i2cWrite(MPUREG_I2C_SLV1_DO, AKM_SINGLE_MEASUREMENT); err != nil {
-			return nil, errors.New("Error setting up AK8963")
+			return nil, errors.New("error setting up AK8963")
 		}
 		// Triggers slave 0 and 1 actions at each sample
 		if err := mpu.i2cWrite(MPUREG_I2C_MST_DELAY_CTRL, 0x03); err != nil {
-			return nil, errors.New("Error setting up AK8963")
+			return nil, errors.New("error setting up AK8963")
 		}
 
 		// Set AK8963 sample rate to same as gyro/accel sample rate, up to max
@@ -235,7 +235,7 @@ func NewMPU9250(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleRa
 
 		// Not so sure of this one--I2C Slave 4??!
 		if err := mpu.i2cWrite(MPUREG_I2C_SLV4_CTRL, ak8963Rate); err != nil {
-			return nil, errors.New("Error setting up AK8963")
+			return nil, errors.New("error setting up AK8963")
 		}
 
 		time.Sleep(100 * time.Millisecond) // Make sure mag is ready
@@ -243,16 +243,16 @@ func NewMPU9250(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleRa
 
 	// Set clock source to PLL
 	if err := mpu.i2cWrite(MPUREG_PWR_MGMT_1, INV_CLK_PLL); err != nil {
-		return nil, errors.New("Error setting up MPU9250")
+		return nil, errors.New("error setting up MPU9250")
 	}
 	// Turn off all sensors -- Not sure if necessary, but it's in the InvenSense DMP driver
 	if err := mpu.i2cWrite(MPUREG_PWR_MGMT_2, 0x63); err != nil {
-		return nil, errors.New("Error setting up MPU9250")
+		return nil, errors.New("error setting up MPU9250")
 	}
 	time.Sleep(100 * time.Millisecond)
 	// Turn on all gyro, all accel
 	if err := mpu.i2cWrite(MPUREG_PWR_MGMT_2, 0x00); err != nil {
-		return nil, errors.New("Error setting up MPU9250")
+		return nil, errors.New("error setting up MPU9250")
 	}
 
 	if applyHWOffsets {
@@ -367,7 +367,7 @@ func (mpu *MPU9250) readSensors() {
 			d.T = t
 			d.DT = t.Sub(t0)
 		} else {
-			d.GAError = errors.New("MPU9250 Error: No new accel/gyro values")
+			d.GAError = errors.New("mpu9250 error: No new accel/gyro values")
 		}
 		if nm > 0 {
 			d.M1 = float64(avm1) * mpu.mcal1 / nm
@@ -377,7 +377,7 @@ func (mpu *MPU9250) readSensors() {
 			d.TM = tm
 			d.DTM = t.Sub(t0m)
 		} else {
-			d.MagError = errors.New("MPU9250 Error: No new magnetometer values")
+			d.MagError = errors.New("mpu9250 error: no new magnetometer values")
 		}
 		return &d
 	}
@@ -388,7 +388,7 @@ func (mpu *MPU9250) readSensors() {
 			for p, reg := range acRegMap {
 				*p, gaError = mpu.i2cRead2(reg)
 				if gaError != nil {
-					log.Println("MPU9250 Warning: error reading gyro/accel")
+					log.Println("mpu9250 warning: error reading gyro/accel")
 				}
 			}
 			curdata = makeMPUData()
@@ -414,22 +414,22 @@ func (mpu *MPU9250) readSensors() {
 			if mpu.enableMag {
 				// Set AK8963 to slave0 for reading
 				if err := mpu.i2cWrite(MPUREG_I2C_SLV0_ADDR, AK8963_I2C_ADDR|READ_FLAG); err != nil {
-					log.Printf("MPU9250 Error: couldn't set AK8963 address for reading: %s", err.Error())
+					log.Printf("mpu9250 error: couldn't set AK8963 address for reading: %s", err.Error())
 				}
 				//I2C slave 0 register address from where to begin data transfer
 				if err := mpu.i2cWrite(MPUREG_I2C_SLV0_REG, AK8963_HXL); err != nil {
-					log.Printf("MPU9250 Error: couldn't set AK8963 read register: %s", err.Error())
+					log.Printf("mpu9250 error: couldn't set AK8963 read register: %s", err.Error())
 				}
 				//Tell AK8963 that we will read 7 bytes
 				if err := mpu.i2cWrite(MPUREG_I2C_SLV0_CTRL, 0x87); err != nil {
-					log.Printf("MPU9250 Error: couldn't communicate with AK8963: %s", err.Error())
+					log.Printf("mpu9250 error: couldn't communicate with AK8963: %s", err.Error())
 				}
 
 				// Read the actual data
 				for p, reg := range magRegMap {
 					*p, magError = mpu.i2cRead2(reg)
 					if magError != nil {
-						log.Println("MPU9250 Warning: error reading magnetometer")
+						log.Println("mpu9250 warning: error reading magnetometer")
 					}
 				}
 
@@ -475,9 +475,9 @@ func (mpu *MPU9250) CloseMPU() {
 
 // SetSampleRate changes the sampling rate of the MPU.
 func (mpu *MPU9250) SetSampleRate(rate byte) (err error) {
-	errWrite := mpu.i2cWrite(MPUREG_SMPLRT_DIV, byte(rate)) // Set sample rate to chosen
+	errWrite := mpu.i2cWrite(MPUREG_SMPLRT_DIV, rate) // Set sample rate to chosen
 	if errWrite != nil {
-		err = fmt.Errorf("MPU9250 Error: Couldn't set sample rate: %s", errWrite.Error())
+		err = fmt.Errorf("mpu9250 error: couldn't set sample rate: %s", errWrite.Error())
 	}
 	return
 }
@@ -540,11 +540,11 @@ func (mpu *MPU9250) EnableGyroBiasCal(enable bool) error {
 
 	if enable {
 		if err := mpu.memWrite(CFG_MOTION_BIAS, &enableRegs); err != nil {
-			return errors.New("Unable to enable motion bias compensation")
+			return errors.New("unable to enable motion bias compensation")
 		}
 	} else {
 		if err := mpu.memWrite(CFG_MOTION_BIAS, &disableRegs); err != nil {
-			return errors.New("Unable to disable motion bias compensation")
+			return errors.New("unable to disable motion bias compensation")
 		}
 	}
 
@@ -732,7 +732,7 @@ func (mpu *MPU9250) ReadMagCalibration() error {
 	}
 	time.Sleep(time.Millisecond)
 	// Fuse AK8963 ROM access
-	if mpu.i2cWrite(MPUREG_I2C_SLV0_DO, AK8963_I2CDIS); err != nil {
+	if err = mpu.i2cWrite(MPUREG_I2C_SLV0_DO, AK8963_I2CDIS); err != nil {
 		return errors.New("ReadMagCalibration error reading chip")
 	}
 	time.Sleep(time.Millisecond)
@@ -782,7 +782,7 @@ func (mpu *MPU9250) ReadMagCalibration() error {
 func (mpu *MPU9250) i2cWrite(register, value byte) (err error) {
 
 	if errWrite := mpu.i2cbus.WriteByteToReg(MPU_ADDRESS, register, value); errWrite != nil {
-		err = fmt.Errorf("MPU9250 Error writing %X to %X: %s\n",
+		err = fmt.Errorf("mpu9250 error writing %X to %X: %s\n",
 			value, register, errWrite.Error())
 	} else {
 		time.Sleep(time.Millisecond)
@@ -802,7 +802,7 @@ func (mpu *MPU9250) i2cRead2(register byte) (value int16, err error) {
 
 	v, errWrite := mpu.i2cbus.ReadWordFromReg(MPU_ADDRESS, register)
 	if errWrite != nil {
-		err = fmt.Errorf("MPU9250 Error reading %x: %s\n", register, err.Error())
+		err = fmt.Errorf("mpu9250 error reading %x: %s\n", register, errWrite.Error())
 	} else {
 		value = int16(v)
 	}
@@ -818,17 +818,17 @@ func (mpu *MPU9250) memWrite(addr uint16, data *[]byte) error {
 
 	// Check memory bank boundaries
 	if tmp[1]+byte(len(*data)) > MPU_BANK_SIZE {
-		return errors.New("Bad address: writing outside of memory bank boundaries")
+		return errors.New("bad address: writing outside of memory bank boundaries")
 	}
 
 	err = mpu.i2cbus.WriteToReg(MPU_ADDRESS, MPUREG_BANK_SEL, tmp)
 	if err != nil {
-		return fmt.Errorf("MPU9250 Error selecting memory bank: %s\n", err.Error())
+		return fmt.Errorf("mpu9250 error selecting memory bank: %s\n", err.Error())
 	}
 
 	err = mpu.i2cbus.WriteToReg(MPU_ADDRESS, MPUREG_MEM_R_W, *data)
 	if err != nil {
-		return fmt.Errorf("MPU9250 Error writing to the memory bank: %s\n", err.Error())
+		return fmt.Errorf("mpu9250 error writing to the memory bank: %s\n", err.Error())
 	}
 
 	return nil
