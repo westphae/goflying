@@ -328,16 +328,19 @@ func (mpu *MPU9250) readSensors() {
 	t0m = time.Now()
 
 	makeMPUData := func() *MPUData {
+		mm1 := float64(m1)*mpu.mcal1 - mpu.M01
+		mm2 := float64(m2)*mpu.mcal2 - mpu.M02
+		mm3 := float64(m3)*mpu.mcal3 - mpu.M03
 		d := MPUData{
-			G1:      (float64(g1) - mpu.g01) * mpu.scaleGyro,
-			G2:      (float64(g2) - mpu.g02) * mpu.scaleGyro,
-			G3:      (float64(g3) - mpu.g03) * mpu.scaleGyro,
-			A1:      (float64(a1) - mpu.a01) * mpu.scaleAccel,
-			A2:      (float64(a2) - mpu.a02) * mpu.scaleAccel,
-			A3:      (float64(a3) - mpu.a03) * mpu.scaleAccel,
-			M1:      float64(m1) * mpu.mcal1,
-			M2:      float64(m2) * mpu.mcal2,
-			M3:      float64(m3) * mpu.mcal3,
+			G1:      (float64(g1) - mpu.G01) * mpu.scaleGyro,
+			G2:      (float64(g2) - mpu.G02) * mpu.scaleGyro,
+			G3:      (float64(g3) - mpu.G03) * mpu.scaleGyro,
+			A1:      (float64(a1) - mpu.A01) * mpu.scaleAccel,
+			A2:      (float64(a2) - mpu.A02) * mpu.scaleAccel,
+			A3:      (float64(a3) - mpu.A03) * mpu.scaleAccel,
+			M1:      mpu.Ms11*mm1 + mpu.Ms12*mm2 + mpu.Ms13*mm3,
+			M2:      mpu.Ms21*mm1 + mpu.Ms22*mm2 + mpu.Ms23*mm3,
+			M3:      mpu.Ms31*mm1 + mpu.Ms32*mm2 + mpu.Ms33*mm3,
 			Temp:    float64(tmp)/340 + 36.53,
 			GAError: gaError, MagError: magError,
 			N: 1, NM: 1,
@@ -354,15 +357,18 @@ func (mpu *MPU9250) readSensors() {
 	}
 
 	makeAvgMPUData := func() *MPUData {
+		mm1 := float64(avm1)*mpu.mcal1/nm - mpu.M01
+		mm2 := float64(avm2)*mpu.mcal2/nm - mpu.M02
+		mm3 := float64(avm3)*mpu.mcal3/nm - mpu.M03
 		d := MPUData{}
 		if n > 0.5 {
-			d.G1 = (avg1/n - mpu.g01) * mpu.scaleGyro
-			d.G2 = (avg2/n - mpu.g02) * mpu.scaleGyro
-			d.G3 = (avg3/n - mpu.g03) * mpu.scaleGyro
-			d.A1 = (ava1/n - mpu.a01) * mpu.scaleAccel
-			d.A2 = (ava2/n - mpu.a02) * mpu.scaleAccel
-			d.A3 = (ava3/n - mpu.a03) * mpu.scaleAccel
-			d.Temp = (float64(avtmp)/n)/340 + 36.53
+			d.G1 = (avg1/n - mpu.G01) * mpu.scaleGyro
+			d.G2 = (avg2/n - mpu.G02) * mpu.scaleGyro
+			d.G3 = (avg3/n - mpu.G03) * mpu.scaleGyro
+			d.A1 = (ava1/n - mpu.A01) * mpu.scaleAccel
+			d.A2 = (ava2/n - mpu.A02) * mpu.scaleAccel
+			d.A3 = (ava3/n - mpu.A03) * mpu.scaleAccel
+			d.Temp = (avtmp/n)/340 + 36.53
 			d.N = int(n + 0.5)
 			d.T = t
 			d.DT = t.Sub(t0)
@@ -370,9 +376,9 @@ func (mpu *MPU9250) readSensors() {
 			d.GAError = errors.New("mpu9250 error: No new accel/gyro values")
 		}
 		if nm > 0 {
-			d.M1 = float64(avm1) * mpu.mcal1 / nm
-			d.M2 = float64(avm2) * mpu.mcal2 / nm
-			d.M3 = float64(avm3) * mpu.mcal3 / nm
+			d.M1 = mpu.Ms11*mm1 + mpu.Ms12*mm2 + mpu.Ms13*mm3
+			d.M2 = mpu.Ms21*mm1 + mpu.Ms22*mm2 + mpu.Ms23*mm3
+			d.M3 = mpu.Ms31*mm1 + mpu.Ms32*mm2 + mpu.Ms33*mm3
 			d.NM = int(nm + 0.5)
 			d.TM = tm
 			d.DTM = t.Sub(t0m)
@@ -637,21 +643,21 @@ func (mpu *MPU9250) ReadAccelBias(sensitivityAccel int) error {
 
 	switch sensitivityAccel {
 	case 16:
-		mpu.a01 = float64(a0x >> 1)
-		mpu.a02 = float64(a0y >> 1)
-		mpu.a03 = float64(a0z >> 1)
+		mpu.A01 = float64(a0x >> 1)
+		mpu.A02 = float64(a0y >> 1)
+		mpu.A03 = float64(a0z >> 1)
 	case 8:
-		mpu.a01 = float64(a0x)
-		mpu.a02 = float64(a0y)
-		mpu.a03 = float64(a0z)
+		mpu.A01 = float64(a0x)
+		mpu.A02 = float64(a0y)
+		mpu.A03 = float64(a0z)
 	case 4:
-		mpu.a01 = float64(a0x << 1)
-		mpu.a02 = float64(a0y << 1)
-		mpu.a03 = float64(a0z << 1)
+		mpu.A01 = float64(a0x << 1)
+		mpu.A02 = float64(a0y << 1)
+		mpu.A03 = float64(a0z << 1)
 	case 2:
-		mpu.a01 = float64(a0x << 2)
-		mpu.a02 = float64(a0y << 2)
-		mpu.a03 = float64(a0z << 2)
+		mpu.A01 = float64(a0x << 2)
+		mpu.A02 = float64(a0y << 2)
+		mpu.A03 = float64(a0z << 2)
 	default:
 		return fmt.Errorf("MPU9250 Error: %d is not a valid acceleration sensitivity", sensitivityAccel)
 	}
@@ -677,21 +683,21 @@ func (mpu *MPU9250) ReadGyroBias(sensitivityGyro int) error {
 
 	switch sensitivityGyro {
 	case 2000:
-		mpu.g01 = float64(g0x >> 1)
-		mpu.g02 = float64(g0y >> 1)
-		mpu.g03 = float64(g0z >> 1)
+		mpu.G01 = float64(g0x >> 1)
+		mpu.G02 = float64(g0y >> 1)
+		mpu.G03 = float64(g0z >> 1)
 	case 1000:
-		mpu.g01 = float64(g0x)
-		mpu.g02 = float64(g0y)
-		mpu.g03 = float64(g0z)
+		mpu.G01 = float64(g0x)
+		mpu.G02 = float64(g0y)
+		mpu.G03 = float64(g0z)
 	case 500:
-		mpu.g01 = float64(g0x << 1)
-		mpu.g02 = float64(g0y << 1)
-		mpu.g03 = float64(g0z << 1)
+		mpu.G01 = float64(g0x << 1)
+		mpu.G02 = float64(g0y << 1)
+		mpu.G03 = float64(g0z << 1)
 	case 250:
-		mpu.g01 = float64(g0x << 2)
-		mpu.g02 = float64(g0y << 2)
-		mpu.g03 = float64(g0z << 2)
+		mpu.G01 = float64(g0x << 2)
+		mpu.G02 = float64(g0y << 2)
+		mpu.G03 = float64(g0z << 2)
 	default:
 		return fmt.Errorf("MPU9250 Error: %d is not a valid gyro sensitivity", sensitivityGyro)
 	}
