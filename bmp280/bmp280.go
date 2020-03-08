@@ -175,6 +175,7 @@ func NewBMP280(i2cbus *embd.I2CBus, address, powerMode, standby, filter, tempRes
 func (bmp *BMP280) Close() {
 	bmp.SetPowerMode(SleepMode)
 	bmp.cClose <- true
+	embd.CloseI2C()
 }
 
 func delayFromStandby(standby byte) (delay time.Duration) {

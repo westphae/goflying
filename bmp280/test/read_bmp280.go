@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"../../bmp280"
+	"github.com/westphae/goflying/bmp280"
 	"github.com/kidoman/embd"
 )
 

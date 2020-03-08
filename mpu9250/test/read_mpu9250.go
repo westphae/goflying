@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"../../ahrs"
-	"../../mpu9250"
+	"github.com/westphae/goflying/ahrs"
+	"github.com/westphae/goflying/mpu9250"
 	"github.com/kidoman/embd"
 )
 
