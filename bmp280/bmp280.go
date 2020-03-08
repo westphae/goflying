@@ -31,8 +31,8 @@ type BMPData struct {
 type BMP280 struct {
 	i2cbus *embd.I2CBus
 
-	address byte
-	chipID  byte
+	Address byte
+	ChipID  byte
 	config  byte
 	control byte
 
@@ -62,7 +62,7 @@ presRes is one of bmp280.XMode
 func NewBMP280(i2cbus *embd.I2CBus, address, powerMode, standby, filter, tempRes, presRes byte) (bmp *BMP280, err error) {
 	bmp = new(BMP280)
 	bmp.i2cbus = i2cbus
-	bmp.address = address
+	bmp.Address = address
 
 	// Make sure we can connect to the chip and read a valid ChipID
 	v := make([]byte, 1)
@@ -74,7 +74,7 @@ func NewBMP280(i2cbus *embd.I2CBus, address, powerMode, standby, filter, tempRes
 		return nil, fmt.Errorf("BMP280: Wrong ChipID, got %x", v)
 	}
 
-	bmp.chipID = v[0]
+	bmp.ChipID = v[0]
 
 	bmp.config = (standby << 5) + (filter << 2)               // combine bits for config
 	bmp.control = (tempRes << 5) + (presRes << 2) + powerMode // combine bits for control
@@ -350,7 +350,7 @@ func (bmp *BMP280) SetStandbyTime(standbyTime byte) error {
 }
 
 func (bmp *BMP280) i2cWrite(register, value byte) (err error) {
-	if errWrite := (*bmp.i2cbus).WriteByteToReg(bmp.address, register, value); errWrite != nil {
+	if errWrite := (*bmp.i2cbus).WriteByteToReg(bmp.Address, register, value); errWrite != nil {
 		err = fmt.Errorf("bmp280 error writing %X to %X: %s\n",
 			value, register, errWrite)
 	}
@@ -359,7 +359,7 @@ func (bmp *BMP280) i2cWrite(register, value byte) (err error) {
 }
 
 func (bmp *BMP280) i2cReadBytes(register byte, value []byte) (err error) {
-	errRead := (*bmp.i2cbus).ReadFromReg(bmp.address, register, value)
+	errRead := (*bmp.i2cbus).ReadFromReg(bmp.Address, register, value)
 	if errRead != nil {
 		err = fmt.Errorf("bmp280 error reading from %X: %s", register, errRead.Error())
 	}
