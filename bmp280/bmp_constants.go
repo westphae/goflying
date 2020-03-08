@@ -55,13 +55,4 @@ const (
 	RegisterTempDataMSB   = 0xFA
 	RegisterTempDataLSB   = 0xFB
 	RegisterTempDataXLSB  = 0xFC
-
-	// Connection retries definition
-	ConnAttempts = 5
-
-	// Sea level reference pressure in hPa
-	QNH = 1013.25
-
-	// Buffer size for reading data from BMP
-	BufSize = 256
 )

@@ -17,6 +17,8 @@ import (
 )
 
 const (
+	QNH       = 1013.25 // Sea level reference pressure in hPa
+	BufSize   = 256 // Buffer size for reading data from BMP
 	ReadDelay = time.Millisecond // Delay between chip reading polls
 )
 
@@ -64,21 +66,12 @@ func NewBMP280(i2cbus *embd.I2CBus, address, powerMode, standby, filter, tempRes
 
 	// Make sure we can connect to the chip and read a valid ChipID
 	v := make([]byte, 1)
-	for n := 0; n < ConnAttempts; n++ {
-		if errv := bmp.i2cReadBytes(RegisterChipID, v); errv != nil {
-			time.Sleep(ReadDelay)
-			err = fmt.Errorf("BMP280: couldn't find chip at address %x: %s", address, errv)
-			continue
-		}
-		if v[0] == ChipID1 || v[0] == ChipID2 || v[0] == ChipID3 {
-			err = nil
-			break
-		}
-		time.Sleep(ReadDelay)
-		err = fmt.Errorf("BMP280: Wrong ChipID, got %x", v)
-	}
-	if err != nil {
+	if errv := bmp.i2cReadBytes(RegisterChipID, v); errv != nil {
+		err = fmt.Errorf("BMP280: couldn't find chip at address %x: %s", address, errv)
 		return nil, err
+	}
+	if v[0] != ChipID1 && v[0] != ChipID2 && v[0] != ChipID3 {
+		return nil, fmt.Errorf("BMP280: Wrong ChipID, got %x", v)
 	}
 
 	bmp.chipID = v[0]
@@ -90,19 +83,15 @@ func NewBMP280(i2cbus *embd.I2CBus, address, powerMode, standby, filter, tempRes
 	bmp.Delay = delayFromStandby(standby)
 
 	bmp.i2cWrite(RegisterSoftReset, SoftResetCode) // reset sensor
-	time.Sleep(ReadDelay)
 
 	bmp.i2cWrite(RegisterControl, bmp.control) //
-	time.Sleep(ReadDelay)
 	bmp.i2cWrite(RegisterConfig, bmp.config) //
-	time.Sleep(ReadDelay)
 
 	bmp.DigT = make(map[int]int32)
 	bmp.DigP = make(map[int]int64)
 	bmp.ReadCorrectionSettings()
 
 	go bmp.readSensor()
-	time.Sleep(ReadDelay)
 	return
 }
 
@@ -110,7 +99,6 @@ func NewBMP280(i2cbus *embd.I2CBus, address, powerMode, standby, filter, tempRes
 func (bmp *BMP280) Close() {
 	bmp.SetPowerMode(SleepMode)
 	bmp.cClose <- true
-	embd.CloseI2C()
 }
 
 func delayFromStandby(standby byte) (delay time.Duration) {
@@ -176,6 +164,11 @@ func (bmp *BMP280) readSensor() {
 			T:           t.Sub(bmp.t),
 		}
 		return &d
+	}
+
+	// Throw away initial value
+	if err = bmp.i2cReadBytes(RegisterPressDataMSB, raw); err != nil {
+		log.Printf("bmp280 warning: error reading sensor data: %s", err)
 	}
 
 	for {
