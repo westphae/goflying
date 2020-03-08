@@ -51,13 +51,14 @@ type BMP280 struct {
 }
 
 /*
-NewBMP280 returns a BMP280 object with the chosen settings
-address is one of bmp280.Address1 or bmp280.Address2
-powerMode is one of bmp280.SleepMode, bmp280.ForcedMode, or bmp280.NormalMode
-standby is one of the bmp280.StandbyTimeX
-filter is one of bmp280.FilterCoeffX
-tempRes is one of bmp280.OversampX
-presRes is one of bmp280.XMode
+NewBMP280 returns a BMP280 object with the chosen settings:
+address is one of bmp280.Address1 (0x76) or bmp280.Address2 (0x77).
+powerMode is one of bmp280.SleepMode, bmp280.ForcedMode, or bmp280.NormalMode.
+standby is one of the bmp280.StandbyTimeX (1ms up to 4000ms).
+filter is one of bmp280.FilterCoeffX.
+tempRes is one of bmp280.OversampX (up to 16x).
+presRes is one of bmp280.XMode (low power mode, etc).
+See BMP280 datasheet for details.
 */
 func NewBMP280(i2cbus *embd.I2CBus, address, powerMode, standby, filter, tempRes, presRes byte) (bmp *BMP280, err error) {
 	bmp = new(BMP280)
@@ -112,6 +113,8 @@ func delayFromStandby(standby byte) (delay time.Duration) {
 	return
 }
 
+// ReadCorrectionSettings is used to read correction settings for the chip, set at the
+// factory to read properly calibrated temperature and pressure.
 func (bmp *BMP280) ReadCorrectionSettings() (err error) {
 	var raw []byte = make([]byte, 24)
 
@@ -194,6 +197,8 @@ func (bmp *BMP280) readSensor() {
 	}
 }
 
+// CalcCompensatedTemp converts the raw measurement from the sensor, a 32-bit int,
+// to an actual float temperature in deg C.
 func (bmp *BMP280) CalcCompensatedTemp(raw_temp int32) (temp float64) {
 	var var1, var2, t int32
 
@@ -205,6 +210,8 @@ func (bmp *BMP280) CalcCompensatedTemp(raw_temp int32) (temp float64) {
 	return
 }
 
+// CalcCompensatedPress converts the raw measurement from the sensor, a 64-bit int,
+// to an actual float pressure in hPa.
 func (bmp *BMP280) CalcCompensatedPress(raw_press int64) (press float64) {
 	var var1, var2, p int64
 
@@ -226,11 +233,18 @@ func (bmp *BMP280) CalcCompensatedPress(raw_press int64) (press float64) {
 	return
 }
 
+// CalcAltitude converts pressure in hPa to altitude in ft.
 func CalcAltitude(press float64) (altitude float64) {
 	altitude = 145366.45 * (1.0 - math.Pow(press/QNH, 0.190284))
 	return
 }
 
+// GetPowerMode returns the current power mode of the chip.
+// Possible values are:
+// bmp280.SleepMode     = 0x00
+// bmp280.ForcedMode    = 0x01
+// bmp280.NormalMode    = 0x03
+// See BMP280 datasheet for explanations.
 func (bmp *BMP280) GetPowerMode() (powerMode byte, err error) {
 	v := make([]byte, 1)
 	if errv := bmp.i2cReadBytes(RegisterControl, v); errv != nil {
@@ -241,6 +255,13 @@ func (bmp *BMP280) GetPowerMode() (powerMode byte, err error) {
 	return
 }
 
+// SetPowerMode sets the power mode of the chip.
+// Possible values are:
+// bmp280.SleepMode     = 0x00
+// bmp280.ForcedMode    = 0x01
+// bmp280.NormalMode    = 0x03
+// bmp280.SoftResetCode = 0xB6
+// See BMP280 datasheet for explanations.
 func (bmp *BMP280) SetPowerMode(powerMode byte) error {
 	v := make([]byte, 1)
 	if errv := bmp.i2cReadBytes(RegisterControl, v); errv != nil {
@@ -254,6 +275,15 @@ func (bmp *BMP280) SetPowerMode(powerMode byte) error {
 	return nil
 }
 
+// GetOversampPress returns the current pressure oversampling setting for the sensor.
+// Possible values are:
+// bmp280.OversampSkipped = 0x00
+// bmp280.Oversamp1x      = 0x01
+// bmp280.Oversamp2x      = 0x02
+// bmp280.Oversamp4x      = 0x03
+// bmp280.Oversamp8x      = 0x04
+// bmp280.Oversamp16x     = 0x05
+// See BMP280 datasheet for explanations.
 func (bmp *BMP280) GetOversampPress() (oversampPres byte, err error) {
 	v := make([]byte, 1)
 	if errv := bmp.i2cReadBytes(RegisterControl, v); errv != nil {
@@ -264,6 +294,15 @@ func (bmp *BMP280) GetOversampPress() (oversampPres byte, err error) {
 	return
 }
 
+// SetOversampPress sets the current pressure oversampling setting for the sensor.
+// Possible values are:
+// bmp280.OversampSkipped = 0x00
+// bmp280.Oversamp1x      = 0x01
+// bmp280.Oversamp2x      = 0x02
+// bmp280.Oversamp4x      = 0x03
+// bmp280.Oversamp8x      = 0x04
+// bmp280.Oversamp16x     = 0x05
+// See BMP280 datasheet for explanations.
 func (bmp *BMP280) SetOversampPress(oversampPres byte) error {
 	v := make([]byte, 1)
 	if errv := bmp.i2cReadBytes(RegisterControl, v); errv != nil {
@@ -278,6 +317,15 @@ func (bmp *BMP280) SetOversampPress(oversampPres byte) error {
 	return nil
 }
 
+// GetOversampTemp returns the current temperature oversampling setting for the sensor.
+// Possible values are:
+// bmp280.OversampSkipped = 0x00
+// bmp280.Oversamp1x      = 0x01
+// bmp280.Oversamp2x      = 0x02
+// bmp280.Oversamp4x      = 0x03
+// bmp280.Oversamp8x      = 0x04
+// bmp280.Oversamp16x     = 0x05
+// See BMP280 datasheet for explanations.
 func (bmp *BMP280) GetOversampTemp() (oversampTemp byte, err error) {
 	v := make([]byte, 1)
 	if errv := bmp.i2cReadBytes(RegisterControl, v); errv != nil {
@@ -288,6 +336,15 @@ func (bmp *BMP280) GetOversampTemp() (oversampTemp byte, err error) {
 	return
 }
 
+// SetOversampTemp sets the current temperature oversampling setting for the sensor.
+// Possible values are:
+// bmp280.OversampSkipped = 0x00
+// bmp280.Oversamp1x      = 0x01
+// bmp280.Oversamp2x      = 0x02
+// bmp280.Oversamp4x      = 0x03
+// bmp280.Oversamp8x      = 0x04
+// bmp280.Oversamp16x     = 0x05
+// See BMP280 datasheet for explanations.
 func (bmp *BMP280) SetOversampTemp(oversampTemp byte) error {
 	v := make([]byte, 1)
 	if errv := bmp.i2cReadBytes(RegisterControl, v); errv != nil {
@@ -302,6 +359,14 @@ func (bmp *BMP280) SetOversampTemp(oversampTemp byte) error {
 	return nil
 }
 
+// GetFilterCoeff returns the current filter coefficient of the sensor.
+// Possible values are:
+// bmp280.FilterCoeffOff = 0x00
+// bmp280.FilterCoeff2   = 0x01
+// bmp280.FilterCoeff4   = 0x02
+// bmp280.FilterCoeff8   = 0x03
+// bmp280.FilterCoeff16  = 0x04
+// See BMP280 datasheet for explanations.
 func (bmp *BMP280) GetFilterCoeff() (filterCoeff byte, err error) {
 	v := make([]byte, 1)
 	if errv := bmp.i2cReadBytes(RegisterConfig, v); errv != nil {
@@ -312,6 +377,14 @@ func (bmp *BMP280) GetFilterCoeff() (filterCoeff byte, err error) {
 	return
 }
 
+// SetFilterCoeff sets the current filter coefficient of the sensor.
+// Possible values are:
+// bmp280.FilterCoeffOff = 0x00
+// bmp280.FilterCoeff2   = 0x01
+// bmp280.FilterCoeff4   = 0x02
+// bmp280.FilterCoeff8   = 0x03
+// bmp280.FilterCoeff16  = 0x04
+// See BMP280 datasheet for explanations.
 func (bmp *BMP280) SetFilterCoeff(filterCoeff byte) error {
 	v := make([]byte, 1)
 	if errv := bmp.i2cReadBytes(RegisterConfig, v); errv != nil {
@@ -325,6 +398,17 @@ func (bmp *BMP280) SetFilterCoeff(filterCoeff byte) error {
 	return nil
 }
 
+// GetStandbyTime returns the current standby time between chip reads.
+// Possible values are:
+// bmp280.StandbyTime1ms    = 0x00
+// bmp280.StandbyTime63ms   = 0x01
+// bmp280.StandbyTime125ms  = 0x02
+// bmp280.StandbyTime250ms  = 0x03
+// bmp280.StandbyTime500ms  = 0x04
+// bmp280.StandbyTime1000ms = 0x05
+// bmp280.StandbyTime2000ms = 0x06
+// bmp280.StandbyTime4000ms = 0x07
+// See BMP280 datasheet for explanations.
 func (bmp *BMP280) GetStandbyTime() (standbyTime byte, err error) {
 	v := make([]byte, 1)
 	if errv := bmp.i2cReadBytes(RegisterConfig, v); errv != nil {
@@ -335,6 +419,17 @@ func (bmp *BMP280) GetStandbyTime() (standbyTime byte, err error) {
 	return
 }
 
+// SetStandbyTime sets the standby time between chip reads.
+// Possible values are:
+// bmp280.StandbyTime1ms    = 0x00
+// bmp280.StandbyTime63ms   = 0x01
+// bmp280.StandbyTime125ms  = 0x02
+// bmp280.StandbyTime250ms  = 0x03
+// bmp280.StandbyTime500ms  = 0x04
+// bmp280.StandbyTime1000ms = 0x05
+// bmp280.StandbyTime2000ms = 0x06
+// bmp280.StandbyTime4000ms = 0x07
+// See BMP280 datasheet for explanations.
 func (bmp *BMP280) SetStandbyTime(standbyTime byte) error {
 	v := make([]byte, 1)
 	if errv := bmp.i2cReadBytes(RegisterConfig, v); errv != nil {
