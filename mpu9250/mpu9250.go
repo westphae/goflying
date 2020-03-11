@@ -100,23 +100,24 @@ MPU9250 represents an InvenSense MPU9250 9DoF chip.
 All communication is via channels.
 */
 type MPU9250 struct {
+	mpuCalData
 	i2cbus                embd.I2CBus
+	Address               byte
 	scaleGyro, scaleAccel float64 // Max sensor reading for value 2**15-1
 	sampleRate            int
 	enableMag             bool
-	mpuCalData
-	mcal1, mcal2, mcal3 float64         // Hardware magnetometer calibration values, uT
-	C                   <-chan *MPUData // Current instantaneous sensor values
-	CAvg                <-chan *MPUData // Average sensor values (since CAvg last read)
-	CBuf                <-chan *MPUData // Buffer of instantaneous sensor values
-	cClose              chan bool       // Turn off MPU polling
+	mcal1, mcal2, mcal3   float64         // Hardware magnetometer calibration values, uT
+	C                     <-chan *MPUData // Current instantaneous sensor values
+	CAvg                  <-chan *MPUData // Average sensor values (since CAvg last read)
+	CBuf                  <-chan *MPUData // Buffer of instantaneous sensor values
+	cClose                chan bool       // Turn off MPU polling
 }
 
 /*
 NewMPU9250 creates a new MPU9250 object according to the supplied parameters.  If there is no MPU9250 available or there
 is an error creating the object, an error is returned.
 */
-func NewMPU9250(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleRate int, enableMag bool, applyHWOffsets bool) (*MPU9250, error) {
+func NewMPU9250(i2cbus *embd.I2CBus, address byte, sensitivityGyro, sensitivityAccel, sampleRate int, enableMag bool, applyHWOffsets bool) (*MPU9250, error) {
 	var mpu = new(MPU9250)
 	if err := mpu.mpuCalData.load(); err != nil {
 		mpu.mpuCalData.reset()
@@ -126,6 +127,7 @@ func NewMPU9250(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleRa
 	mpu.enableMag = enableMag
 
 	mpu.i2cbus = *i2cbus
+	mpu.Address = address
 
 	// Initialization of MPU
 	// Reset device.
@@ -787,7 +789,7 @@ func (mpu *MPU9250) ReadMagCalibration() error {
 
 func (mpu *MPU9250) i2cWrite(register, value byte) (err error) {
 
-	if errWrite := mpu.i2cbus.WriteByteToReg(MPU_ADDRESS, register, value); errWrite != nil {
+	if errWrite := mpu.i2cbus.WriteByteToReg(mpu.Address, register, value); errWrite != nil {
 		err = fmt.Errorf("mpu9250 error writing %X to %X: %s\n",
 			value, register, errWrite.Error())
 	} else {
@@ -797,7 +799,7 @@ func (mpu *MPU9250) i2cWrite(register, value byte) (err error) {
 }
 
 func (mpu *MPU9250) i2cRead(register byte) (value uint8, err error) {
-	value, errWrite := mpu.i2cbus.ReadByteFromReg(MPU_ADDRESS, register)
+	value, errWrite := mpu.i2cbus.ReadByteFromReg(mpu.Address, register)
 	if errWrite != nil {
 		err = fmt.Errorf("i2cRead error: %s", errWrite.Error())
 	}
@@ -806,7 +808,7 @@ func (mpu *MPU9250) i2cRead(register byte) (value uint8, err error) {
 
 func (mpu *MPU9250) i2cRead2(register byte) (value int16, err error) {
 
-	v, errWrite := mpu.i2cbus.ReadWordFromReg(MPU_ADDRESS, register)
+	v, errWrite := mpu.i2cbus.ReadWordFromReg(mpu.Address, register)
 	if errWrite != nil {
 		err = fmt.Errorf("mpu9250 error reading %x: %s\n", register, errWrite.Error())
 	} else {
@@ -827,12 +829,12 @@ func (mpu *MPU9250) memWrite(addr uint16, data *[]byte) error {
 		return errors.New("bad address: writing outside of memory bank boundaries")
 	}
 
-	err = mpu.i2cbus.WriteToReg(MPU_ADDRESS, MPUREG_BANK_SEL, tmp)
+	err = mpu.i2cbus.WriteToReg(mpu.Address, MPUREG_BANK_SEL, tmp)
 	if err != nil {
 		return fmt.Errorf("mpu9250 error selecting memory bank: %s\n", err.Error())
 	}
 
-	err = mpu.i2cbus.WriteToReg(MPU_ADDRESS, MPUREG_MEM_R_W, *data)
+	err = mpu.i2cbus.WriteToReg(mpu.Address, MPUREG_MEM_R_W, *data)
 	if err != nil {
 		return fmt.Errorf("mpu9250 error writing to the memory bank: %s\n", err.Error())
 	}

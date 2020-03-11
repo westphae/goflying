@@ -1,7 +1,8 @@
 package mpu9250
 
 const (
-	MPU_ADDRESS               = 0x68
+	MPU_ADDRESS1              = 0x68
+	MPU_ADDRESS2              = 0x69
 	MPUREG_XG_OFFS_TC         = 0x00
 	MPUREG_YG_OFFS_TC         = 0x01
 	MPUREG_ZG_OFFS_TC         = 0x02
