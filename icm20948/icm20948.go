@@ -101,6 +101,7 @@ All communication is via channels.
 */
 type ICM20948 struct {
 	i2cbus                embd.I2CBus
+	Address               byte
 	scaleGyro, scaleAccel float64 // Max sensor reading for value 2**15-1
 	sampleRate            int
 	enableMag             bool
@@ -116,7 +117,7 @@ type ICM20948 struct {
 NewICM20948 creates a new ICM20948 object according to the supplied parameters.  If there is no ICM20948 available or there
 is an error creating the object, an error is returned.
 */
-func NewICM20948(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleRate int, enableMag bool, applyHWOffsets bool) (*ICM20948, error) {
+func NewICM20948(i2cbus *embd.I2CBus, address byte, sensitivityGyro, sensitivityAccel, sampleRate int, enableMag bool, applyHWOffsets bool) (*ICM20948, error) {
 	var mpu = new(ICM20948)
 	if err := mpu.mpuCalData.load(); err != nil {
 		mpu.mpuCalData.reset()
@@ -126,6 +127,7 @@ func NewICM20948(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleR
 	mpu.enableMag = false //FIXME: enableMag. Always disabling magnetometer now.
 
 	mpu.i2cbus = *i2cbus
+	mpu.Address = address
 
 	mpu.setRegBank(0)
 
@@ -870,7 +872,7 @@ func (mpu *ICM20948) ReadMagCalibration() error {
 
 func (mpu *ICM20948) i2cWrite(register, value byte) (err error) {
 
-	if errWrite := mpu.i2cbus.WriteByteToReg(MPU_ADDRESS, register, value); errWrite != nil {
+	if errWrite := mpu.i2cbus.WriteByteToReg(mpu.Address, register, value); errWrite != nil {
 		err = fmt.Errorf("ICM20948 Error writing %X to %X: %s\n",
 			value, register, errWrite.Error())
 	} else {
@@ -880,7 +882,7 @@ func (mpu *ICM20948) i2cWrite(register, value byte) (err error) {
 }
 
 func (mpu *ICM20948) i2cRead(register byte) (value uint8, err error) {
-	value, errWrite := mpu.i2cbus.ReadByteFromReg(MPU_ADDRESS, register)
+	value, errWrite := mpu.i2cbus.ReadByteFromReg(mpu.Address, register)
 	if errWrite != nil {
 		err = fmt.Errorf("i2cRead error: %s", errWrite.Error())
 	}
@@ -889,7 +891,7 @@ func (mpu *ICM20948) i2cRead(register byte) (value uint8, err error) {
 
 func (mpu *ICM20948) i2cRead2(register byte) (value int16, err error) {
 
-	v, errWrite := mpu.i2cbus.ReadWordFromReg(MPU_ADDRESS, register)
+	v, errWrite := mpu.i2cbus.ReadWordFromReg(mpu.Address, register)
 	if errWrite != nil {
 		err = fmt.Errorf("ICM20948 Error reading %x: %s\n", register, err.Error())
 	} else {
@@ -910,12 +912,12 @@ func (mpu *ICM20948) memWrite(addr uint16, data *[]byte) error {
 		return errors.New("Bad address: writing outside of memory bank boundaries")
 	}
 
-	err = mpu.i2cbus.WriteToReg(MPU_ADDRESS, ICMREG_BANK_SEL, tmp)
+	err = mpu.i2cbus.WriteToReg(mpu.Address, ICMREG_BANK_SEL, tmp)
 	if err != nil {
 		return fmt.Errorf("ICM20948 Error selecting memory bank: %s\n", err.Error())
 	}
 
-	err = mpu.i2cbus.WriteToReg(MPU_ADDRESS, ICMREG_MEM_R_W, *data)
+	err = mpu.i2cbus.WriteToReg(mpu.Address, ICMREG_MEM_R_W, *data)
 	if err != nil {
 		return fmt.Errorf("ICM20948 Error writing to the memory bank: %s\n", err.Error())
 	}

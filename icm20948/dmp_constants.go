@@ -1,7 +1,8 @@
 package icm20948
 
 const (
-	MPU_ADDRESS               = 0x68
+	MPU_ADDRESS1              = 0x68
+	MPU_ADDRESS2              = 0x69
 	ICMREG_XG_OFFS_TC         = 0x00
 	ICMREG_YG_OFFS_TC         = 0x01
 	ICMREG_ZG_OFFS_TC         = 0x02
