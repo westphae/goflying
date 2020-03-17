@@ -100,17 +100,17 @@ ICM20948 represents an InvenSense ICM20948 9DoF chip.
 All communication is via channels.
 */
 type ICM20948 struct {
+	mpuCalData
 	i2cbus                embd.I2CBus
 	Address               byte
 	scaleGyro, scaleAccel float64 // Max sensor reading for value 2**15-1
 	sampleRate            int
 	enableMag             bool
-	mpuCalData
-	mcal1, mcal2, mcal3 float64         // Hardware magnetometer calibration values, uT
-	C                   <-chan *MPUData // Current instantaneous sensor values
-	CAvg                <-chan *MPUData // Average sensor values (since CAvg last read)
-	CBuf                <-chan *MPUData // Buffer of instantaneous sensor values
-	cClose              chan bool       // Turn off MPU polling
+	mcal1, mcal2, mcal3   float64         // Hardware magnetometer calibration values, uT
+	C                     <-chan *MPUData // Current instantaneous sensor values
+	CAvg                  <-chan *MPUData // Average sensor values (since CAvg last read)
+	CBuf                  <-chan *MPUData // Buffer of instantaneous sensor values
+	cClose                chan bool       // Turn off MPU polling
 }
 
 /*
