@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	QNH       = 1013.25 // Sea level reference pressure in hPa
-	BufSize   = 256 // Buffer size for reading data from BMP
+	QNH       = 1013.25          // Sea level reference pressure in hPa
+	BufSize   = 256              // Buffer size for reading data from BMP
 	ReadDelay = time.Millisecond // Delay between chip reading polls
 )
 
@@ -85,8 +85,8 @@ func NewBMP280(i2cbus *embd.I2CBus, address, powerMode, standby, filter, tempRes
 
 	bmp.i2cWrite(RegisterSoftReset, SoftResetCode) // reset sensor
 
-	bmp.i2cWrite(RegisterControl, bmp.control) //
-	bmp.i2cWrite(RegisterConfig, bmp.config) //
+	bmp.i2cWrite(RegisterControl, bmp.control)
+	bmp.i2cWrite(RegisterConfig, bmp.config)
 
 	bmp.DigT = make(map[int]int32)
 	bmp.DigP = make(map[int]int64)
