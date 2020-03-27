@@ -542,7 +542,7 @@ func (mpu *ICM20948) SetGyroLPF(rate byte) (err error) {
 		r = BITS_DLPF_GYRO_CFG_6HZ
 	}
 
-	cfg = cfg & 0x01
+	cfg |= 0x01
 	cfg |= r
 
 	errWrite := mpu.i2cWrite(ICMREG_GYRO_CONFIG, cfg)
@@ -583,7 +583,7 @@ func (mpu *ICM20948) SetAccelLPF(rate byte) (err error) {
 		r = BITS_DLPF_ACCEL_CFG_5HZ
 	}
 
-	cfg = cfg & 0x01
+	cfg |= 0x01
 	cfg |= r
 
 	errWrite := mpu.i2cWrite(ICMREG_ACCEL_CONFIG, cfg)
