@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/kidoman/embd"
-	"github.com/westphae/goflying/mpu9250"
+	"github.com/westphae/goflying/sensors/mpu9250"
 )
 
 func main() {

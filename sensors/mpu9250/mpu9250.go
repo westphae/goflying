@@ -4,112 +4,36 @@ package mpu9250
 // Also referenced https://github.com/brianc118/MPU9250/blob/master/MPU9250.cpp
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"math"
-	"os"
 	"time"
 
 	"github.com/kidoman/embd"
 	_ "github.com/kidoman/embd/host/all" // Empty import needed to initialize embd library.
 	_ "github.com/kidoman/embd/host/rpi" // Empty import needed to initialize embd library.
+	"github.com/westphae/goflying/sensors"
 )
 
 const (
 	bufSize         = 250 // Size of buffer storing instantaneous sensor values
 	scaleMag        = 9830.0 / 65536
-	calDataLocation = "/etc/mpu9250cal.json"
 )
-
-// MPUData contains all the values measured by an MPU9250.
-type MPUData struct {
-	G1, G2, G3        float64
-	A1, A2, A3        float64
-	M1, M2, M3        float64
-	Temp              float64
-	GAError, MagError error
-	N, NM             int
-	T, TM             time.Time
-	DT, DTM           time.Duration
-}
-
-type mpuCalData struct {
-	A01, A02, A03    float64 // Accelerometer hardware bias
-	G01, G02, G03    float64 // Gyro hardware bias
-	M01, M02, M03    float64 // Magnetometer hardware bias
-	Ms11, Ms12, Ms13 float64 // Magnetometer rescaling matrix
-	Ms21, Ms22, Ms23 float64 // (Only diagonal is used currently)
-	Ms31, Ms32, Ms33 float64
-}
-
-func (d *mpuCalData) reset() {
-	d.Ms11 = 1
-	d.Ms22 = 1
-	d.Ms33 = 1
-}
-
-func (d *mpuCalData) save() {
-	fd, err := os.OpenFile(calDataLocation, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(0644))
-	if err != nil {
-		log.Printf("MPU9250: Error saving calibration data to %s: %s", calDataLocation, err.Error())
-		return
-	}
-	defer fd.Close()
-	calData, err := json.Marshal(d)
-	if err != nil {
-		log.Printf("MPU9250: Error marshaling calibration data: %s", err)
-		return
-	}
-	fd.Write(calData)
-}
-
-func (d *mpuCalData) load() (err error) {
-	//d.M01 = 1638.0
-	//d.M02 = -589.0
-	//d.M03 = -2153.0
-	//d.Ms11 = 0.00031969309462915601
-	//d.Ms22 = 0.00035149384885764499
-	//d.Ms33 = 0.00028752156411730879
-	//d.save()
-	//return
-	errstr := "MPU9250: Error reading calibration data from %s: %s"
-	fd, rerr := os.Open(calDataLocation)
-	if rerr != nil {
-		err = fmt.Errorf(errstr, calDataLocation, rerr.Error())
-		return
-	}
-	defer fd.Close()
-	buf := make([]byte, 1024)
-	count, rerr := fd.Read(buf)
-	if rerr != nil {
-		err = fmt.Errorf(errstr, calDataLocation, rerr.Error())
-		return
-	}
-	rerr = json.Unmarshal(buf[0:count], d)
-	if rerr != nil {
-		err = fmt.Errorf(errstr, calDataLocation, rerr.Error())
-		return
-	}
-	return
-}
 
 /*
 MPU9250 represents an InvenSense MPU9250 9DoF chip.
 All communication is via channels.
 */
 type MPU9250 struct {
-	mpuCalData
-	i2cbus                embd.I2CBus
+	sensors.IMUSensor
+	sensors.IMUCalData
 	Address               byte
+	i2cbus                embd.I2CBus
 	scaleGyro, scaleAccel float64 // Max sensor reading for value 2**15-1
 	sampleRate            int
 	enableMag             bool
 	mcal1, mcal2, mcal3   float64         // Hardware magnetometer calibration values, uT
-	C                     <-chan *MPUData // Current instantaneous sensor values
-	CAvg                  <-chan *MPUData // Average sensor values (since CAvg last read)
-	CBuf                  <-chan *MPUData // Buffer of instantaneous sensor values
 	cClose                chan bool       // Turn off MPU polling
 }
 
@@ -119,8 +43,8 @@ is an error creating the object, an error is returned.
 */
 func NewMPU9250(i2cbus *embd.I2CBus, address byte, sensitivityGyro, sensitivityAccel, sampleRate int, enableMag bool, applyHWOffsets bool) (*MPU9250, error) {
 	var mpu = new(MPU9250)
-	if err := mpu.mpuCalData.load(); err != nil {
-		mpu.mpuCalData.reset()
+	if err := mpu.IMUCalData.Load(); err != nil {
+		mpu.IMUCalData.Reset()
 	}
 
 	mpu.sampleRate = sampleRate
@@ -291,7 +215,7 @@ func (mpu *MPU9250) readSensors() {
 		gaError, magError                           error
 		t0, t, t0m, tm                              time.Time
 		magSampleRate                               int
-		curdata                                     *MPUData
+		curdata                                     *sensors.IMUData
 	)
 
 	acRegMap := map[*int16]byte{
@@ -309,13 +233,13 @@ func (mpu *MPU9250) readSensors() {
 		magSampleRate = mpu.sampleRate
 	}
 
-	cC := make(chan *MPUData)
+	cC := make(chan *sensors.IMUData)
 	defer close(cC)
 	mpu.C = cC
-	cAvg := make(chan *MPUData)
+	cAvg := make(chan *sensors.IMUData)
 	defer close(cAvg)
 	mpu.CAvg = cAvg
-	cBuf := make(chan *MPUData, bufSize)
+	cBuf := make(chan *sensors.IMUData, bufSize)
 	defer close(cBuf)
 	mpu.CBuf = cBuf
 	mpu.cClose = make(chan bool)
@@ -329,11 +253,11 @@ func (mpu *MPU9250) readSensors() {
 	t0 = time.Now()
 	t0m = time.Now()
 
-	makeMPUData := func() *MPUData {
+	makeIMUData := func() *sensors.IMUData {
 		mm1 := float64(m1)*mpu.mcal1 - mpu.M01
 		mm2 := float64(m2)*mpu.mcal2 - mpu.M02
 		mm3 := float64(m3)*mpu.mcal3 - mpu.M03
-		d := MPUData{
+		d := sensors.IMUData{
 			G1:      (float64(g1) - mpu.G01) * mpu.scaleGyro,
 			G2:      (float64(g2) - mpu.G02) * mpu.scaleGyro,
 			G3:      (float64(g3) - mpu.G03) * mpu.scaleGyro,
@@ -358,11 +282,11 @@ func (mpu *MPU9250) readSensors() {
 		return &d
 	}
 
-	makeAvgMPUData := func() *MPUData {
+	makeAvgIMUData := func() *sensors.IMUData {
 		mm1 := float64(avm1)*mpu.mcal1/nm - mpu.M01
 		mm2 := float64(avm2)*mpu.mcal2/nm - mpu.M02
 		mm3 := float64(avm3)*mpu.mcal3/nm - mpu.M03
-		d := MPUData{}
+		d := sensors.IMUData{}
 		if n > 0.5 {
 			d.G1 = (avg1/n - mpu.G01) * mpu.scaleGyro
 			d.G2 = (avg2/n - mpu.G02) * mpu.scaleGyro
@@ -399,7 +323,7 @@ func (mpu *MPU9250) readSensors() {
 					log.Println("mpu9250 warning: error reading gyro/accel")
 				}
 			}
-			curdata = makeMPUData()
+			curdata = makeIMUData()
 			// Update accumulated values and increment count of gyro/accel readings
 			avg1 += float64(g1)
 			avg2 += float64(g2)
@@ -461,7 +385,7 @@ func (mpu *MPU9250) readSensors() {
 				nm++
 			}
 		case cC <- curdata: // Send the latest values
-		case cAvg <- makeAvgMPUData(): // Send the averages
+		case cAvg <- makeAvgIMUData(): // Send the averages
 			avg1, avg2, avg3 = 0, 0, 0
 			ava1, ava2, ava3 = 0, 0, 0
 			avm1, avm2, avm3 = 0, 0, 0

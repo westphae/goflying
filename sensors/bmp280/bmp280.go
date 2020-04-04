@@ -14,19 +14,14 @@ import (
 	"github.com/kidoman/embd"
 	_ "github.com/kidoman/embd/host/all"
 	_ "github.com/kidoman/embd/host/rpi"
+	"github.com/westphae/goflying/sensors"
 )
 
 const (
-	QNH       = 1013.25          // Sea level reference pressure in hPa
-	BufSize   = 256              // Buffer size for reading data from BMP
-	ReadDelay = time.Millisecond // Delay between chip reading polls
+	QNH            = 1013.25          // Sea level reference pressure in hPa
+	BufSize        = 256              // Buffer size for reading data from BMP
+	ExtraReadDelay = time.Millisecond // Delay between chip reading polls
 )
-
-type BMPData struct {
-	Temperature float64
-	Pressure    float64
-	T           time.Duration
-}
 
 type BMP280 struct {
 	i2cbus *embd.I2CBus
@@ -38,15 +33,15 @@ type BMP280 struct {
 
 	t time.Time
 
-	Delay time.Duration
+	Standby time.Duration
 
 	DigT map[int]int32
 	DigP map[int]int64
 
 	T_fine int32
 
-	C      <-chan *BMPData
-	CBuf   <-chan *BMPData
+	C      <-chan *sensors.BMPData
+	CBuf   <-chan *sensors.BMPData
 	cClose chan bool
 }
 
@@ -81,7 +76,7 @@ func NewBMP280(i2cbus *embd.I2CBus, address, powerMode, standby, filter, tempRes
 	bmp.control = (tempRes << 5) + (presRes << 2) + powerMode // combine bits for control
 
 	bmp.t = time.Now()
-	bmp.Delay = delayFromStandby(standby)
+	bmp.Standby = delayFromStandby(standby)
 
 	bmp.i2cWrite(RegisterSoftReset, SoftResetCode) // reset sensor
 
@@ -93,6 +88,7 @@ func NewBMP280(i2cbus *embd.I2CBus, address, powerMode, standby, filter, tempRes
 	bmp.ReadCorrectionSettings()
 
 	go bmp.readSensor()
+
 	return
 }
 
@@ -142,26 +138,26 @@ func (bmp *BMP280) readSensor() {
 		raw_press   int64
 		temp, press float64
 		err         error
-		t           time.Time
 	)
 
 	raw := make([]byte, 6)
 
-	cC := make(chan *BMPData)
+	cC := make(chan *sensors.BMPData)
 	defer close(cC)
 	bmp.C = cC
-	cBuf := make(chan *BMPData, BufSize)
+	cBuf := make(chan *sensors.BMPData, BufSize)
 	defer close(cBuf)
 	bmp.CBuf = cBuf
 	bmp.cClose = make(chan bool)
 	defer close(bmp.cClose)
 
-	clock := time.NewTicker(bmp.Delay)
+	clock := time.NewTicker(bmp.Standby)
 	//TODO westphae: use the clock to record actual time instead of a timer
 	defer clock.Stop()
 
-	makeBMPData := func() *BMPData {
-		d := BMPData{
+	t := time.Now()
+	makeBMPData := func() *sensors.BMPData {
+		d := sensors.BMPData{
 			Temperature: temp,
 			Pressure:    press,
 			T:           t.Sub(bmp.t),
@@ -310,7 +306,7 @@ func (bmp *BMP280) SetOversampPress(oversampPres byte) error {
 	}
 	v[0] = (v[0] & 0xe3) | (oversampPres << 2)
 
-	time.Sleep(bmp.Delay)
+	time.Sleep(bmp.Standby)
 	if errv := bmp.i2cWrite(RegisterControl, v[0]); errv != nil {
 		return fmt.Errorf("bmp280 error: couldn't write Pressure Oversampling: %s", errv)
 	}
@@ -352,7 +348,7 @@ func (bmp *BMP280) SetOversampTemp(oversampTemp byte) error {
 	}
 	v[0] = (v[0] & 0x1f) | (oversampTemp << 5)
 
-	time.Sleep(bmp.Delay)
+	time.Sleep(bmp.Standby)
 	if errv := bmp.i2cWrite(RegisterControl, v[0]); errv != nil {
 		return fmt.Errorf("bmp280 error: couldn't write Temperature Oversampling: %s", errv)
 	}
@@ -440,7 +436,7 @@ func (bmp *BMP280) SetStandbyTime(standbyTime byte) error {
 	if errv := bmp.i2cWrite(RegisterConfig, v[0]); errv != nil {
 		return fmt.Errorf("bmp280 error: couldn't write Standby Time: %s", errv)
 	}
-	bmp.Delay = delayFromStandby(standbyTime)
+	bmp.Standby = delayFromStandby(standbyTime)
 	return nil
 }
 
@@ -449,14 +445,13 @@ func (bmp *BMP280) i2cWrite(register, value byte) (err error) {
 		err = fmt.Errorf("bmp280 error writing %X to %X: %s\n",
 			value, register, errWrite)
 	}
-	time.Sleep(ReadDelay)
+	time.Sleep(ExtraReadDelay)
 	return
 }
 
 func (bmp *BMP280) i2cReadBytes(register byte, value []byte) (err error) {
-	errRead := (*bmp.i2cbus).ReadFromReg(bmp.Address, register, value)
-	if errRead != nil {
-		err = fmt.Errorf("bmp280 error reading from %X: %s", register, errRead.Error())
+	if errRead := (*bmp.i2cbus).ReadFromReg(bmp.Address, register, value); errRead != nil {
+		err = fmt.Errorf("bmp280 error reading from %X: %s", register, errRead)
 	}
-	return
+	return err
 }
