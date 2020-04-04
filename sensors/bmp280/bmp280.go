@@ -33,7 +33,7 @@ type BMP280 struct {
 
 	t time.Time
 
-	Standby time.Duration
+	Delay time.Duration
 
 	DigT map[int]int32
 	DigP map[int]int64
@@ -75,9 +75,6 @@ func NewBMP280(i2cbus *embd.I2CBus, address, powerMode, standby, filter, tempRes
 	bmp.config = (standby << 5) + (filter << 2)               // combine bits for config
 	bmp.control = (tempRes << 5) + (presRes << 2) + powerMode // combine bits for control
 
-	bmp.t = time.Now()
-	bmp.Standby = delayFromStandby(standby)
-
 	bmp.i2cWrite(RegisterSoftReset, SoftResetCode) // reset sensor
 
 	bmp.i2cWrite(RegisterControl, bmp.control)
@@ -86,6 +83,9 @@ func NewBMP280(i2cbus *embd.I2CBus, address, powerMode, standby, filter, tempRes
 	bmp.DigT = make(map[int]int32)
 	bmp.DigP = make(map[int]int64)
 	bmp.ReadCorrectionSettings()
+
+	bmp.t = time.Now()
+	bmp.setDelay()
 
 	go bmp.readSensor()
 
@@ -98,15 +98,22 @@ func (bmp *BMP280) Close() {
 	bmp.cClose <- true
 }
 
-func delayFromStandby(standby byte) (delay time.Duration) {
+func (bmp *BMP280) setDelay() {
+	bmp.Delay = 1500 * time.Microsecond
+	standby, _ := bmp.GetStandbyTime()
 	if standby == 0 {
-		delay = 500 * time.Microsecond
+		bmp.Delay += 500 * time.Microsecond
 	} else if standby == 1 {
-		delay = 62500 * time.Microsecond
+		bmp.Delay += 62500 * time.Microsecond
 	} else {
-		delay = time.Duration(int(4000)>>uint(7-standby)) * time.Millisecond
+		bmp.Delay += time.Duration(int(4000)>>uint(7-standby)) * time.Millisecond
 	}
-	return
+
+	tempRes, _ := bmp.GetOversampTemp()
+	bmp.Delay += time.Duration(2*int(tempRes)) * time.Millisecond
+
+	pressRes, _ := bmp.GetOversampPress()
+	bmp.Delay += time.Duration(2*int(pressRes)) * time.Millisecond
 }
 
 // ReadCorrectionSettings is used to read correction settings for the chip, set at the
@@ -151,7 +158,7 @@ func (bmp *BMP280) readSensor() {
 	bmp.cClose = make(chan bool)
 	defer close(bmp.cClose)
 
-	clock := time.NewTicker(bmp.Standby)
+	clock := time.NewTicker(bmp.Delay)
 	//TODO westphae: use the clock to record actual time instead of a timer
 	defer clock.Stop()
 
@@ -306,7 +313,7 @@ func (bmp *BMP280) SetOversampPress(oversampPres byte) error {
 	}
 	v[0] = (v[0] & 0xe3) | (oversampPres << 2)
 
-	time.Sleep(bmp.Standby)
+	time.Sleep(ExtraReadDelay)
 	if errv := bmp.i2cWrite(RegisterControl, v[0]); errv != nil {
 		return fmt.Errorf("bmp280 error: couldn't write Pressure Oversampling: %s", errv)
 	}
@@ -348,7 +355,7 @@ func (bmp *BMP280) SetOversampTemp(oversampTemp byte) error {
 	}
 	v[0] = (v[0] & 0x1f) | (oversampTemp << 5)
 
-	time.Sleep(bmp.Standby)
+	time.Sleep(bmp.Delay)
 	if errv := bmp.i2cWrite(RegisterControl, v[0]); errv != nil {
 		return fmt.Errorf("bmp280 error: couldn't write Temperature Oversampling: %s", errv)
 	}
@@ -394,7 +401,7 @@ func (bmp *BMP280) SetFilterCoeff(filterCoeff byte) error {
 	return nil
 }
 
-// GetStandbyTime returns the current standby time between chip reads.
+// GetStandbyTime returns the current standby time between sensor reads.
 // Possible values are:
 // bmp280.StandbyTime1ms    = 0x00
 // bmp280.StandbyTime63ms   = 0x01
@@ -436,7 +443,7 @@ func (bmp *BMP280) SetStandbyTime(standbyTime byte) error {
 	if errv := bmp.i2cWrite(RegisterConfig, v[0]); errv != nil {
 		return fmt.Errorf("bmp280 error: couldn't write Standby Time: %s", errv)
 	}
-	bmp.Standby = delayFromStandby(standbyTime)
+	bmp.setDelay()
 	return nil
 }
 

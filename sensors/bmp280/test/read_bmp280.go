@@ -17,7 +17,7 @@ func main() {
 	var bmps []*bmp280.BMP280
 	for i, address := range []byte{bmp280.Address1, bmp280.Address2} {
 		bmp, err := bmp280.NewBMP280(&i2cbus, address,
-			bmp280.NormalMode, bmp280.StandbyTime125ms, bmp280.FilterCoeff16, bmp280.Oversamp16x, bmp280.Oversamp16x)
+			bmp280.NormalMode, bmp280.StandbyTime63ms, bmp280.FilterCoeff16, bmp280.Oversamp1x, bmp280.Oversamp1x)
 		if err != nil {
 			fmt.Printf("no BMP280 at address %d: %s\n", i, err)
 			continue
