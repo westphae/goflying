@@ -1,12 +1,10 @@
 package bmx160
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"math"
-	"os"
 	"time"
 	"github.com/kidoman/embd"
 	_ "github.com/kidoman/embd/host/all" // Empty import needed to initialize embd library.
@@ -18,6 +16,45 @@ const (
 	scaleMag        = 9830.0 / 65536
 	calDataLocation = "/etc/bmx160cal.json"
 )
+
+
+//contains the trim values need to calculate the magnetic field
+type bmm150_trim_registers struct
+{
+    /*! trim x1 data */
+    dig_x1 byte
+
+    /*! trim y1 data */
+    dig_y1 byte 
+
+    /*! trim x2 data */
+    dig_x2 byte
+
+    /*! trim y2 data */
+    dig_y2 byte
+
+    /*! trim z1 data */
+    dig_z1 uint16
+
+    /*! trim z2 data */
+    dig_z2 int16
+
+    /*! trim z3 data */
+    dig_z3 int16
+
+    /*! trim z4 data */
+    dig_z4 int16
+
+    /*! trim xy1 data */
+    dig_xy1 byte
+
+    /*! trim xy2 data */
+    dig_xy2 byte
+
+    /*! trim xyz1 data */
+    dig_xyz1 uint16
+}
+
 
 // MPUData contains all the values measured by an BMX160.
 type MPUData struct {
@@ -40,60 +77,9 @@ type mpuCalData struct {
 	Ms31, Ms32, Ms33 float64
 }
 
-func (d *mpuCalData) reset() {
-	d.Ms11 = 1
-	d.Ms22 = 1
-	d.Ms33 = 1
-}
-
-func (d *mpuCalData) save() {
-	fd, err := os.OpenFile(calDataLocation, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(0644))
-	if err != nil {
-		log.Printf("BMX160: Error saving calibration data to %s: %s", calDataLocation, err.Error())
-		return
-	}
-	defer fd.Close()
-	calData, err := json.Marshal(d)
-	if err != nil {
-		log.Printf("BMX160: Error marshaling calibration data: %s", err)
-		return
-	}
-	fd.Write(calData)
-}
-
-func (d *mpuCalData) load() (err error) {
-	//d.M01 = 1638.0
-	//d.M02 = -589.0
-	//d.M03 = -2153.0
-	//d.Ms11 = 0.00031969309462915601
-	//d.Ms22 = 0.00035149384885764499
-	//d.Ms33 = 0.00028752156411730879
-	//d.save()
-	//return
-	errstr := "BMX160: Error reading calibration data from %s: %s"
-	fd, rerr := os.Open(calDataLocation)
-	if rerr != nil {
-		err = fmt.Errorf(errstr, calDataLocation, rerr.Error())
-		return
-	}
-	defer fd.Close()
-	buf := make([]byte, 1024)
-	count, rerr := fd.Read(buf)
-	if rerr != nil {
-		err = fmt.Errorf(errstr, calDataLocation, rerr.Error())
-		return
-	}
-	rerr = json.Unmarshal(buf[0:count], d)
-	if rerr != nil {
-		err = fmt.Errorf(errstr, calDataLocation, rerr.Error())
-		return
-	}
-	return
-}
-
 /*
 BMX160 represents a Bosch BMX160 9DoF chip.
-falsfalse communication is via channels.
+communication is via channels.
 */
 type BMX160 struct {
 	i2cbus                embd.I2CBus
@@ -101,6 +87,7 @@ type BMX160 struct {
 	sampleRate            int
 	enableMag             bool
 	mpuCalData
+        magnSensTrimValues    bmm150_trim_registers
 	mcal1, mcal2, mcal3 float64         // Hardware magnetometer calibration values, uT
 	C                   <-chan *MPUData // Current instantaneous sensor values
 	CAvg                <-chan *MPUData // Average sensor values (since CAvg last read)
@@ -111,17 +98,10 @@ type BMX160 struct {
 /*
 NewBMX160 creates a new BMX160 object according to the supplied parameters.  If there is no BMX160 available or there
 is an error creating the object, an error is returned.
-do we need to load calibration data?
 */
-	//if err := mpu.mpuCalData.load(); err != nil {
-	//	mpu.mpuCalData.reset()
-	//}
-
-//do we need synchronization of data
-//ToDo Selftest of sensors, tapping to set zero values
-//after setting sampling rate I should read the data to clear any hickups per datasheet
+//ToDo Selftest of sensors
 //temperature corrections
-//Implement reading the magnetometer
+//magnetometer is not used
 func NewBMX160(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleRate int, enableMag bool, applyHWOffsets bool) (*BMX160, error) {
 	var mpu = new(BMX160)
 	mpu.i2cbus = *i2cbus
@@ -138,11 +118,115 @@ func NewBMX160(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleRat
         if id != BMI160_CHIP_ID {
                 return nil, errors.New("IMU is not BMX160")
         }
-        
+       
+        //selftest of the IMU
+        //Testing the accelerometer
+        //switching to normal power mode
+        if err := mpu.i2cWrite(BMI160_COMMAND_REG_ADDR,BMI160_ACCEL_NORMAL_MODE); err != nil { 
+               return nil, errors.New("Error setting accelerometer in normal mode")
+        }
+        time.Sleep(5 * time.Millisecond) // wait time to switch to normal mode
+          
+       //configuring the accelerometer for the test per datasheet instructions
+       if err := mpu.i2cWrite(BMI160_ACCEL_CONFIG_ADDR,0x2C); err != nil { 
+               return nil, errors.New("Error setting up for accelerometer test")
+        }
+        time.Sleep(5 * time.Millisecond) // wait time to switch to normal mode
+          
+        if err := mpu.i2cWrite(BMI160_ACCEL_RANGE_ADDR,0x08); err != nil { 
+               return nil, errors.New("Error setting up for accelerometer test")
+        }
+        time.Sleep(5 * time.Millisecond) // wait time to switch to normal mode
+
+        //activating the test 
+        if err := mpu.i2cWrite(BMI160_SELF_TEST_ADDR,0x09); err != nil { 
+               return nil, errors.New("Error setting up for accelerometer test")
+        }
+        time.Sleep(60 * time.Millisecond) // wait time to switch to normal mode
+	p, gaError := mpu.i2cRead2(BMI160_ACCEL_DATA_ADDR)
+	  if gaError != nil {
+		log.Println("BMX160 Warning: error reading gyro/accel")
+	  }
+        testAccX := float64(p)*8.0 / float64(math.MaxInt16)
+
+	p, gaError = mpu.i2cRead2(BMI160_ACCEL_DATA_ADDR+0x02)
+	  if gaError != nil {
+		log.Println("BMX160 Warning: error reading gyro/accel")
+	  }
+        testAccY := float64(p)*8.0 / float64(math.MaxInt16)
+
+	p, gaError = mpu.i2cRead2(BMI160_ACCEL_DATA_ADDR+0x04)
+	  if gaError != nil {
+		log.Println("BMX160 Warning: error reading gyro/accel")
+	  }
+        testAccZ := float64(p)*8.0 / float64(math.MaxInt16)
+
+        //activating the test in the opposite direction
+        if err := mpu.i2cWrite(BMI160_SELF_TEST_ADDR,0x0D); err != nil { 
+               return nil, errors.New("Error setting up for accelerometer test")
+        }
+        time.Sleep(60 * time.Millisecond) // wait time to switch to normal mode
+
+	p, gaError = mpu.i2cRead2(BMI160_ACCEL_DATA_ADDR)
+	  if gaError != nil {
+		log.Println("BMX160 Warning: error reading gyro/accel")
+	  }
+        testAccX -= float64(p)*8.0 / float64(math.MaxInt16)
+        log.Printf("BMX160: X-axis accelerometer self test value is: %f (needs to be >2)\n",testAccX)
+        if testAccX<2 { 
+               return nil, errors.New("BMX160 IMU selftest failed for X-axis accelerometer")
+        }
+
+	p, gaError = mpu.i2cRead2(BMI160_ACCEL_DATA_ADDR+0x02)
+	  if gaError != nil {
+		log.Println("BMX160 Warning: error reading gyro/accel")
+	  }
+        testAccY -= float64(p)*8.0 / float64(math.MaxInt16)
+        log.Printf("BMX160: Y-axis accelerometer self test value is: %f (needs to be >2)\n",testAccY)
+        if testAccY<2 { 
+               return nil, errors.New("BMX160 IMU selftest failed for Y-axis accelerometer")
+        }
+
+	p, gaError = mpu.i2cRead2(BMI160_ACCEL_DATA_ADDR+0x04)
+	  if gaError != nil {
+		log.Println("BMX160 Warning: error reading gyro/accel")
+	  }
+        testAccZ -= float64(p)*8.0 / float64(math.MaxInt16)
+        log.Printf("BMX160: Z-axis accelerometer self test value is: %f (needs to be >2)\n",testAccZ)
+        if testAccZ<2 { 
+               return nil, errors.New("BMX160 IMU selftest failed for Z-axis accelerometer")
+        }
+
+        //Testing the gyro
+        //setting it in normal mode
+        if err := mpu.i2cWrite(BMI160_COMMAND_REG_ADDR,BMI160_GYRO_NORMAL_MODE); err != nil { 
+               return nil, errors.New("Error setting gyroscope into normal mode")
+        }
+        time.Sleep(90 * time.Millisecond) // wait time to switch to mormal mode
+        //activating the gyro test
+        if err := mpu.i2cWrite(BMI160_SELF_TEST_ADDR,0x10); err != nil { 
+               return nil, errors.New("Error setting up for gyro test")
+        }
+        time.Sleep(20 * time.Millisecond) // wait time to let test finish
+
+        //getting the gyro test result
+	stat, err := mpu.i2cRead(BMI160_STATUS_ADDR)
+	if err != nil {
+		return nil,errors.New("BMX160 Error: Reading Status Byte after gyro test")
+	}
+
+        if stat&BMI160_GYRO_SELF_TEST_STATUS_MSK != 0x02 {
+		return nil,errors.New("BMX160 Error: gyro selftest failed")
+        }
+	log.Println("BMX160 gyro passed selftest")
+	log.Println("BMX160 all IMU tests completed and passed")
+        //selftest of the IMU completed
+ 
         //soft reset of IMU
         if err := mpu.i2cWrite(BMI160_COMMAND_REG_ADDR,BMI160_SOFT_RESET_CMD); err != nil { 
                return nil, errors.New("Error resetting BMX160")
         }
+
 
         //set all instruments: accelerometer, gyroscope, and magnetometer into normal power mode
         if err := mpu.i2cWrite(BMI160_COMMAND_REG_ADDR,BMI160_ACCEL_NORMAL_MODE); err != nil { 
@@ -156,20 +240,11 @@ func NewBMX160(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleRat
         }
         time.Sleep(90 * time.Millisecond) // wait time to switch to mormal mode
 
-        if err := mpu.i2cWrite(BMI160_COMMAND_REG_ADDR,BMI160_AUX_NORMAL_MODE); err != nil { 
-               return nil, errors.New("Error setting magnetometer into normal mode")
-        }
-        time.Sleep(1 * time.Millisecond) // wait time to switch to normal mode
-
 	value, err := mpu.i2cRead(BMI160_PMU_STATUS_ADDR)
 	if err != nil {
 		return nil, errors.New("Error reading BMX160 power mode status")
 	}
 
-        if value != 0x15 {
-                return nil, errors.New("BMX160 couldn't be set to normal power mode")
-        }
-        
 
         //configuring gyro
 	if err := mpu.SetSampleRateGyro(mpu.sampleRate); err != nil {
@@ -200,7 +275,7 @@ func NewBMX160(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleRat
 		return nil, errors.New("Error reading BMX160 FIFO Config address 0")
 	}
         if value != 0x80 {
-                return nil, errors.New("BMX160 FIFO ADDR 0 is not configure in the default way")
+                return nil, errors.New("BMX160 FIFO ADDR 0 is not configured in the default way")
         }
 
 	if err := mpu.i2cWrite(BMI160_FIFO_CONFIG_1_ADDR, 0x10); err != nil {
@@ -213,7 +288,6 @@ func NewBMX160(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleRat
         if value != 0x10 {
                 return nil, errors.New("BMX160 FIFO ADDR 1 is not configure in the default way")
         }
-        //fmt.Printf("%x\n", value)
         
 
 
@@ -228,78 +302,197 @@ func NewBMX160(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleRat
 		return nil, errors.New("BMX160 Error: couldn't disable interrupts")
 	}
 
-       mpu.FastOffsetCompensation()
+        if applyHWOffsets == true {
+            mpu.FastOffsetCompensation()
+            mpu.EnableOffsetCompensation()
+        }
 
-       mpu.EnableOffsetCompensation()
-///////////////////////////////////////////////////////////////////////////////////////////////
-
+        ////////////////////////////////////////////////////////////////////////
+        // Magnetometer (non-functional)
 	// Set up magnetometer
 	if mpu.enableMag {
-		if err := mpu.ReadMagCalibration(); err != nil {
-			return nil, errors.New("Error reading calibration from magnetometer")
-		}
+    
+           if err := mpu.i2cWrite(BMI160_COMMAND_REG_ADDR,BMI160_AUX_NORMAL_MODE); err != nil { 
+               return nil, errors.New("Error setting magnetometer into normal mode")
+           }
+           time.Sleep(50 * time.Millisecond) // wait time to switch to normal mode
 
-		// Set up AK8963 master mode, master clock and ES bit
-		if err := mpu.i2cWrite(MPUREG_I2C_MST_CTRL, 0x40); err != nil {
-			return nil, errors.New("Error setting up AK8963")
-		}
-		// Slave 0 reads from AK8963
-		if err := mpu.i2cWrite(MPUREG_I2C_SLV0_ADDR, BIT_I2C_READ|AK8963_I2C_ADDR); err != nil {
-			return nil, errors.New("Error setting up AK8963")
-		}
-		// Compass reads start at this register
-		if err := mpu.i2cWrite(MPUREG_I2C_SLV0_REG, AK8963_ST1); err != nil {
-			return nil, errors.New("Error setting up AK8963")
-		}
-		// Enable 8-byte reads on slave 0
-		if err := mpu.i2cWrite(MPUREG_I2C_SLV0_CTRL, BIT_SLAVE_EN|8); err != nil {
-			return nil, errors.New("Error setting up AK8963")
-		}
-		// Slave 1 can change AK8963 measurement mode
-		if err := mpu.i2cWrite(MPUREG_I2C_SLV1_ADDR, AK8963_I2C_ADDR); err != nil {
-			return nil, errors.New("Error setting up AK8963")
-		}
-		if err := mpu.i2cWrite(MPUREG_I2C_SLV1_REG, AK8963_CNTL1); err != nil {
-			return nil, errors.New("Error setting up AK8963")
-		}
-		// Enable 1-byte reads on slave 1
-		if err := mpu.i2cWrite(MPUREG_I2C_SLV1_CTRL, BIT_SLAVE_EN|1); err != nil {
-			return nil, errors.New("Error setting up AK8963")
-		}
-		// Set slave 1 data
-		if err := mpu.i2cWrite(MPUREG_I2C_SLV1_DO, AKM_SINGLE_MEASUREMENT); err != nil {
-			return nil, errors.New("Error setting up AK8963")
-		}
-		// Triggers slave 0 and 1 actions at each sample
-		if err := mpu.i2cWrite(MPUREG_I2C_MST_DELAY_CTRL, 0x03); err != nil {
-			return nil, errors.New("Error setting up AK8963")
-		}
 
-		// Set AK8963 sample rate to same as gyro/accel sample rate, up to max
-		var ak8963Rate byte
-		if mpu.sampleRate < AK8963_MAX_SAMPLE_RATE {
-			ak8963Rate = 0
-		} else {
-			ak8963Rate = byte(mpu.sampleRate/AK8963_MAX_SAMPLE_RATE - 1)
-		}
+           //enable the secondary interface
+           //per BMI160 data sheet bit 5 and 4
+           //00: primary interface: autoconfig / secondary interface: off
+           //01: Primary interface:I2C / secondary interface:OIS
+           //02: Primary interface: autoconfig / secondary interface: Magnetometer
+           //11: reserved
+           if_conf, err := mpu.i2cRead(BMI160_IF_CONF_ADDR)
+           if  err != nil {
+                return nil, errors.New("Error reading BMX160 BMI160_IF_CONF_ADDR")
+           }
 
-		// Not so sure of this one--I2C Slave 4??!
-		if err := mpu.i2cWrite(MPUREG_I2C_SLV4_CTRL, ak8963Rate); err != nil {
-			return nil, errors.New("Error setting up AK8963")
-		}
+           if_conf |= byte(1 << 5);
 
-		time.Sleep(100 * time.Millisecond) // Make sure mag is ready
-	}
-/*
+           if err := mpu.i2cWrite(BMI160_IF_CONF_ADDR, if_conf); err != nil {
+		return nil, errors.New("BMX160 Error: couldn't enable aux interface")
+           }
 
-// set that in initialization
-	if mpu.sampleRate > 100 {
-		magSampleRate = 100
-	} else {
-		magSampleRate = mpu.sampleRate
-	}
-*/
 
+          if err := mpu.i2cWrite(BMI160_AUX_IF_1_ADDR, BMI160_MANUAL_MODE_EN_MSK); err != nil {
+               return nil, errors.New("BMX160 Error: couldn't set magnetic sensor in normal mode")
+          }
+          time.Sleep(50*time.Millisecond) // wait for command to trickle through 
+
+
+          /////////////////////////////////////////////////////////////////////////////// 
+
+
+          var aux_if byte
+
+          //Get the configuration of the interface: shows 0x80 -> only bit 7 is enabled 
+          //enables magnetometer register access, mag data are not updated!
+          //max mag_offset is maximal 2.5ms.
+          //read burst operation reads only one byte at a time 
+          aux_if, err = mpu.i2cRead(BMI160_AUX_IF_1_ADDR)
+          fmt.Printf("Config of magn interface in BMI160 AUX_IF_1_ADDR or MAG_IF_1 %x\n", aux_if)
+          if  err != nil {
+                return nil, errors.New("Error reading ")
+          }
+          time.Sleep(time.Millisecond)
+
+
+          //from here on we try to talk with the BMM150 magnetic sensor that is 
+          //internally connected inside the BMX160 to the IMU (it doesn't work, no response from sensor)
+          //turn magnetic sensor power on
+          var reg_data = make([]byte, 1)
+          if err:= mpu.bmm150_get_regs(BMM150_POWER_CONTROL_ADDR, reg_data); err != nil {
+               return nil, errors.New("BMX160 Error: couldn't disable interrupts")
+          }
+
+          reg_data[0] =  (reg_data[0] & ^((byte)(BMM150_PWR_CNTRL_MSK))) | BMM150_POWER_CNTRL_ENABLE
+          fmt.Printf("what we want it to set to %x\n", reg_data[0])
+
+          if err := mpu.bmm150_set_regs(BMM150_POWER_CONTROL_ADDR,reg_data[0]); err != nil {
+                return nil, errors.New("BMX160 Error: couldn't disable interrupts")
+          }
+
+          /* Start-up time delay of 3ms*/
+          time.Sleep(BMM150_START_UP_TIME*time.Millisecond) 
+          if err:= mpu.bmm150_get_regs(BMM150_POWER_CONTROL_ADDR, reg_data); err != nil {
+               return nil, errors.New("BMX160 Error: Couldn't retrieve magnetometer read register")
+          }
+          fmt.Printf("what it is %x\n", reg_data[0])
+
+          //self test
+          /*
+          if err:= mpu.bmm150_get_regs(0x4C, reg_data); err != nil {
+             return nil, errors.New("BMX160 Error: Couldn't retrieve magnetometer read register")
+          }
+          fmt.Printf("bmm150 op add %x\n", reg_data[0])
+          if err := mpu.bmm150_set_regs(0x4C,0x01); err != nil {
+               return nil, errors.New("BMX160 Error: Couldn't retrieve magnetometer read register")
+          }
+          if err:= mpu.bmm150_get_regs(0x4C, reg_data); err != nil {
+             return nil, errors.New("BMX160 Error: Couldn't retrieve magnetometer read register")
+          }
+          fmt.Printf("bmm150 op add %x\n", reg_data[0])
+
+          //test result X  
+          if err:= mpu.bmm150_get_regs(0x42, reg_data); err != nil {
+             return nil, errors.New("BMX160 Error: Couldn't retrieve magnetometer read register")
+          }
+          fmt.Printf("self test result X %x\n", reg_data[0])
+
+          //test result Y  
+          if err:= mpu.bmm150_get_regs(0x44, reg_data); err != nil {
+             return nil, errors.New("BMX160 Error: Couldn't retrieve magnetometer read register")
+          }
+          fmt.Printf("self test result Y %x\n", reg_data[0])
+
+          //test result Z  
+          if err:= mpu.bmm150_get_regs(0x46, reg_data); err != nil {
+                return nil, errors.New("BMX160 Error: Couldn't retrieve magnetometer read register")
+          }
+          fmt.Printf("self test result Z %x\n", reg_data[0])
+          */
+
+          /* Chip ID of the sensor is read */
+          var chip_id byte
+          if err:= mpu.bmm150_get_regs(BMM150_CHIP_ID_ADDR, reg_data); err != nil {
+             return nil, errors.New("BMX160 Error: Couldn't retrieve magnetometer read register")
+          }
+          fmt.Printf("bmm chip id %x\n", chip_id)
+
+          /* Function to update trim values */
+          mpu.read_trim_registers()
+
+          //set read burst to 8 bytes
+          aux_conf, err := mpu.i2cRead(BMI160_AUX_IF_1_ADDR)
+          fmt.Printf("BMI160_AUX_IF_1_ADDR %x\n", aux_conf)
+          if  err != nil {
+              return nil, errors.New("Error reading ")
+          }
+
+          aux_conf = (aux_conf | 0x03 )
+          fmt.Printf("new BMI160_AUX_IF_1_ADDR %x\n", aux_conf)
+          if err := mpu.i2cWrite(BMI160_AUX_IF_1_ADDR, aux_conf); err != nil {
+   	     return nil, errors.New("BMX160 Error: couldn't write to AUX IF")
+          }
+          time.Sleep(time.Millisecond) // wait for command to trickle through 
+  
+          /////////////////////////////////////
+
+              //set regular precision XY
+	      if err := mpu.i2cWrite(BMI160_AUX_IF_4_ADDR, 0x04); err != nil {
+	  	return nil, errors.New("BMX160 Error: couldn't disable interrupts")
+	      }
+	      if err := mpu.i2cWrite(BMI160_AUX_IF_3_ADDR, 0x51); err != nil {
+	  	return nil, errors.New("BMX160 Error: couldn't disable interrupts")
+	      }
+              time.Sleep(time.Millisecond) // wait for command to trickle through 
+
+              //set regular precision Z
+	      if err := mpu.i2cWrite(BMI160_AUX_IF_4_ADDR, 0x0E); err != nil {
+	  	return nil, errors.New("BMX160 Error: couldn't disable interrupts")
+	      }
+	      if err := mpu.i2cWrite(BMI160_AUX_IF_3_ADDR, 0x52); err != nil {
+	  	return nil, errors.New("BMX160 Error: couldn't disable interrupts")
+	      }
+              time.Sleep(time.Millisecond) // wait for command to trickle through 
+
+              //ODR for magnetic sensor
+	      if err := mpu.i2cWrite(BMI160_AUX_ODR_ADDR,BMI160_AUX_ODR_12_5HZ); err != nil {
+	  	return nil, errors.New("BMX160 Error: couldn't disable interrupts")
+	      }
+
+              //prepare for data mode
+	      if err := mpu.i2cWrite(BMI160_AUX_IF_4_ADDR, 0x02); err != nil {
+	  	return nil, errors.New("BMX160 Error: couldn't disable interrupts")
+	      }
+	      if err := mpu.i2cWrite(BMI160_AUX_IF_3_ADDR, 0x4C); err != nil {
+	  	return nil, errors.New("BMX160 Error: couldn't disable interrupts")
+	      }
+              time.Sleep(time.Millisecond) // wait for command to trickle through 
+	      if err := mpu.i2cWrite(BMI160_AUX_IF_2_ADDR, 0x42); err != nil {
+	  	return nil, errors.New("BMX160 Error: couldn't disable interrupts")
+	      }
+              time.Sleep(time.Millisecond) // wait for command to trickle through 
+
+              //set into data mode
+	      if err := mpu.i2cWrite(BMI160_AUX_IF_1_ADDR,0x0); err != nil {
+	  	return nil, errors.New("BMX160 Error: couldn't disable interrupts")
+	      }
+               
+              //check if magnetic sensor is in normal power mode
+	      value, err = mpu.i2cRead(BMI160_PMU_STATUS_ADDR)
+              if  err != nil {
+	  	  return nil, errors.New("Error reading BMX160 FIFO Config address 0")
+	       }
+               if value&0b11 != 0x01 {
+                   return nil, errors.New("BMX160 Magnetfield sensor is not in normal mode")
+               }
+
+	       time.Sleep(100 * time.Millisecond) // Make sure mag is ready
+               log.Printf("magnetic sensor setup complete\n")
+	} //done with the magnetic sensor
 
 	go mpu.readSensors()
 
@@ -314,7 +507,7 @@ func NewBMX160(i2cbus *embd.I2CBus, sensitivityGyro, sensitivityAccel, sampleRat
 // Communication is via channels.
 func (mpu *BMX160) readSensors() {
 	var (
-		g1, g2, g3, a1, a2, a3, m1, m2, m3, m4, tmp int16   // Current values
+		g1, g2, g3, a1, a2, a3, m1, m2, m3, tmp int16   // Current values
 		avg1, avg2, avg3, ava1, ava2, ava3, avtmp   float64 // Accumulators for averages
 		avm1, avm2, avm3                            int32
 		n, nm                                       float64
@@ -325,21 +518,14 @@ func (mpu *BMX160) readSensors() {
 	)
 
 	acRegMap := map[*int16]byte{
-		&g2: BMI160_GYRO_DATA_ADDR, &g1: BMI160_GYRO_DATA_ADDR+0x02, &g3: BMI160_GYRO_DATA_ADDR+0x04,
-		&a2: BMI160_ACCEL_DATA_ADDR, &a1: BMI160_ACCEL_DATA_ADDR+0x02, &a3: BMI160_ACCEL_DATA_ADDR+0x04,
-		&tmp: 0x20,
-	}
-
-/*
-	acRegMap := map[*int16]byte{
 		&g1: BMI160_GYRO_DATA_ADDR, &g2: BMI160_GYRO_DATA_ADDR+0x02, &g3: BMI160_GYRO_DATA_ADDR+0x04,
 		&a1: BMI160_ACCEL_DATA_ADDR, &a2: BMI160_ACCEL_DATA_ADDR+0x02, &a3: BMI160_ACCEL_DATA_ADDR+0x04,
 		&tmp: 0x20,
 	}
-*/
-	magRegMap := map[*int16]byte{
-		&m1: BMI160_AUX_DATA_ADDR, &m2: BMI160_AUX_DATA_ADDR+0x02, &m3: BMI160_AUX_DATA_ADDR+0x04, &m4: BMI160_AUX_DATA_ADDR+0x06,
-	}
+
+	//magRegMap := map[*int16]byte{
+	//	&m1: BMI160_AUX_DATA_ADDR, &m2: BMI160_AUX_DATA_ADDR+0x02, &m3: BMI160_AUX_DATA_ADDR+0x04, &m4: BMI160_AUX_DATA_ADDR+0x06,
+	//}
 
 	cC := make(chan *MPUData)
 	defer close(cC)
@@ -353,7 +539,7 @@ func (mpu *BMX160) readSensors() {
 	mpu.cClose = make(chan bool)
 	defer close(mpu.cClose)
 
-	clock := time.NewTicker(time.Duration(int(1000.0/float32(mpu.sampleRate)+0.5)) * time.Millisecond)
+	clock := time.NewTicker(time.Duration(int(10000.0/float32(mpu.sampleRate)+0.5)) * time.Millisecond)
 	//TODO westphae: use the clock to record actual time instead of a timer
 	defer clock.Stop()
 
@@ -363,19 +549,22 @@ func (mpu *BMX160) readSensors() {
 
 
 	makeMPUData := func() *MPUData {
-		mm1 := float64(m1)*mpu.mcal1 - mpu.M01
-		mm2 := float64(m2)*mpu.mcal2 - mpu.M02
-		mm3 := float64(m3)*mpu.mcal3 - mpu.M03
+		//mm1 := float64(m1)*mpu.mcal1 - mpu.M01
+		//mm2 := float64(m2)*mpu.mcal2 - mpu.M02
+		//mm3 := float64(m3)*mpu.mcal3 - mpu.M03
 		d := MPUData{
-			G1:      -1.0 * (float64(g1) - mpu.G01) * mpu.scaleGyro,
+			G1:      (float64(g1) - mpu.G01) * mpu.scaleGyro,
 			G2:      -1.0 * (float64(g2) - mpu.G02) * mpu.scaleGyro,
 			G3:      -1.0 * (float64(g3) - mpu.G03) * mpu.scaleGyro,
-			A1:      -1.0 * (float64(a1) - mpu.A01) * mpu.scaleAccel,
+			A1:      (float64(a1) - mpu.A01) * mpu.scaleAccel,
 			A2:      -1.0 * (float64(a2) - mpu.A02) * mpu.scaleAccel,
 			A3:      -1.0 * (float64(a3) - mpu.A03) * mpu.scaleAccel,
-			M1:      mpu.Ms11*mm1 + mpu.Ms12*mm2 + mpu.Ms13*mm3,
-			M2:      mpu.Ms21*mm1 + mpu.Ms22*mm2 + mpu.Ms23*mm3,
-			M3:      mpu.Ms31*mm1 + mpu.Ms32*mm2 + mpu.Ms33*mm3,
+			//M1:      mpu.Ms11*mm1 + mpu.Ms12*mm2 + mpu.Ms13*mm3,
+			//M2:      mpu.Ms21*mm1 + mpu.Ms22*mm2 + mpu.Ms23*mm3,
+			//M3:      mpu.Ms31*mm1 + mpu.Ms32*mm2 + mpu.Ms33*mm3,
+			M1:      float64(m1),
+			M2:      float64(m2),
+			M3:      float64(m3),
 			Temp:    float64(tmp)*0.001938 + 23.0,
 			GAError: gaError, MagError: magError,
 			N: 1, NM: 1,
@@ -392,15 +581,15 @@ func (mpu *BMX160) readSensors() {
 	}
 
 	makeAvgMPUData := func() *MPUData {
-		mm1 := float64(avm1)*mpu.mcal1/nm - mpu.M01
-		mm2 := float64(avm2)*mpu.mcal2/nm - mpu.M02
-		mm3 := float64(avm3)*mpu.mcal3/nm - mpu.M03
+		//mm1 := float64(avm1)*mpu.mcal1/nm - mpu.M01
+		//mm2 := float64(avm2)*mpu.mcal2/nm - mpu.M02
+		//mm3 := float64(avm3)*mpu.mcal3/nm - mpu.M03
 		d := MPUData{}
 		if n > 0.5 {
-			d.G1 = -1.0 * (avg1/n - mpu.G01) * mpu.scaleGyro
+			d.G1 = (avg1/n - mpu.G01) * mpu.scaleGyro
 			d.G2 = -1.0 * (avg2/n - mpu.G02) * mpu.scaleGyro
 			d.G3 = -1.0 * (avg3/n - mpu.G03) * mpu.scaleGyro
-			d.A1 = -1.0 * (ava1/n - mpu.A01) * mpu.scaleAccel
+			d.A1 = (ava1/n - mpu.A01) * mpu.scaleAccel
 			d.A2 = -1.0 * (ava2/n - mpu.A02) * mpu.scaleAccel
 			d.A3 = -1.0 * (ava3/n - mpu.A03) * mpu.scaleAccel
 			d.Temp = (float64(avtmp)/n)*0.001938 + 23.0
@@ -411,9 +600,12 @@ func (mpu *BMX160) readSensors() {
 			d.GAError = errors.New("BMX160 Error: No new accel/gyro values")
 		}
 		if nm > 0 {
-			d.M1 = mpu.Ms11*mm1 + mpu.Ms12*mm2 + mpu.Ms13*mm3
-			d.M2 = mpu.Ms21*mm1 + mpu.Ms22*mm2 + mpu.Ms23*mm3
-			d.M3 = mpu.Ms31*mm1 + mpu.Ms32*mm2 + mpu.Ms33*mm3
+			//d.M1 = mpu.Ms11*mm1 + mpu.Ms12*mm2 + mpu.Ms13*mm3
+			//d.M2 = mpu.Ms21*mm1 + mpu.Ms22*mm2 + mpu.Ms23*mm3
+			//d.M3 = mpu.Ms31*mm1 + mpu.Ms32*mm2 + mpu.Ms33*mm3
+			d.M1 = float64(avm1)/nm
+			d.M2 = float64(avm2)/nm
+			d.M3 = float64(avm3)/nm
 			d.NM = int(nm + 0.5)
 			d.TM = tm
 			d.DTM = t.Sub(t0m)
@@ -452,41 +644,13 @@ func (mpu *BMX160) readSensors() {
 				<-cBuf
 				cBuf <- curdata
 			}
-		case tm = <-clockMag.C: // Read magnetometer data:
+		      case tm = <-clockMag.C: // Read magnetometer data:
+                       //Below has not been adapted for the BMX 160 and thus doesn't work for the BMX160
+                       //Need to fix getting access to the magentosensor first
 			if mpu.enableMag {
-				// Set AK8963 to slave0 for reading
-				if err := mpu.i2cWrite(MPUREG_I2C_SLV0_ADDR, AK8963_I2C_ADDR|READ_FLAG); err != nil {
-					log.Printf("MPU9250 Error: couldn't set AK8963 address for reading: %s", err.Error())
-				}
-				//I2C slave 0 register address from where to begin data transfer
-				if err := mpu.i2cWrite(MPUREG_I2C_SLV0_REG, AK8963_HXL); err != nil {
-					log.Printf("MPU9250 Error: couldn't set AK8963 read register: %s", err.Error())
-				}
-				//Tell AK8963 that we will read 7 bytes
-				if err := mpu.i2cWrite(MPUREG_I2C_SLV0_CTRL, 0x87); err != nil {
-					log.Printf("MPU9250 Error: couldn't communicate with AK8963: %s", err.Error())
-				}
-
-				// Read the actual data
-				for p, reg := range magRegMap {
-					*p, magError = mpu.i2cRead2(reg)
-					if magError != nil {
-						log.Println("MPU9250 Warning: error reading magnetometer")
-					}
-				}
+			        //get the date from the magnetometer before proceeding to the next lines
 
 				// Test validity of magnetometer data
-				if (byte(m1&0xFF)&AKM_DATA_READY) == 0x00 && (byte(m1&0xFF)&AKM_DATA_OVERRUN) != 0x00 {
-					log.Println("MPU9250 mag data not ready or overflow")
-					log.Printf("MPU9250 m1 LSB: %X\n", byte(m1&0xFF))
-					continue // Don't update the accumulated values
-				}
-
-				if (byte((m4>>8)&0xFF) & AKM_OVERFLOW) != 0x00 {
-					log.Println("MPU9250 mag data overflow")
-					log.Printf("MPU9250 m4 MSB: %X\n", byte((m1>>8)&0xFF))
-					continue // Don't update the accumulated values
-				}
 
 				// Update values and increment count of magnetometer readings
 				avm1 += int32(m1)
@@ -670,46 +834,6 @@ func (mpu *BMX160) SetAccelSensitivity(sensitivityAccel int) (err error) {
 	return
 }
 
-// ReadAccelBias reads the bias accelerometer value stored on the chip.
-// These values are set at the factory.
-func (mpu *BMX160) ReadAccelBias(sensitivityAccel int) error {
-	a0x, err := mpu.i2cRead2(MPUREG_XA_OFFSET_H)
-	if err != nil {
-		return errors.New("BMX160 Error: ReadAccelBias error reading chip")
-	}
-	a0y, err := mpu.i2cRead2(MPUREG_YA_OFFSET_H)
-	if err != nil {
-		return errors.New("BMX160 Error: ReadAccelBias error reading chip")
-	}
-	a0z, err := mpu.i2cRead2(MPUREG_ZA_OFFSET_H)
-	if err != nil {
-		return errors.New("BMX160 Error: ReadAccelBias error reading chip")
-	}
-
-	switch sensitivityAccel {
-	case 16:
-		mpu.A01 = float64(a0x >> 1)
-		mpu.A02 = float64(a0y >> 1)
-		mpu.A03 = float64(a0z >> 1)
-	case 8:
-		mpu.A01 = float64(a0x)
-		mpu.A02 = float64(a0y)
-		mpu.A03 = float64(a0z)
-	case 4:
-		mpu.A01 = float64(a0x << 1)
-		mpu.A02 = float64(a0y << 1)
-		mpu.A03 = float64(a0z << 1)
-	case 2:
-		mpu.A01 = float64(a0x << 2)
-		mpu.A02 = float64(a0y << 2)
-		mpu.A03 = float64(a0z << 2)
-	default:
-		return fmt.Errorf("BMX160 Error: %d is not a valid acceleration sensitivity", sensitivityAccel)
-	}
-
-	return nil
-}
-
 // Fast Offset Compensation of gyroscope and accelerometer
 func (mpu *BMX160) FastOffsetCompensation() error {
 
@@ -744,7 +868,8 @@ func (mpu *BMX160) EnableOffsetCompensation() error {
 		return errors.New("BMX160 Error: Reading Offset config byte")
 	}
 
-       if err := mpu.i2cWrite(BMI160_OFFSET_CONF_ADDR,stat|BMI160_GYRO_OFFSET_EN_MSK|BMI160_ACCEL_OFFSET_EN_MSK); err != nil {
+       //if err := mpu.i2cWrite(BMI160_OFFSET_CONF_ADDR,stat|BMI160_GYRO_OFFSET_EN_MSK|BMI160_ACCEL_OFFSET_EN_MSK); err != nil {
+       if err := mpu.i2cWrite(BMI160_OFFSET_CONF_ADDR,stat|BMI160_GYRO_OFFSET_EN_MSK); err != nil {
 		return errors.New("BMX160 Error: couldn't enable to offset")
 	}
 
@@ -754,93 +879,13 @@ func (mpu *BMX160) EnableOffsetCompensation() error {
 	}
 
 
-        if stat&(BMI160_GYRO_OFFSET_EN_MSK|BMI160_ACCEL_OFFSET_EN_MSK) != 0xC0 {
-		return errors.New("BMX160 Error: Couldn't enable offset compensation")
-        }
+        //if stat&(BMI160_GYRO_OFFSET_EN_MSK|BMI160_ACCEL_OFFSET_EN_MSK) != 0xC0 {
+	//	return errors.New("BMX160 Error: Couldn't enable offset compensation")
+        //}
 
 	return nil
 }
 
-
-// ReadMagCalibration reads the magnetometer bias values stored on the chpi.
-// These values are set at the factory.
-func (mpu *BMX160) ReadMagCalibration() error {
-	// Enable bypass mode
-	var tmp uint8
-	var err error
-	tmp, err = mpu.i2cRead(MPUREG_USER_CTRL)
-	if err != nil {
-		return errors.New("ReadMagCalibration error reading chip")
-	}
-	if err = mpu.i2cWrite(MPUREG_USER_CTRL, tmp & ^BIT_AUX_IF_EN); err != nil {
-		return errors.New("ReadMagCalibration error reading chip")
-	}
-	time.Sleep(3 * time.Millisecond)
-	if err = mpu.i2cWrite(MPUREG_INT_PIN_CFG, BIT_BYPASS_EN); err != nil {
-		return errors.New("ReadMagCalibration error reading chip")
-	}
-
-	// Prepare for getting sensitivity data from AK8963
-	//Set the I2C slave address of AK8963
-	if err = mpu.i2cWrite(MPUREG_I2C_SLV0_ADDR, AK8963_I2C_ADDR); err != nil {
-		return errors.New("ReadMagCalibration error reading chip")
-	}
-	// Power down the AK8963
-	if err = mpu.i2cWrite(MPUREG_I2C_SLV0_CTRL, AK8963_CNTL1); err != nil {
-		return errors.New("ReadMagCalibration error reading chip")
-	}
-	// Power down the AK8963
-	if err = mpu.i2cWrite(MPUREG_I2C_SLV0_DO, AKM_POWER_DOWN); err != nil {
-		return errors.New("ReadMagCalibration error reading chip")
-	}
-	time.Sleep(time.Millisecond)
-	// Fuse AK8963 ROM access
-	if mpu.i2cWrite(MPUREG_I2C_SLV0_DO, AK8963_I2CDIS); err != nil {
-		return errors.New("ReadMagCalibration error reading chip")
-	}
-	time.Sleep(time.Millisecond)
-
-	// Get sensitivity data from AK8963 fuse ROM
-	mcal1, err := mpu.i2cRead(AK8963_ASAX)
-	if err != nil {
-		return errors.New("ReadMagCalibration error reading chip")
-	}
-	mcal2, err := mpu.i2cRead(AK8963_ASAY)
-	if err != nil {
-		return errors.New("ReadMagCalibration error reading chip")
-	}
-	mcal3, err := mpu.i2cRead(AK8963_ASAZ)
-	if err != nil {
-		return errors.New("ReadMagCalibration error reading chip")
-	}
-
-	mpu.mcal1 = float64(int16(mcal1)+128) / 256 * scaleMag
-	mpu.mcal2 = float64(int16(mcal2)+128) / 256 * scaleMag
-	mpu.mcal3 = float64(int16(mcal3)+128) / 256 * scaleMag
-
-	// Clean up from getting sensitivity data from AK8963
-	// Fuse AK8963 ROM access
-	if err = mpu.i2cWrite(MPUREG_I2C_SLV0_DO, AK8963_I2CDIS); err != nil {
-		return errors.New("ReadMagCalibration error reading chip")
-	}
-	time.Sleep(time.Millisecond)
-
-	// Disable bypass mode now that we're done getting sensitivity data
-	tmp, err = mpu.i2cRead(MPUREG_USER_CTRL)
-	if err != nil {
-		return errors.New("ReadMagCalibration error reading chip")
-	}
-	if err = mpu.i2cWrite(MPUREG_USER_CTRL, tmp|BIT_AUX_IF_EN); err != nil {
-		return errors.New("ReadMagCalibration error reading chip")
-	}
-	time.Sleep(3 * time.Millisecond)
-	if err = mpu.i2cWrite(MPUREG_INT_PIN_CFG, 0x00); err != nil {
-		return errors.New("ReadMagCalibration error reading chip")
-	}
-	time.Sleep(3 * time.Millisecond)
-
-	return nil
-}
 
 func (mpu *BMX160) i2cWrite(register, value byte) (err error) {
 
@@ -882,27 +927,101 @@ func (mpu *BMX160) i2cRead2(register byte) (value int16, err error) {
 	return
 }
 
-func (mpu *BMX160) memWrite(addr uint16, data *[]byte) error {
-	var err error
-	var tmp = make([]byte, 2)
 
-	tmp[0] = byte(addr >> 8)
-	tmp[1] = byte(addr & 0xFF)
+/*!
+ * @brief This internal API reads the trim registers of the sensor and stores
+ * the trim values in the "trim_data" of device structure.
+ * Taken from Boschs BMM150 API
+ */
+func (mpu *BMX160)  read_trim_registers() (err error) {
+ var (
+       trim_x1y1 = make([]byte, 2) 
+       trim_xyz_data = make([]byte,4)
+       trim_xy1xy2 = make([]byte,10)
+       temp_msb uint16
+     )
 
-	// Check memory bank boundaries
-	if tmp[1]+byte(len(*data)) > MPU_BANK_SIZE {
-		return errors.New("Bad address: writing outside of memory bank boundaries")
-	}
+    /* Trim register value is read */
+    if err:= mpu.bmm150_get_regs(BMM150_DIG_X1, trim_x1y1); err == nil {
+        if err = mpu.bmm150_get_regs(BMM150_DIG_Z4_LSB, trim_xyz_data); err == nil {
+            if err = mpu.bmm150_get_regs(BMM150_DIG_Z2_LSB, trim_xy1xy2); err == nil {
+                /* Trim data which is read is updated
+                 * in the device structure */
+                mpu.magnSensTrimValues.dig_x1 = trim_x1y1[0]
+                mpu.magnSensTrimValues.dig_y1 = trim_x1y1[1]
+                mpu.magnSensTrimValues.dig_x2 = trim_xyz_data[2]
+                mpu.magnSensTrimValues.dig_y2 = trim_xyz_data[3]
+                temp_msb = ((uint16)(trim_xy1xy2[3])) << 8
+                mpu.magnSensTrimValues.dig_z1 = (uint16)(temp_msb | (uint16)(trim_xy1xy2[2]))
+                temp_msb = ((uint16)(trim_xy1xy2[1])) << 8
+                mpu.magnSensTrimValues.dig_z2 = (int16)(temp_msb | (uint16)(trim_xy1xy2[0]))
+                temp_msb = ((uint16)(trim_xy1xy2[7])) << 8
+                mpu.magnSensTrimValues.dig_z3 = (int16)(temp_msb | (uint16)(trim_xy1xy2[6]))
+                temp_msb = ((uint16)(trim_xyz_data[1])) << 8
+                mpu.magnSensTrimValues.dig_z4 = (int16)(temp_msb | (uint16)(trim_xyz_data[0]))
+                mpu.magnSensTrimValues.dig_xy1 = trim_xy1xy2[9]
+                mpu.magnSensTrimValues.dig_xy2 = trim_xy1xy2[8]
+                temp_msb = ((uint16)(trim_xy1xy2[5] & 0x7F)) << 8
+                mpu.magnSensTrimValues.dig_xyz1 = (uint16)(temp_msb | (uint16)(trim_xy1xy2[4]))
+            }
+        }
+    }
+    
+    
 
-	err = mpu.i2cbus.WriteToReg(BMI160_I2C_ADDR, MPUREG_BANK_SEL, tmp)
-	if err != nil {
-		return fmt.Errorf("BMX160 Error selecting memory bank: %s\n", err.Error())
-	}
-
-	err = mpu.i2cbus.WriteToReg(BMI160_I2C_ADDR, MPUREG_MEM_R_W, *data)
-	if err != nil {
-		return fmt.Errorf("BMX160 Error writing to the memory bank: %s\n", err.Error())
-	}
-
-	return nil
+    return err;
 }
+
+func (mpu *BMX160)  bmm150_get_regs(register byte, data []byte) (err error) {
+
+       //entering setup mode MAG_IF[0]<7> = 1 
+//      if err := mpu.i2cWrite(BMI160_AUX_IF_1_ADDR, BMI160_MANUAL_MODE_EN_MSK); err != nil {
+ //         return errors.New("BMX160 Error: couldn't disable interrupts")
+ //      }
+ //      time.Sleep(time.Millisecond) // wait for command to trickle through 
+
+       for i := 0; i < len(data); i++ {
+          //fmt.Printf("get bmm150 address %x\n", register+(byte)(i))
+          if err = mpu.i2cWrite(BMI160_AUX_IF_2_ADDR,register+(byte)(i)); err != nil {
+   	    return errors.New("BMX160 Error: couldn't set BMM150 address to read")
+          }
+        time.Sleep(BMI160_AUX_COM_DELAY*time.Millisecond) // wait for command to trickle through
+
+	//stat, err := mpu.i2cRead(BMI160_STATUS_ADDR)
+        //fmt.Printf("The status bit (should be 0 if complete): %x\n",stat&0x04)
+
+          var tmp byte
+          if tmp, err = mpu.i2cbus.ReadByteFromReg(BMI160_I2C_ADDR,BMI160_AUX_DATA_ADDR); err != nil {
+		err = fmt.Errorf("BMX160 Error reading %x: %s\n", register, err.Error())
+		return err
+	  }  
+          fmt.Printf("%x %x\n",register+(byte)(i), tmp)
+          data[i] = tmp
+        }
+      
+       return nil
+}
+
+func (mpu *BMX160)  bmm150_set_regs(register byte, data byte) (err error) {
+
+//      if err := mpu.i2cWrite(BMI160_AUX_IF_1_ADDR, BMI160_MANUAL_MODE_EN_MSK); err != nil {
+//          return errors.New("BMX160 Error: couldn't disable interrupts")
+ //      }
+ //      time.Sleep(time.Millisecond) // wait for command to trickle through 
+
+    if err := mpu.i2cWrite(BMI160_AUX_IF_4_ADDR, register); err != nil {
+             return errors.New("BMX160 Error setting bmm150 register to write to")
+    }
+    time.Sleep(10*BMI160_AUX_COM_DELAY*time.Millisecond) // wait for command to trickle through 
+    if err := mpu.i2cWrite(BMI160_AUX_IF_3_ADDR, data); err != nil {
+              return errors.New("BMX160 Error setting value to write into bmm150")
+    }
+    time.Sleep(10*BMI160_AUX_COM_DELAY*time.Millisecond) // wait for command to trickle through 
+
+	stat, err := mpu.i2cRead(BMI160_STATUS_ADDR)
+        fmt.Printf("writing status %x\n",stat&0x04)
+
+      
+       return nil
+}
+

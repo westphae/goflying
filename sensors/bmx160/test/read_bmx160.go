@@ -23,7 +23,7 @@ func main() {
         i2cbus = embd.NewI2CBus(1)
 
 	for i := 0; i < 10; i++ {
-		mpu, err = bmx160.NewBMX160(&i2cbus, 125, 4, 200, false, false)
+		mpu, err = bmx160.NewBMX160(&i2cbus, 125, 4, 200, true, true)
 		if err != nil {
 			fmt.Printf("Error initializing BMX160, attempt %d of 10\n", i)
 			time.Sleep(5 * time.Second)

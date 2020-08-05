@@ -2,6 +2,241 @@ package bmx160
 
 const (
 
+/*
+ BMM150_W_NORMAL_SELF_TEST_YZ_FAIL    =1
+ BMM150_W_NORMAL_SELF_TEST_XZ_FAIL    =2
+ BMM150_W_NORMAL_SELF_TEST_Z_FAIL     =3
+ BMM150_W_NORMAL_SELF_TEST_XY_FAIL    =4
+ BMM150_W_NORMAL_SELF_TEST_Y_FAIL     =5
+ BMM150_W_NORMAL_SELF_TEST_X_FAIL     =6
+ BMM150_W_NORMAL_SELF_TEST_XYZ_FAIL   =7
+ BMM150_W_ADV_SELF_TEST_FAIL          =8
+*/
+
+/**\name CHIP ID & SOFT RESET VALUES      */
+ BMM150_CHIP_ID                       =0x32
+ BMM150_SET_SOFT_RESET                =0x82
+
+/**\name POWER MODE DEFINTIONS      */
+ BMM150_NORMAL_MODE                   =0x00
+ BMM150_FORCED_MODE                   =0x01
+ BMM150_SLEEP_MODE                    =0x03
+ BMM150_SUSPEND_MODE                  =0x04
+
+/**\name I2C ADDRESS       */
+ BMM150_DEFAULT_I2C_ADDRESS           =0x10
+ BMM150_I2C_ADDRESS_CSB_LOW_SDO_HIGH  =0x11
+ BMM150_I2C_ADDRESS_CSB_HIGH_SDO_LOW  =0x12
+ BMM150_I2C_ADDRESS_CSB_HIGH_SDO_HIGH =0x13
+
+/**\name Power mode settings  */
+ BMM150_POWER_CNTRL_DISABLE           =0x00
+ BMM150_POWER_CNTRL_ENABLE            =0x01
+
+/**\name Sensor delay time settings  */
+ BMM150_SOFT_RESET_DELAY              =1
+ BMM150_NORMAL_SELF_TEST_DELAY        =2
+ BMM150_START_UP_TIME                 =3
+ BMM150_ADV_SELF_TEST_DELAY           =4
+
+/**\name ENABLE/DISABLE DEFINITIONS  */
+ BMM150_XY_CHANNEL_ENABLE             =0x00
+ BMM150_XY_CHANNEL_DISABLE            =0x03
+
+/**\name Register Address */
+ BMM150_CHIP_ID_ADDR                  =0x40
+ BMM150_DATA_X_LSB                    =0x42
+ BMM150_DATA_READY_STATUS             =0x48
+ BMM150_INTERRUPT_STATUS              =0x4A
+ BMM150_POWER_CONTROL_ADDR            =0x4B
+ BMM150_OP_MODE_ADDR                  =0x4C
+ BMM150_INT_CONFIG_ADDR               =0x4D
+ BMM150_AXES_ENABLE_ADDR              =0x4E
+ BMM150_LOW_THRESHOLD_ADDR            =0x4F
+ BMM150_HIGH_THRESHOLD_ADDR           =0x50
+ BMM150_REP_XY_ADDR                   =0x51
+ BMM150_REP_Z_ADDR                    =0x52
+
+/**\name Macros to select the sensor settings to be set by the user
+ * These values are internal for API implementation. Don't relate this to
+ * data sheet. */
+/* 
+BMM150_DATA_RATE_SEL                 =1
+ BMM150_CONTROL_MEASURE_SEL           =1 << 1
+ BMM150_XY_REP_SEL                    =1 << 2
+ BMM150_Z_REP_SEL                     =1 << 3
+ BMM150_DRDY_PIN_EN_SEL               =1 << 4
+ BMM150_INT_PIN_EN_SEL                =1 << 5
+ BMM150_DRDY_POLARITY_SEL             =1 << 6
+ BMM150_INT_LATCH_SEL                 =1 << 7
+ BMM150_INT_POLARITY_SEL              =1 << 8
+ BMM150_DATA_OVERRUN_INT_SEL          =1 << 9
+ BMM150_OVERFLOW_INT_SEL              =1 << 10
+ BMM150_HIGH_THRESHOLD_INT_SEL        =1 << 11
+ BMM150_LOW_THRESHOLD_INT_SEL         =1 << 12
+ BMM150_LOW_THRESHOLD_SETTING_SEL     =1 << 13
+ BMM150_HIGH_THRESHOLD_SETTING_SEL    =1 << 14
+*/
+/**\name DATA RATE DEFINITIONS  */
+ BMM150_DATA_RATE_10HZ                =0x00
+ BMM150_DATA_RATE_02HZ                =0x01
+ BMM150_DATA_RATE_06HZ                =0x02
+ BMM150_DATA_RATE_08HZ                =0x03
+ BMM150_DATA_RATE_15HZ                =0x04
+ BMM150_DATA_RATE_20HZ                =0x05
+ BMM150_DATA_RATE_25HZ                =0x06
+ BMM150_DATA_RATE_30HZ                =0x07
+
+/**\name TRIM REGISTERS      */
+/* Trim Extended Registers */
+ BMM150_DIG_X1                        =0x5D
+ BMM150_DIG_Y1                        =0x5E
+ BMM150_DIG_Z4_LSB                    =0x62
+ BMM150_DIG_Z4_MSB                    =0x63
+ BMM150_DIG_X2                        =0x64
+ BMM150_DIG_Y2                        =0x65
+ BMM150_DIG_Z2_LSB                    =0x68
+ BMM150_DIG_Z2_MSB                    =0x69
+ BMM150_DIG_Z1_LSB                    =0x6A
+ BMM150_DIG_Z1_MSB                    =0x6B
+ BMM150_DIG_XYZ1_LSB                  =0x6C
+ BMM150_DIG_XYZ1_MSB                  =0x6D
+ BMM150_DIG_Z3_LSB                    =0x6E
+ BMM150_DIG_Z3_MSB                    =0x6F
+ BMM150_DIG_XY2                       =0x70
+ BMM150_DIG_XY1                       =0x71
+
+/**\name Threshold interrupt setting macros for x,y,z axes selection */
+ BMM150_THRESHOLD_X                   =0x06
+ BMM150_THRESHOLD_Y                   =0x05
+ BMM150_THRESHOLD_Z                   =0x03
+
+/**\name User configurable interrupt setting macros */
+ BMM150_INT_ENABLE                    =0x01
+ BMM150_INT_DISABLE                   =0x00
+ BMM150_ACTIVE_HIGH_POLARITY          =0x01
+ BMM150_ACTIVE_LOW_POLARITY           =0x00
+ BMM150_LATCHED                       =0x01
+ BMM150_NON_LATCHED                   =0x00
+
+/**\name Interrupt status */
+ BMM150_LOW_THRESHOLD_INT_X           =0x0001
+ BMM150_LOW_THRESHOLD_INT_Y           =0x0002
+ BMM150_LOW_THRESHOLD_INT_Z           =0x0004
+ BMM150_HIGH_THRESHOLD_INT_X          =0x0008
+ BMM150_HIGH_THRESHOLD_INT_Y          =0x0010
+ BMM150_HIGH_THRESHOLD_INT_Z          =0x0020
+ BMM150_DATA_OVERFLOW_INT             =0x0040
+ BMM150_DATA_OVERRUN_INT              =0x0080
+ BMM150_DATA_READY_INT                =0x0100
+
+/**\name Macros for bit masking */
+ BMM150_PWR_CNTRL_MSK                 =0x01
+
+ BMM150_CONTROL_MEASURE_MSK           =0x38
+ BMM150_CONTROL_MEASURE_POS           =0x03
+
+ BMM150_POWER_CONTROL_BIT_MSK         =0x01
+ BMM150_POWER_CONTROL_BIT_POS         =0x00
+
+ BMM150_OP_MODE_MSK                   =0x06
+ BMM150_OP_MODE_POS                   =0x01
+
+ BMM150_ODR_MSK                       =0x38
+ BMM150_ODR_POS                       =0x03
+
+ BMM150_DATA_X_MSK                    =0xF8
+ BMM150_DATA_X_POS                    =0x03
+
+ BMM150_DATA_Y_MSK                    =0xF8
+ BMM150_DATA_Y_POS                    =0x03
+
+ BMM150_DATA_Z_MSK                    =0xFE
+ BMM150_DATA_Z_POS                    =0x01
+
+ BMM150_DATA_RHALL_MSK                =0xFC
+ BMM150_DATA_RHALL_POS                =0x02
+
+ BMM150_SELF_TEST_MSK                 =0x01
+
+ BMM150_ADV_SELF_TEST_MSK             =0xC0
+ BMM150_ADV_SELF_TEST_POS             =0x06
+
+ BMM150_DRDY_EN_MSK                   =0x80
+ BMM150_DRDY_EN_POS                   =0x07
+
+ BMM150_INT_PIN_EN_MSK                =0x40
+ BMM150_INT_PIN_EN_POS                =0x06
+
+ BMM150_DRDY_POLARITY_MSK             =0x04
+ BMM150_DRDY_POLARITY_POS             =0x02
+
+ BMM150_INT_LATCH_MSK                 =0x02
+ BMM150_INT_LATCH_POS                 =0x01
+
+ BMM150_INT_POLARITY_MSK              =0x01
+
+ BMM150_DATA_OVERRUN_INT_MSK          =0x80
+ BMM150_DATA_OVERRUN_INT_POS          =0x07
+
+ BMM150_OVERFLOW_INT_MSK              =0x40
+ BMM150_OVERFLOW_INT_POS              =0x06
+
+ BMM150_HIGH_THRESHOLD_INT_MSK        =0x38
+ BMM150_HIGH_THRESHOLD_INT_POS        =0x03
+
+ BMM150_LOW_THRESHOLD_INT_MSK         =0x07
+
+ BMM150_DRDY_STATUS_MSK               =0x01
+
+/**\name OVERFLOW DEFINITIONS  */
+ BMM150_XYAXES_FLIP_OVERFLOW_ADCVAL   =-4096
+ BMM150_ZAXIS_HALL_OVERFLOW_ADCVAL    =-16384
+ BMM150_OVERFLOW_OUTPUT               =-32768
+ BMM150_NEGATIVE_SATURATION_Z         =-32767
+ BMM150_POSITIVE_SATURATION_Z         =32767
+ BMM150_OVERFLOW_OUTPUT_FLOAT         =0.0
+
+/**\name PRESET MODE DEFINITIONS  */
+ BMM150_PRESETMODE_LOWPOWER           =0x01
+ BMM150_PRESETMODE_REGULAR            =0x02
+ BMM150_PRESETMODE_HIGHACCURACY       =0x03
+ BMM150_PRESETMODE_ENHANCED           =0x04
+
+/**\name PRESET MODES - REPETITIONS-XY RATES */
+ BMM150_LOWPOWER_REPXY                =1
+ BMM150_REGULAR_REPXY                 =4
+ BMM150_ENHANCED_REPXY                =7
+ BMM150_HIGHACCURACY_REPXY            =23
+
+/**\name PRESET MODES - REPETITIONS-Z RATES */
+ BMM150_LOWPOWER_REPZ                 =2
+ BMM150_REGULAR_REPZ                  =14
+ BMM150_ENHANCED_REPZ                 =26
+ BMM150_HIGHACCURACY_REPZ             =82
+
+/**\name Register read lengths  */
+ BMM150_SELF_TEST_LEN                 =5
+ BMM150_SETTING_DATA_LEN              =8
+ BMM150_XYZR_DATA_LEN                 =8
+
+/**\name Self test selection macros */
+ BMM150_NORMAL_SELF_TEST              =0
+ BMM150_ADVANCED_SELF_TEST            =1
+
+/**\name Self test settings */
+ BMM150_DISABLE_XY_AXIS               =0x03
+ BMM150_SELF_TEST_REP_Z               =0x04
+
+/**\name Advanced self-test current settings */
+ BMM150_DISABLE_SELF_TEST_CURRENT     =0x00
+ BMM150_ENABLE_NEGATIVE_CURRENT       =0x02
+ BMM150_ENABLE_POSITIVE_CURRENT       =0x03
+
+/**\name Normal self-test status */
+ BMM150_SELF_TEST_STATUS_XYZ_FAIL     =0x00
+ BMM150_SELF_TEST_STATUS_SUCCESS      =0x07
+
 /** Mask definitions */
  BMI160_ACCEL_BW_MASK                 =0x70
  BMI160_ACCEL_ODR_MASK                =0x0F
@@ -576,202 +811,5 @@ const (
 
  BMI160_GYRO_POWER_MODE_MSK           =0x0C
  BMI160_GYRO_POWER_MODE_POS           =2
-
-//below is stuff from MPU chip
-
-
-	MPUREG_XG_OFFS_TC         = 0x00
-	MPUREG_YG_OFFS_TC         = 0x01
-	MPUREG_ZG_OFFS_TC         = 0x02
-	MPUREG_X_FINE_GAIN        = 0x03
-	MPUREG_Y_FINE_GAIN        = 0x04
-	MPUREG_Z_FINE_GAIN        = 0x05
-	MPUREG_XA_OFFS_H          = 0x06
-	MPUREG_XA_OFFS_L          = 0x07
-	MPUREG_YA_OFFS_H          = 0x08
-	MPUREG_YA_OFFS_L          = 0x09
-	MPUREG_ZA_OFFS_H          = 0x0A
-	MPUREG_ZA_OFFS_L          = 0x0B
-	MPUREG_PRODUCT_ID         = 0x0C
-	MPUREG_SELF_TEST_X        = 0x0D
-	MPUREG_SELF_TEST_Y        = 0x0E
-	MPUREG_SELF_TEST_Z        = 0x0F
-	MPUREG_SELF_TEST_A        = 0x10
-	MPUREG_XG_OFFS_USRH       = 0x13
-	MPUREG_XG_OFFS_USRL       = 0x14
-	MPUREG_YG_OFFS_USRH       = 0x15
-	MPUREG_YG_OFFS_USRL       = 0x16
-	MPUREG_ZG_OFFS_USRH       = 0x17
-	MPUREG_ZG_OFFS_USRL       = 0x18
-	MPUREG_SMPLRT_DIV         = 0x19
-	MPUREG_CONFIG             = 0x1A
-	MPUREG_GYRO_CONFIG        = 0x1B
-	MPUREG_ACCEL_CONFIG       = 0x1C
-	MPUREG_ACCEL_CONFIG_2     = 0x1D
-	MPUREG_LP_ACCEL_ODR       = 0x1E
-	MPUREG_MOT_THR            = 0x1F
-	MPUREG_FIFO_EN            = 0x23
-	MPUREG_I2C_MST_CTRL       = 0x24
-	MPUREG_I2C_SLV0_ADDR      = 0x25
-	MPUREG_I2C_SLV0_REG       = 0x26
-	MPUREG_I2C_SLV0_CTRL      = 0x27
-	MPUREG_I2C_SLV1_ADDR      = 0x28
-	MPUREG_I2C_SLV1_REG       = 0x29
-	MPUREG_I2C_SLV1_CTRL      = 0x2A
-	MPUREG_I2C_SLV2_ADDR      = 0x2B
-	MPUREG_I2C_SLV2_REG       = 0x2C
-	MPUREG_I2C_SLV2_CTRL      = 0x2D
-	MPUREG_I2C_SLV3_ADDR      = 0x2E
-	MPUREG_I2C_SLV3_REG       = 0x2F
-	MPUREG_I2C_SLV3_CTRL      = 0x30
-	MPUREG_I2C_SLV4_ADDR      = 0x31
-	MPUREG_I2C_SLV4_REG       = 0x32
-	MPUREG_I2C_SLV4_DO        = 0x33
-	MPUREG_I2C_SLV4_CTRL      = 0x34
-	MPUREG_I2C_SLV4_DI        = 0x35
-	MPUREG_I2C_MST_STATUS     = 0x36
-	MPUREG_INT_PIN_CFG        = 0x37
-	MPUREG_INT_ENABLE         = 0x38
-	MPUREG_ACCEL_XOUT_H       = 0x3B
-	MPUREG_ACCEL_XOUT_L       = 0x3C
-	MPUREG_ACCEL_YOUT_H       = 0x3D
-	MPUREG_ACCEL_YOUT_L       = 0x3E
-	MPUREG_ACCEL_ZOUT_H       = 0x3F
-	MPUREG_ACCEL_ZOUT_L       = 0x40
-	MPUREG_TEMP_OUT_H         = 0x41
-	MPUREG_TEMP_OUT_L         = 0x42
-	MPUREG_GYRO_XOUT_H        = 0x43
-	MPUREG_GYRO_XOUT_L        = 0x44
-	MPUREG_GYRO_YOUT_H        = 0x45
-	MPUREG_GYRO_YOUT_L        = 0x46
-	MPUREG_GYRO_ZOUT_H        = 0x47
-	MPUREG_GYRO_ZOUT_L        = 0x48
-	MPUREG_EXT_SENS_DATA_00   = 0x49
-	MPUREG_EXT_SENS_DATA_01   = 0x4A
-	MPUREG_EXT_SENS_DATA_02   = 0x4B
-	MPUREG_EXT_SENS_DATA_03   = 0x4C
-	MPUREG_EXT_SENS_DATA_04   = 0x4D
-	MPUREG_EXT_SENS_DATA_05   = 0x4E
-	MPUREG_EXT_SENS_DATA_06   = 0x4F
-	MPUREG_EXT_SENS_DATA_07   = 0x50
-	MPUREG_EXT_SENS_DATA_08   = 0x51
-	MPUREG_EXT_SENS_DATA_09   = 0x52
-	MPUREG_EXT_SENS_DATA_10   = 0x53
-	MPUREG_EXT_SENS_DATA_11   = 0x54
-	MPUREG_EXT_SENS_DATA_12   = 0x55
-	MPUREG_EXT_SENS_DATA_13   = 0x56
-	MPUREG_EXT_SENS_DATA_14   = 0x57
-	MPUREG_EXT_SENS_DATA_15   = 0x58
-	MPUREG_EXT_SENS_DATA_16   = 0x59
-	MPUREG_EXT_SENS_DATA_17   = 0x5A
-	MPUREG_EXT_SENS_DATA_18   = 0x5B
-	MPUREG_EXT_SENS_DATA_19   = 0x5C
-	MPUREG_EXT_SENS_DATA_20   = 0x5D
-	MPUREG_EXT_SENS_DATA_21   = 0x5E
-	MPUREG_EXT_SENS_DATA_22   = 0x5F
-	MPUREG_EXT_SENS_DATA_23   = 0x60
-	MPUREG_I2C_SLV0_DO        = 0x63
-	MPUREG_I2C_SLV1_DO        = 0x64
-	MPUREG_I2C_SLV2_DO        = 0x65
-	MPUREG_I2C_SLV3_DO        = 0x66
-	MPUREG_I2C_MST_DELAY_CTRL = 0x67
-	MPUREG_SIGNAL_PATH_RESET  = 0x68
-	MPUREG_MOT_DETECT_CTRL    = 0x69
-	MPUREG_USER_CTRL          = 0x6A
-	MPUREG_PWR_MGMT_1         = 0x6B
-	MPUREG_PWR_MGMT_2         = 0x6C
-	MPUREG_BANK_SEL           = 0x6D
-	MPUREG_MEM_START_ADDR     = 0x6E
-	MPUREG_MEM_R_W            = 0x6F
-	MPUREG_DMP_CFG_1          = 0x70
-	MPUREG_DMP_CFG_2          = 0x71
-	MPUREG_FIFO_COUNTH        = 0x72
-	MPUREG_FIFO_COUNTL        = 0x73
-	MPUREG_FIFO_R_W           = 0x74
-	MPUREG_WHOAMI             = 0x75
-	MPUREG_XA_OFFSET_H        = 0x77
-	MPUREG_XA_OFFSET_L        = 0x78
-	MPUREG_YA_OFFSET_H        = 0x7A
-	MPUREG_YA_OFFSET_L        = 0x7B
-	MPUREG_ZA_OFFSET_H        = 0x7D
-	MPUREG_ZA_OFFSET_L        = 0x7E
-	/* ---- AK8963 Reg In MPU9250 ----------------------------------------------- */
-	AK8963_I2C_ADDR  = 0x0C //0x18
-	AK8963_Device_ID = 0x48
-	AK8963_MAX_SAMPLE_RATE = 0x64 // 100 Hz
-	// Read-only Reg
-	AK8963_WIA  = 0x00
-	AK8963_INFO = 0x01
-	AK8963_ST1  = 0x02
-	AK8963_HXL  = 0x03
-	AK8963_HXH  = 0x04
-	AK8963_HYL  = 0x05
-	AK8963_HYH  = 0x06
-	AK8963_HZL  = 0x07
-	AK8963_HZH  = 0x08
-	AK8963_ST2  = 0x09
-	// Write/Read Reg
-	AK8963_CNTL1  = 0x0A
-	AK8963_CNTL2  = 0x0B
-	AK8963_ASTC   = 0x0C
-	AK8963_TS1    = 0x0D
-	AK8963_TS2    = 0x0E
-	AK8963_I2CDIS = 0x0F
-	// Read-only Reg ( ROM 
-	AK8963_ASAX = 0x10
-	AK8963_ASAY = 0x11
-	AK8963_ASAZ = 0x12
-	// Configuration bits mpu9250
-	BIT_SLEEP                  = 0x40
-	BIT_H_RESET                = 0x80
-	BITS_CLKSEL                = 0x07
-	MPU_CLK_SEL_PLLGYROX       = 0x01
-	MPU_CLK_SEL_PLLGYROZ       = 0x03
-	MPU_EXT_SYNC_GYROX         = 0x02
-	BITS_FS_250DPS             = 0x00
-	BITS_FS_500DPS             = 0x08
-	BITS_FS_1000DPS            = 0x10
-	BITS_FS_2000DPS            = 0x18
-	BITS_FS_2G                 = 0x00
-	BITS_FS_4G                 = 0x08
-	BITS_FS_8G                 = 0x10
-	BITS_FS_16G                = 0x18
-	BITS_FS_MASK               = 0x18
-	BITS_DLPF_CFG_256HZ_NOLPF2 = 0x00
-	BITS_DLPF_CFG_188HZ        = 0x01
-	BITS_DLPF_CFG_98HZ         = 0x02
-	BITS_DLPF_CFG_42HZ         = 0x03
-	BITS_DLPF_CFG_20HZ         = 0x04
-	BITS_DLPF_CFG_10HZ         = 0x05
-	BITS_DLPF_CFG_5HZ          = 0x06
-	BITS_DLPF_CFG_2100HZ_NOLPF = 0x07
-	BITS_DLPF_CFG_MASK         = 0x07
-	BIT_INT_ANYRD_2CLEAR       = 0x10
-	BIT_RAW_RDY_EN             = 0x01
-	BIT_I2C_IF_DIS             = 0x10
-
-	// Misc
-	READ_FLAG = 0x80
-	MPU_BANK_SIZE = 0xFF
-	CFG_MOTION_BIAS = 0x4B8 // Enable/disable gyro bias compensation
-	BIT_FIFO_SIZE_1024 = 0x40 // FIFO buffer size
-	BIT_AUX_IF_EN uint8 = 0x20
-	BIT_BYPASS_EN = 0x02
-	AKM_POWER_DOWN = 0x00
-	BIT_I2C_READ = 0x80
-	BIT_SLAVE_EN = 0x80
-	AKM_SINGLE_MEASUREMENT = 0x01
-	INV_CLK_PLL = 0x01
-	AK89xx_FSR = 9830
-	AKM_DATA_READY = 0x01
-	AKM_DATA_OVERRUN = 0x02
-	AKM_OVERFLOW = 0x80
-
-
-	/* = ---- Sensitivity --------------------------------------------------------- */
-
-	MPU9250M_4800uT                       = 0.6            // 0.6 uT/LSB
-	MPU9250T_85degC                       = 0.002995177763 // 0.002995177763 degC/LSB
-	Magnetometer_Sensitivity_Scale_Factor = 0.15
 
 )
