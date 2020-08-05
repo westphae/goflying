@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"../../ahrs"
+	"../../../ahrs"
 	"../../bmx160"
 	"github.com/kidoman/embd"
 	_ "github.com/kidoman/embd/host/all"
