@@ -68,14 +68,6 @@ type MPUData struct {
 	DT, DTM           time.Duration
 }
 
-type mpuCalData struct {
-	A01, A02, A03    float64 // Accelerometer hardware bias
-	G01, G02, G03    float64 // Gyro hardware bias
-	M01, M02, M03    float64 // Magnetometer hardware bias
-	Ms11, Ms12, Ms13 float64 // Magnetometer rescaling matrix
-	Ms21, Ms22, Ms23 float64 // (Only diagonal is used currently)
-	Ms31, Ms32, Ms33 float64
-}
 
 /*
 BMX160 represents a Bosch BMX160 9DoF chip.
@@ -86,7 +78,6 @@ type BMX160 struct {
 	scaleGyro, scaleAccel float64 // Max sensor reading for value 2**15-1
 	sampleRate            int
 	enableMag             bool
-	mpuCalData
         magnSensTrimValues    bmm150_trim_registers
 	mcal1, mcal2, mcal3 float64         // Hardware magnetometer calibration values, uT
 	C                   <-chan *MPUData // Current instantaneous sensor values
@@ -553,12 +544,12 @@ func (mpu *BMX160) readSensors() {
 		//mm2 := float64(m2)*mpu.mcal2 - mpu.M02
 		//mm3 := float64(m3)*mpu.mcal3 - mpu.M03
 		d := MPUData{
-			G1:      (float64(g1) - mpu.G01) * mpu.scaleGyro,
-			G2:      -1.0 * (float64(g2) - mpu.G02) * mpu.scaleGyro,
-			G3:      -1.0 * (float64(g3) - mpu.G03) * mpu.scaleGyro,
-			A1:      (float64(a1) - mpu.A01) * mpu.scaleAccel,
-			A2:      -1.0 * (float64(a2) - mpu.A02) * mpu.scaleAccel,
-			A3:      -1.0 * (float64(a3) - mpu.A03) * mpu.scaleAccel,
+			G1:      (float64(g1)) * mpu.scaleGyro,
+			G2:      -1.0 * (float64(g2)) * mpu.scaleGyro,
+			G3:      -1.0 * (float64(g3)) * mpu.scaleGyro,
+			A1:      (float64(a1)) * mpu.scaleAccel,
+			A2:      -1.0 * (float64(a2)) * mpu.scaleAccel,
+			A3:      -1.0 * (float64(a3)) * mpu.scaleAccel,
 			//M1:      mpu.Ms11*mm1 + mpu.Ms12*mm2 + mpu.Ms13*mm3,
 			//M2:      mpu.Ms21*mm1 + mpu.Ms22*mm2 + mpu.Ms23*mm3,
 			//M3:      mpu.Ms31*mm1 + mpu.Ms32*mm2 + mpu.Ms33*mm3,
@@ -586,12 +577,12 @@ func (mpu *BMX160) readSensors() {
 		//mm3 := float64(avm3)*mpu.mcal3/nm - mpu.M03
 		d := MPUData{}
 		if n > 0.5 {
-			d.G1 = (avg1/n - mpu.G01) * mpu.scaleGyro
-			d.G2 = -1.0 * (avg2/n - mpu.G02) * mpu.scaleGyro
-			d.G3 = -1.0 * (avg3/n - mpu.G03) * mpu.scaleGyro
-			d.A1 = (ava1/n - mpu.A01) * mpu.scaleAccel
-			d.A2 = -1.0 * (ava2/n - mpu.A02) * mpu.scaleAccel
-			d.A3 = -1.0 * (ava3/n - mpu.A03) * mpu.scaleAccel
+			d.G1 = (avg1/n) * mpu.scaleGyro
+			d.G2 = -1.0 * (avg2/n) * mpu.scaleGyro
+			d.G3 = -1.0 * (avg3/n) * mpu.scaleGyro
+			d.A1 = (ava1/n) * mpu.scaleAccel
+			d.A2 = -1.0 * (ava2/n) * mpu.scaleAccel
+			d.A3 = -1.0 * (ava3/n) * mpu.scaleAccel
 			d.Temp = (float64(avtmp)/n)*0.001938 + 23.0
 			d.N = int(n + 0.5)
 			d.T = t
