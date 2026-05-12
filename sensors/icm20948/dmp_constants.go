@@ -25,7 +25,7 @@ const (
 	ICMREG_LP_ACCEL_ODR       = 0x1E
 	ICMREG_MOT_THR            = 0x1F
 	ICMREG_FIFO_EN            = 0x23
-	ICMREG_INT_PIN_CFG        = 0x37
+	ICMREG_INT_PIN_CFG        = 0x0F // ICM-20948 bank 0 (was 0x37 on MPU9250)
 	ICMREG_INT_ENABLE         = 0x38
 	ICMREG_ACCEL_XOUT_H       = 0x2D //
 	ICMREG_ACCEL_XOUT_L       = 0x2E //
@@ -72,7 +72,7 @@ const (
 	ICMREG_I2C_MST_DELAY_CTRL = 0x67
 	ICMREG_SIGNAL_PATH_RESET  = 0x68
 	ICMREG_MOT_DETECT_CTRL    = 0x69
-	ICMREG_USER_CTRL          = 0x6A
+	ICMREG_USER_CTRL          = 0x03 // ICM-20948 bank 0 (was 0x6A on MPU9250)
 	ICMREG_PWR_MGMT_1         = 0x06
 	ICMREG_PWR_MGMT_2         = 0x6C
 	ICMREG_BANK_SEL           = 0x7F // New use.
@@ -167,6 +167,29 @@ const (
 	AK8963_ASAX = 0x10
 	AK8963_ASAY = 0x11
 	AK8963_ASAZ = 0x12
+
+	/* ---- AK09916 Reg in ICM-20948 -------------------------------------------- */
+	// The AK09916 lives on the ICM-20948's auxiliary I²C bus and is exposed at
+	// 0x0C on the host bus when BYPASS_EN is set in INT_PIN_CFG. Register layout
+	// is different from the AK8963: ST1 starts at 0x10 (not 0x02), no CNTL1,
+	// no factory ASA registers (sensitivity is fixed at scaleMag).
+	AK09916_I2C_ADDR         = 0x0C
+	AK09916_DEVICE_ID        = 0x09
+	AK09916_MAX_SAMPLE_RATE  = 100
+	AK09916_WIA1             = 0x00 // = 0x48 (AKM company ID)
+	AK09916_WIA2             = 0x01 // = AK09916_DEVICE_ID
+	AK09916_ST1              = 0x10 // DRDY bit 0, DOR bit 1
+	AK09916_HXL              = 0x11 // 6 mag bytes little-endian: HX HY HZ
+	AK09916_ST2              = 0x18 // HOFL bit 3; must be read to release data
+	AK09916_CNTL2            = 0x31 // mode register
+	AK09916_CNTL3            = 0x32 // soft-reset register (write SRST)
+	AK09916_RESET            = 0x01 // SRST value for CNTL3
+	AK09916_POWER_DOWN       = 0x00
+	AK09916_CONTINUOUS_MODE1 = 0x02 // 10 Hz
+	AK09916_CONTINUOUS_MODE2 = 0x04 // 20 Hz
+	AK09916_CONTINUOUS_MODE3 = 0x06 // 50 Hz
+	AK09916_CONTINUOUS_MODE4 = 0x08 // 100 Hz
+	AK09916_HOFL             = 0x08 // bit 3 of ST2: magnetic sensor overflow
 	// Configuration bits from mpu9250.
 	BIT_SLEEP                  = 0x40
 	BIT_H_RESET                = 0x80

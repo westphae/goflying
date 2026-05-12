@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	bufSize         = 250 // Size of buffer storing instantaneous sensor values
-	scaleMag        = 9830.0 / 65536
+	bufSize  = 250 // Size of buffer storing instantaneous sensor values
+	scaleMag = 9830.0 / 65536
 )
 
 /*
@@ -33,8 +33,8 @@ type ICM20948 struct {
 	scaleGyro, scaleAccel float64 // Max sensor reading for value 2**15-1
 	sampleRate            int
 	enableMag             bool
-	mcal1, mcal2, mcal3   float64         // Hardware magnetometer calibration values, uT
-	cClose                chan bool       // Turn off MPU polling
+	mcal1, mcal2, mcal3   float64   // Hardware magnetometer calibration values, uT
+	cClose                chan bool // Turn off MPU polling
 }
 
 /*
@@ -48,7 +48,7 @@ func NewICM20948(i2cbus *embd.I2CBus, address byte, sensitivityGyro, sensitivity
 	}
 
 	icm.sampleRate = sampleRate
-	icm.enableMag = false //FIXME: enableMag. Always disabling magnetometer now.
+	icm.enableMag = enableMag
 
 	icm.i2cbus = *i2cbus
 	icm.Address = address
@@ -107,70 +107,92 @@ func NewICM20948(i2cbus *embd.I2CBus, address byte, sensitivityGyro, sensitivity
 		return nil, err
 	}
 
+	// Enable the temperature DLPF. The chip's reset default is 0 (filter
+	// bypassed, ~8 kHz BW), which makes every read full-bandwidth analog
+	// noise — swings of 10–20 °C between consecutive samples. Setting
+	// TEMP_DLPFCFG=4 gives ~34 Hz BW, which is plenty for a signal whose
+	// real bandwidth is sub-Hz (chip thermal mass).
+	if err := icm.setRegBank(2); err != nil {
+		return nil, errors.New("Error selecting bank 2 for TEMP_CONFIG")
+	}
+	if err := icm.i2cWrite(ICMREG_TEMP_CONFIG, 0x04); err != nil {
+		return nil, errors.New("Error configuring temperature DLPF")
+	}
+	if err := icm.setRegBank(0); err != nil {
+		return nil, errors.New("Error restoring bank 0 after TEMP_CONFIG")
+	}
+
 	// Turn off FIFO buffer. Not necessary - default off.
 
 	// Turn off interrupts. Not necessary - default off.
 
-	//FIXME. Mag reading not set up.
-	// Set up magnetometer
-	/*
-		if icm.enableMag {
-			if err := icm.ReadMagCalibration(); err != nil {
-				return nil, errors.New("Error reading calibration from magnetometer")
-			}
-
-			// Set up AK8963 master mode, master clock and ES bit
-			if err := icm.i2cWrite(ICMREG_I2C_MST_CTRL, 0x40); err != nil {
-				return nil, errors.New("Error setting up AK8963")
-			}
-			// Slave 0 reads from AK8963
-			if err := icm.i2cWrite(ICMREG_I2C_SLV0_ADDR, BIT_I2C_READ|AK8963_I2C_ADDR); err != nil {
-				return nil, errors.New("Error setting up AK8963")
-			}
-			// Compass reads start at this register
-			if err := icm.i2cWrite(ICMREG_I2C_SLV0_REG, AK8963_ST1); err != nil {
-				return nil, errors.New("Error setting up AK8963")
-			}
-			// Enable 8-byte reads on slave 0
-			if err := icm.i2cWrite(ICMREG_I2C_SLV0_CTRL, BIT_SLAVE_EN|8); err != nil {
-				return nil, errors.New("Error setting up AK8963")
-			}
-			// Slave 1 can change AK8963 measurement mode
-			if err := icm.i2cWrite(ICMREG_I2C_SLV1_ADDR, AK8963_I2C_ADDR); err != nil {
-				return nil, errors.New("Error setting up AK8963")
-			}
-			if err := icm.i2cWrite(ICMREG_I2C_SLV1_REG, AK8963_CNTL1); err != nil {
-				return nil, errors.New("Error setting up AK8963")
-			}
-			// Enable 1-byte reads on slave 1
-			if err := icm.i2cWrite(ICMREG_I2C_SLV1_CTRL, BIT_SLAVE_EN|1); err != nil {
-				return nil, errors.New("Error setting up AK8963")
-			}
-			// Set slave 1 data
-			if err := icm.i2cWrite(ICMREG_I2C_SLV1_DO, AKM_SINGLE_MEASUREMENT); err != nil {
-				return nil, errors.New("Error setting up AK8963")
-			}
-			// Triggers slave 0 and 1 actions at each sample
-			if err := icm.i2cWrite(ICMREG_I2C_MST_DELAY_CTRL, 0x03); err != nil {
-				return nil, errors.New("Error setting up AK8963")
-			}
-
-			// Set AK8963 sample rate to same as gyro/accel sample rate, up to max
-			var ak8963Rate byte
-			if icm.sampleRate < AK8963_MAX_SAMPLE_RATE {
-				ak8963Rate = 0
-			} else {
-				ak8963Rate = byte(icm.sampleRate/AK8963_MAX_SAMPLE_RATE - 1)
-			}
-
-			// Not so sure of this one--I2C Slave 4??!
-			if err := icm.i2cWrite(ICMREG_I2C_SLV4_CTRL, ak8963Rate); err != nil {
-				return nil, errors.New("Error setting up AK8963")
-			}
-
-			time.Sleep(100 * time.Millisecond) // Make sure mag is ready
+	// Set up magnetometer. The ICM-20948's onboard magnetometer is an AK09916,
+	// not the AK8963 used in the MPU9250. Rather than configure the chip's
+	// internal I²C master to relay AK09916 reads through EXT_SLV_SENS_DATA, we
+	// enable bypass mode so the AK09916 appears directly at I²C 0x0C on the
+	// host bus. readSensors then reads it via the embd I2CBus directly.
+	if icm.enableMag {
+		// Disable internal I²C master and route aux bus to host bus.
+		if err := icm.i2cWrite(ICMREG_USER_CTRL, 0x00); err != nil {
+			return nil, errors.New("Error disabling ICM-20948 I²C master")
 		}
-	*/
+		if err := icm.i2cWrite(ICMREG_INT_PIN_CFG, BIT_BYPASS_EN); err != nil {
+			return nil, errors.New("Error enabling ICM-20948 bypass mode")
+		}
+		time.Sleep(10 * time.Millisecond)
+
+		wia, err := icm.i2cbus.ReadByteFromReg(AK09916_I2C_ADDR, AK09916_WIA2)
+		if err != nil {
+			return nil, fmt.Errorf("AK09916 not reachable at 0x%02X: %s", AK09916_I2C_ADDR, err.Error())
+		}
+		if wia != AK09916_DEVICE_ID {
+			return nil, fmt.Errorf("AK09916 WIA2 mismatch: got 0x%02X want 0x%02X", wia, AK09916_DEVICE_ID)
+		}
+
+		// Pick target continuous-measurement rate. Modes 1 (10 Hz) and
+		// 4 (100 Hz) silently produce zero data on at least some AK09916
+		// dies; clamp the actual mag rate to 20 Hz (mode 2) or 50 Hz
+		// (mode 3).
+		var akMode byte = AK09916_CONTINUOUS_MODE2
+		if icm.sampleRate >= 50 {
+			akMode = AK09916_CONTINUOUS_MODE3
+		}
+
+		// Soft-reset the AK09916 (CNTL3=SRST). All AK09916 registers reset
+		// to default and the chip drops into power-down regardless of any
+		// prior state.
+		if err := icm.i2cbus.WriteByteToReg(AK09916_I2C_ADDR, AK09916_CNTL3, AK09916_RESET); err != nil {
+			return nil, errors.New("Error soft-resetting AK09916")
+		}
+		time.Sleep(100 * time.Millisecond)
+
+		// On this die, the AK09916 silently ignores the first CNTL2 write
+		// after a reset (whether the host ICM's PWR_MGMT_1 reset or our
+		// own SRST), so write the target mode twice. The second write
+		// always lands; the first either lands harmlessly or is absorbed.
+		if err := icm.i2cbus.WriteByteToReg(AK09916_I2C_ADDR, AK09916_CNTL2, akMode); err != nil {
+			return nil, errors.New("Error setting AK09916 continuous mode (1)")
+		}
+		time.Sleep(50 * time.Millisecond)
+		if err := icm.i2cbus.WriteByteToReg(AK09916_I2C_ADDR, AK09916_CNTL2, akMode); err != nil {
+			return nil, errors.New("Error setting AK09916 continuous mode (2)")
+		}
+		time.Sleep(100 * time.Millisecond)
+
+		// Confirm the chip actually accepted the mode — definitive signal
+		// if writes aren't landing at the AK09916 over bypass.
+		if got, err := icm.i2cbus.ReadByteFromReg(AK09916_I2C_ADDR, AK09916_CNTL2); err != nil {
+			log.Printf("ICM20948 warning: could not read back AK09916 CNTL2: %s", err.Error())
+		} else if got != akMode {
+			log.Printf("ICM20948 warning: AK09916 CNTL2 readback 0x%02X, expected 0x%02X — mag likely won't produce continuous data", got, akMode)
+		}
+
+		// AK09916 sensitivity is fixed at scaleMag µT/LSB; no factory ASA
+		// registers like the AK8963 had.
+		icm.mcal1 = scaleMag
+		icm.mcal2 = scaleMag
+		icm.mcal3 = scaleMag
+	}
 	// Set clock source to PLL. Not necessary - default "auto select" (PLL when ready).
 
 	if applyHWOffsets {
@@ -200,28 +222,20 @@ func NewICM20948(i2cbus *embd.I2CBus, address byte, sensitivityGyro, sensitivity
 // Communication is via channels.
 func (icm *ICM20948) readSensors() {
 	var (
-		g1, g2, g3, a1, a2, a3, m1, m2, m3, m4, tmp int16   // Current values
-		avg1, avg2, avg3, ava1, ava2, ava3, avtmp   float64 // Accumulators for averages
-		avm1, avm2, avm3                            int32
-		n, nm                                       float64
-		gaError, magError                           error
-		t0, t, t0m, tm                              time.Time
-		magSampleRate                               int
-		curdata                                     *sensors.IMUData
+		g1, g2, g3, a1, a2, a3, m1, m2, m3, tmp   int16   // Current values
+		avg1, avg2, avg3, ava1, ava2, ava3, avtmp float64 // Accumulators for averages
+		avm1, avm2, avm3                          int32
+		n, nm                                     float64
+		gaError, magError                         error
+		t0, t, t0m, tm                            time.Time
+		magSampleRate                             int
+		curdata                                   *sensors.IMUData
+		akMissStreak                              int // consecutive DRDY=0 mag reads
+		akMode                                    byte
 	)
-
-	//FIXME: Temporary (testing).
-	//	icm.setRegBank(2)
-	//	icm.i2cWrite(ICMREG_TEMP_CONFIG, 0x04)
-	//	icm.setRegBank(0)
-
-	acRegMap := map[*int16]byte{
-		&g1: ICMREG_GYRO_XOUT_H, &g2: ICMREG_GYRO_YOUT_H, &g3: ICMREG_GYRO_ZOUT_H,
-		&a1: ICMREG_ACCEL_XOUT_H, &a2: ICMREG_ACCEL_YOUT_H, &a3: ICMREG_ACCEL_ZOUT_H,
-		&tmp: ICMREG_TEMP_OUT_H,
-	}
-	magRegMap := map[*int16]byte{
-		&m1: ICMREG_EXT_SENS_DATA_00, &m2: ICMREG_EXT_SENS_DATA_02, &m3: ICMREG_EXT_SENS_DATA_04, &m4: ICMREG_EXT_SENS_DATA_06,
+	akMode = AK09916_CONTINUOUS_MODE2
+	if icm.sampleRate >= 50 {
+		akMode = AK09916_CONTINUOUS_MODE3
 	}
 
 	if icm.sampleRate > 100 {
@@ -314,12 +328,22 @@ func (icm *ICM20948) readSensors() {
 
 	for {
 		select {
-		case t = <-clock.C: // Read accel/gyro data:
-			for p, reg := range acRegMap {
-				*p, gaError = icm.i2cRead2(reg)
-				if gaError != nil {
-					log.Println("ICM20948 Warning: error reading gyro/accel")
-				}
+		case t = <-clock.C: // Read accel/gyro/temp in one block:
+			// Registers 0x2D..0x3A are contiguous (accel HL ×3, gyro HL ×3,
+			// temp HL), big-endian. A single 14-byte block read is ~7×
+			// fewer I²C transactions than reading each register pair,
+			// and gives a torn-free snapshot of all six channels.
+			var buf [14]byte
+			if gaError = icm.i2cbus.ReadFromReg(icm.Address, ICMREG_ACCEL_XOUT_H, buf[:]); gaError != nil {
+				log.Printf("ICM20948 Warning: error reading gyro/accel: %s", gaError.Error())
+			} else {
+				a1 = int16(uint16(buf[0])<<8 | uint16(buf[1]))
+				a2 = int16(uint16(buf[2])<<8 | uint16(buf[3]))
+				a3 = int16(uint16(buf[4])<<8 | uint16(buf[5]))
+				g1 = int16(uint16(buf[6])<<8 | uint16(buf[7]))
+				g2 = int16(uint16(buf[8])<<8 | uint16(buf[9]))
+				g3 = int16(uint16(buf[10])<<8 | uint16(buf[11]))
+				tmp = int16(uint16(buf[12])<<8 | uint16(buf[13]))
 			}
 			curdata = makeIMUData()
 			// Update accumulated values and increment count of gyro/accel readings
@@ -342,41 +366,41 @@ func (icm *ICM20948) readSensors() {
 			}
 		case tm = <-clockMag.C: // Read magnetometer data:
 			if icm.enableMag {
-				// Set AK8963 to slave0 for reading
-				if err := icm.i2cWrite(ICMREG_I2C_SLV0_ADDR, AK8963_I2C_ADDR|READ_FLAG); err != nil {
-					log.Printf("ICM20948 Error: couldn't set AK8963 address for reading: %s", err.Error())
+				// AK09916 requires reading ST1 (for DRDY) before the data
+				// registers and ST2 after, in a single transaction, to
+				// advance its state machine. Block-read 9 bytes from ST1:
+				//   buf[0]    = ST1 (DRDY bit 0)
+				//   buf[1..6] = HXL HXH HYL HYH HZL HZH (little-endian int16)
+				//   buf[7]    = dummy (TMPS)
+				//   buf[8]    = ST2 (HOFL bit 3); reading it releases latch.
+				buf := make([]byte, 9)
+				if magError = icm.i2cbus.ReadFromReg(AK09916_I2C_ADDR, AK09916_ST1, buf); magError != nil {
+					log.Printf("ICM20948 Warning: error reading AK09916: %s", magError.Error())
+					continue
 				}
-				//I2C slave 0 register address from where to begin data transfer
-				if err := icm.i2cWrite(ICMREG_I2C_SLV0_REG, AK8963_HXL); err != nil {
-					log.Printf("ICM20948 Error: couldn't set AK8963 read register: %s", err.Error())
-				}
-				//Tell AK8963 that we will read 7 bytes
-				if err := icm.i2cWrite(ICMREG_I2C_SLV0_CTRL, 0x87); err != nil {
-					log.Printf("ICM20948 Error: couldn't communicate with AK8963: %s", err.Error())
-				}
-
-				// Read the actual data
-				for p, reg := range magRegMap {
-					*p, magError = icm.i2cRead2(reg)
-					if magError != nil {
-						log.Println("ICM20948 Warning: error reading magnetometer")
+				if buf[0]&AKM_DATA_READY == 0 {
+					// No new sample yet; leave m1/m2/m3 at previous values.
+					// Transient I²C glitches on the gyro/accel side can
+					// leave the AK09916 stuck in power-down with DRDY
+					// permanently 0. After enough consecutive misses to
+					// rule out normal timing, re-arm continuous mode.
+					akMissStreak++
+					if akMissStreak >= 8 {
+						if err := icm.i2cbus.WriteByteToReg(AK09916_I2C_ADDR, AK09916_CNTL2, AK09916_POWER_DOWN); err == nil {
+							icm.i2cbus.WriteByteToReg(AK09916_I2C_ADDR, AK09916_CNTL2, akMode)
+						}
+						akMissStreak = 0
 					}
+					continue
 				}
-
-				// Test validity of magnetometer data
-				if (byte(m1&0xFF)&AKM_DATA_READY) == 0x00 && (byte(m1&0xFF)&AKM_DATA_OVERRUN) != 0x00 {
-					log.Println("ICM20948 mag data not ready or overflow")
-					log.Printf("ICM20948 m1 LSB: %X\n", byte(m1&0xFF))
-					continue // Don't update the accumulated values
-				}
-
-				if (byte((m4>>8)&0xFF) & AKM_OVERFLOW) != 0x00 {
+				akMissStreak = 0
+				if buf[8]&AK09916_HOFL != 0 {
 					log.Println("ICM20948 mag data overflow")
-					log.Printf("ICM20948 m4 MSB: %X\n", byte((m1>>8)&0xFF))
-					continue // Don't update the accumulated values
+					continue
 				}
-
-				// Update values and increment count of magnetometer readings
+				m1 = int16(uint16(buf[1]) | uint16(buf[2])<<8)
+				m2 = int16(uint16(buf[3]) | uint16(buf[4])<<8)
+				m3 = int16(uint16(buf[5]) | uint16(buf[6])<<8)
 				avm1 += int32(m1)
 				avm2 += int32(m2)
 				avm3 += int32(m3)
@@ -397,7 +421,7 @@ func (icm *ICM20948) readSensors() {
 }
 
 // CloseMPU stops the driver from reading the MPU.
-//TODO westphae: need a way to start it going again!
+// TODO westphae: need a way to start it going again!
 func (icm *ICM20948) CloseMPU() {
 	// Nothing to do bitwise for the 9250?
 	icm.cClose <- true
@@ -817,7 +841,7 @@ func (icm *ICM20948) i2cRead2(register byte) (value int16, err error) {
 
 	v, errWrite := icm.i2cbus.ReadWordFromReg(icm.Address, register)
 	if errWrite != nil {
-		err = fmt.Errorf("ICM20948 Error reading %x: %s\n", register, err.Error())
+		err = fmt.Errorf("ICM20948 Error reading %x: %s", register, errWrite.Error())
 	} else {
 		value = int16(v)
 	}
