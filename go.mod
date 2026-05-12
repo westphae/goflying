@@ -14,7 +14,7 @@ require github.com/golang/glog v1.2.5 // indirect
 // kidoman/embd has been unmaintained since 2017; its kernel-version parser
 // (detect.go parseVersion) panics on modern Raspberry Pi OS kernel strings
 // like "6.12.62+rpt-rpi-v8" because it can't handle the "+rpt" suffix on the
-// patch component. The local fork has a one-function patch. See the
+// patch component. westphae/embd-fork has a one-function patch. See the
 // "Deferred modernizations" section of CLAUDE.md for the periph.io migration
 // that should eventually remove this entirely.
-replace github.com/kidoman/embd => ../embd-fork
+replace github.com/kidoman/embd => github.com/westphae/embd-fork v0.0.0-20260512010715-91c6e0d13fef
