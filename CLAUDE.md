@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Go modules project (`go.mod` at the repo root, currently `go 1.19` — the floor imposed by the `glog` transitive dep; the code itself only needs Go 1.18 for `any`).
 
-A `replace` directive points `github.com/kidoman/embd` at `github.com/westphae/embd-fork` because upstream embd (last touched 2017) panics on modern Raspberry Pi OS kernel strings like `6.12.62+rpt-rpi-v8` — its `parseVersion` can't handle the `+rpt` suffix on the patch component. The fork has a single-function patch in `detect.go`. The long-term fix is the periph.io migration listed under deferred modernizations. External deps (`gorilla/websocket`, `kidoman/embd`, `skelterjohn/go.matrix`, `westphae/quaternion`) are pinned in `go.mod` / `go.sum`; `go mod tidy` keeps them in sync. The repo conventionally lives at `$GOPATH/src/github.com/westphae/goflying` because that's where its sibling consumers (see below) expect it, but module mode no longer requires it.
+A `replace` directive points `github.com/kidoman/embd` at `github.com/westphae/embd` because upstream embd (last touched 2017) panics on modern Raspberry Pi OS kernel strings like `6.12.62+rpt-rpi-v8` — its `parseVersion` can't handle the `+rpt` suffix on the patch component. The fork has a single-function patch in `detect.go`. The long-term fix is the periph.io migration listed under deferred modernizations. External deps (`gorilla/websocket`, `kidoman/embd`, `skelterjohn/go.matrix`, `westphae/quaternion`) are pinned in `go.mod` / `go.sum`; `go mod tidy` keeps them in sync. The repo conventionally lives at `$GOPATH/src/github.com/westphae/goflying` because that's where its sibling consumers (see below) expect it, but module mode no longer requires it.
 
 Common commands (run from repo root):
 
@@ -22,7 +22,7 @@ Common commands (run from repo root):
 
 Two known downstream consumers live alongside this repo in GOPATH:
 
-- **`../magkal`** — Go-modules build with its own `go.mod` and a `replace github.com/westphae/goflying => ../goflying` directive (plus a matching `replace github.com/kidoman/embd => github.com/westphae/embd-fork ...`, since `replace` in a dep is ignored by Go modules — the main module must restate it). Imports `github.com/westphae/goflying/sensors/icm20948` (and may grow others). Local changes here flow into magkal builds immediately; verify with `cd ../magkal && go build ./...` after touching this repo.
+- **`../magkal`** — Go-modules build with its own `go.mod` and a `replace github.com/westphae/goflying => ../goflying` directive (plus a matching `replace github.com/kidoman/embd => github.com/westphae/embd ...`, since `replace` in a dep is ignored by Go modules — the main module must restate it). Imports `github.com/westphae/goflying/sensors/icm20948` (and may grow others). Local changes here flow into magkal builds immediately; verify with `cd ../magkal && go build ./...` after touching this repo.
 - **`../stratux`** — GOPATH-style; consumes this repo as a **git submodule** mounted at `stratux/goflying/`. The submodule is pinned to a specific commit, so canonical-goflying changes do not reach stratux until its submodule pointer is bumped. Stratux's imports look like `"../goflying/ahrs"` etc.; do not be alarmed by their pre-`3efece4` package layout — they refer to the pinned submodule.
 
 ## Architecture
@@ -105,7 +105,7 @@ Inventory of in-source TODO/FIXME markers, plus larger modernizations that are i
 
 ### Deferred modernizations (not yet started)
 - Replace `github.com/skelterjohn/go.matrix` (last release ~2013) with `gonum.org/v1/gonum/mat`. Used in `ahrs/ahrs_kalman*.go`, `ahrs/ahrs_simple.go`, `ahrs/ahrs_state.go`, `sim/situationSim.go`, `sim/situationFromFile.go`. AHRS tests should catch numerical regressions.
-- Replace `github.com/kidoman/embd` (stale since ~2017) with `periph.io/x/conn/v3`. Used in all three sensor drivers and their `test/` programs. Requires RPi hardware to validate. **Doing this would also let us drop the `westphae/embd-fork` replace** (currently needed because upstream embd panics on modern Raspberry Pi OS kernel strings).
+- Replace `github.com/kidoman/embd` (stale since ~2017) with `periph.io/x/conn/v3`. Used in all three sensor drivers and their `test/` programs. Requires RPi hardware to validate. **Doing this would also let us drop the `westphae/embd` replace** (currently needed because upstream embd panics on modern Raspberry Pi OS kernel strings).
 - Add `context.Context` and explicit shutdown to long-running goroutines, especially in `magnetometer/research/calibration.go` (HTTP handlers spawning unbounded loops, channels never closed).
 - Add CI (GitHub Actions) — at minimum `go build ./...`, `go vet ./...`, and `go test ./ahrs/...` on Linux. Sensor `test/` binaries should be built but not run.
 - Expand test coverage: only `ahrs/` and `sensors/bmp280/test/` have any `*_test.go` files (~8% of source files). `ahrsweb/`, `gdl90Listener/`, `magnetometer/`, `sim/`, and most of `sensors/` are untested.
