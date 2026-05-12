@@ -5,9 +5,8 @@ package magkal
 import (
 	"math"
 
-	"../ahrs"
+	"github.com/westphae/goflying/ahrs"
 )
-
 
 func ComputeSimple(s MagKalState, cIn chan ahrs.Measurement, cOut chan MagKalState) {
 	var (

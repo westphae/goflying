@@ -9,13 +9,13 @@ import (
 
 type AHRSLogger struct {
 	f      *os.File
-	logMap map[string]interface{}
+	logMap map[string]any
 	Header []string
 	fmt    string
-	vals   []interface{}
+	vals   []any
 }
 
-func NewAHRSLogger(filename string, logMap map[string]interface{}) (l *AHRSLogger) {
+func NewAHRSLogger(filename string, logMap map[string]any) (l *AHRSLogger) {
 	l = new(AHRSLogger)
 	f, err := os.Create(filename)
 	if err != nil {
@@ -34,7 +34,7 @@ func NewAHRSLogger(filename string, logMap map[string]interface{}) (l *AHRSLogge
 	fmt.Fprint(l.f, strings.Join(l.Header, ","), "\n")
 	s := strings.Repeat("%f,", len(l.Header))
 	l.fmt = strings.Join([]string{s[:len(s)-1], "\n"}, "")
-	l.vals = make([]interface{}, len(l.Header))
+	l.vals = make([]any, len(l.Header))
 	return
 }
 

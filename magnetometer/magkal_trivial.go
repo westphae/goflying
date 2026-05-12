@@ -2,7 +2,7 @@
 // This is mainly used for testing the integration with Stratux.
 package magkal
 
-import "../ahrs"
+import "github.com/westphae/goflying/ahrs"
 
 func ComputeTrivial(s MagKalState, cIn chan ahrs.Measurement, cOut chan MagKalState) {
 	if NormVec(s.K) < Small {

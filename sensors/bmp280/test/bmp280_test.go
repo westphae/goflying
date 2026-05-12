@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/kidoman/embd"
-	"github.com/westphae/goflying/bmp280"
+	"github.com/westphae/goflying/sensors/bmp280"
 )
 
 func TestBMP280Math(t *testing.T) {

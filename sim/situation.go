@@ -1,6 +1,6 @@
 package main
 
-import "../ahrs"
+import "github.com/westphae/goflying/ahrs"
 
 type Situation interface {
 	BeginTime() float64
@@ -11,5 +11,5 @@ type Situation interface {
 		uNoise, wNoise, aNoise, bNoise, mNoise float64,
 		uBias, aBias, bBias, mBias []float64,
 	) (err error)
-	GetLogMap() (p map[string]interface{})
+	GetLogMap() (p map[string]any)
 }

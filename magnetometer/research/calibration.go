@@ -1,3 +1,11 @@
+//go:build ignore
+// +build ignore
+
+// This research program is out of sync with the post-consolidation mpu9250
+// API (see commit 3efece4) — it still calls the pre-consolidation
+// NewMPU9250 signature and references the removed mpu9250.MPUData type.
+// Excluded from `go build ./...` until it is ported to the current driver.
+
 package main
 
 import (
@@ -7,7 +15,6 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"io/ioutil"
 	"log"
 	"math"
 	"math/rand"
@@ -18,10 +25,10 @@ import (
 	"sync"
 	"time"
 
-	".."
-	"../../ahrs"
-	"../../mpu9250"
 	"github.com/gorilla/websocket"
+	"github.com/westphae/goflying/ahrs"
+	magkal "github.com/westphae/goflying/magnetometer"
+	"github.com/westphae/goflying/sensors/mpu9250"
 )
 
 const (
@@ -58,7 +65,7 @@ func main() {
 		freq           float64
 		startTM, endTM float64
 		usage          string
-		reqData        chan chan map[string]interface{} // A chan over which we send a chan to receive data
+		reqData        chan chan map[string]any // A chan over which we send a chan to receive data
 	)
 
 	// Which kind of system to run: real (default) or random or replay?
@@ -91,7 +98,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if stratuxConf, err := ioutil.ReadFile("/etc/stratux.conf"); err != nil {
+	if stratuxConf, err := os.ReadFile("/etc/stratux.conf"); err != nil {
 		log.Printf("couldn't open stratux.conf: %s", err)
 	} else {
 		var conf map[string]*json.RawMessage
@@ -176,16 +183,16 @@ func openMPU9250() (mpu *mpu9250.MPU9250, err error) {
 	return mpu, nil
 }
 
-func readMPUData(data <-chan *mpu9250.MPUData, freq time.Duration) (reqData chan chan map[string]interface{}) {
-	reqData = make(chan chan map[string]interface{}, 128)
+func readMPUData(data <-chan *mpu9250.MPUData, freq time.Duration) (reqData chan chan map[string]any) {
+	reqData = make(chan chan map[string]any, 128)
 
 	cM, cMagKal := magkal.NewMagKal(k, l, magkal.ComputeKalman)
 
 	go func() {
 		var (
-			ch     chan map[string]interface{}
-			cur    *mpu9250.MPUData
-			n      magkal.MagKalState
+			ch  chan map[string]any
+			cur *mpu9250.MPUData
+			n   magkal.MagKalState
 		)
 
 		t0 := time.Now()
@@ -326,7 +333,7 @@ func genFileData(f io.Reader, start float64, end float64) (out chan *mpu9250.MPU
 	return
 }
 
-func sendData(w http.ResponseWriter, r *http.Request, reqData chan chan map[string]interface{}) {
+func sendData(w http.ResponseWriter, r *http.Request, reqData chan chan map[string]any) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("Error upgrading to websocket: %s\n", err)
@@ -379,12 +386,12 @@ func sendData(w http.ResponseWriter, r *http.Request, reqData chan chan map[stri
 				log.Printf("Error reading from websocket: %s\n", err)
 				break
 			}
-			s, err = ioutil.ReadAll(r)
+			s, err = io.ReadAll(r)
 			log.Printf("Unknown message (type %d) received: %s\n", mType, s)
 		}
 	}()
 
-	myData := make(chan map[string]interface{})
+	myData := make(chan map[string]any)
 	for {
 		reqData <- myData
 		if err = conn.WriteJSON(<-myData); err != nil {

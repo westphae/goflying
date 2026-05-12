@@ -52,7 +52,7 @@ type SimpleState struct {
 	headingValid                  bool    // Whether to slew quickly to correct heading
 }
 
-//NewSimpleAHRS returns a new Simple AHRS object.
+// NewSimpleAHRS returns a new Simple AHRS object.
 // It is initialized with a beginning sensor orientation quaternion f0.
 func NewSimpleAHRS() (s *SimpleState) {
 	s = new(SimpleState)
@@ -61,7 +61,7 @@ func NewSimpleAHRS() (s *SimpleState) {
 	s.F0 = 1 // Initial guess is that it's oriented pointing forward and level
 	s.M = matrix.Zeros(32, 32)
 	s.N = matrix.Zeros(32, 32)
-	s.logMap = make(map[string]interface{})
+	s.logMap = make(map[string]any)
 	s.updateLogMap(NewMeasurement(), s.logMap)
 	return
 }
@@ -283,7 +283,7 @@ func (s *SimpleState) SetConfig(configMap map[string]float64) {
 	}
 }
 
-func (s *SimpleState) updateLogMap(m *Measurement, p map[string]interface{}) {
+func (s *SimpleState) updateLogMap(m *Measurement, p map[string]any) {
 	s.State.updateLogMap(m, s.logMap)
 	var simpleLogMap = map[string]func(s *SimpleState, m *Measurement) float64{
 		"RollGPS":           func(s *SimpleState, m *Measurement) float64 { return s.rollGPS / Deg },

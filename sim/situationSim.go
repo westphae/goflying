@@ -1,12 +1,13 @@
 package main
 
 import (
-	"../ahrs"
 	"errors"
-	"github.com/skelterjohn/go.matrix"
 	"math"
 	"math/rand"
 	"sort"
+
+	"github.com/skelterjohn/go.matrix"
+	"github.com/westphae/goflying/ahrs"
 )
 
 const (
@@ -19,13 +20,13 @@ var TimeError = errors.New("requested time is outside of scenario")
 
 // Situation defines a scenario by piecewise-linear interpolation
 type SituationSim struct {
-	t                  []float64 // times for situation, s
-	u1, u2, u3         []float64 // airspeed, kts, aircraft frame [F/B, R/L, and U/D]
-	phi, theta, psi    []float64 // attitude, rad [roll R/L, pitch U/D, heading N->E->S->W]
-	phi0, theta0, psi0 []float64 // base attitude, rad [adjust for position of stratux on glareshield]
-	v1, v2, v3         []float64 // windspeed, kts, earth frame [N/S, E/W, and U/D]
-	m1, m2, m3         []float64 // magnetometer reading
-	logMap             map[string]interface{} // Map only for analysis/debugging
+	t                  []float64      // times for situation, s
+	u1, u2, u3         []float64      // airspeed, kts, aircraft frame [F/B, R/L, and U/D]
+	phi, theta, psi    []float64      // attitude, rad [roll R/L, pitch U/D, heading N->E->S->W]
+	phi0, theta0, psi0 []float64      // base attitude, rad [adjust for position of stratux on glareshield]
+	v1, v2, v3         []float64      // windspeed, kts, earth frame [N/S, E/W, and U/D]
+	m1, m2, m3         []float64      // magnetometer reading
+	logMap             map[string]any // Map only for analysis/debugging
 }
 
 // BeginTime returns the time stamp when the simulation begins
@@ -260,6 +261,6 @@ var sitTakeoffDef = &SituationSim{
 	m3:     []float64{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
 }
 
-func (s *SituationSim) GetLogMap() (p map[string]interface{}) {
+func (s *SituationSim) GetLogMap() (p map[string]any) {
 	return s.logMap
 }

@@ -8,16 +8,16 @@ Then see if the AHRS code can replicate the "true" attitude given the noisy and 
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
-	"../ahrs"
-	"encoding/json"
+	"github.com/westphae/goflying/ahrs"
 )
 
 func parseFloatArrayString(str string, a *[]float64) (err error) {
@@ -121,10 +121,10 @@ func main() {
 
 	switch scenario {
 	/*
-	case "takeoff":
-		sit = sitTakeoffDef
-	case "turn":
-		sit = sitTurnDef
+		case "takeoff":
+			sit = sitTakeoffDef
+		case "turn":
+			sit = sitTurnDef
 	*/
 	default:
 		log.Printf("Loading data from %s\n", scenario)
@@ -140,16 +140,16 @@ func main() {
 	fmt.Println("Simulation parameters:")
 	switch strings.ToLower(algo) {
 	/*
-	case "kalman":
-		fmt.Println("Running Kalman AHRS")
-		ioutil.WriteFile("config.json", []byte(ahrs.KalmanJSONConfig), 0644)
-		s = ahrs.InitializeKalman(m)
+		case "kalman":
+			fmt.Println("Running Kalman AHRS")
+			os.WriteFile("config.json", []byte(ahrs.KalmanJSONConfig), 0644)
+			s = ahrs.InitializeKalman(m)
 	*/
 	case "simple":
 		fallthrough // simple is the default.
 	default:
 		fmt.Println("Running simple AHRS")
-		ioutil.WriteFile("config.json", []byte(ahrs.SimpleJSONConfig), 0644)
+		os.WriteFile("config.json", []byte(ahrs.SimpleJSONConfig), 0644)
 		s = ahrs.NewSimpleAHRS()
 	}
 
@@ -199,7 +199,7 @@ func main() {
 	logMapActual := sit.GetLogMap()
 	var transferLogMap = func() {
 		for k, v := range logMapActual {
-			logMap[k + "Actual"] = v
+			logMap[k+"Actual"] = v
 		}
 	}
 	transferLogMap()

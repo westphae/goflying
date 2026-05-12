@@ -51,7 +51,7 @@ type AHRSProvider interface {
 	GetState() *State
 	// GetLogMap returns a map customized for each AHRSProvider algorithm to provide more detailed information
 	// for debugging and logging.
-	GetLogMap() map[string]interface{}
+	GetLogMap() map[string]any
 }
 
 // Measurement holds the measurements used for updating the Kalman filter:

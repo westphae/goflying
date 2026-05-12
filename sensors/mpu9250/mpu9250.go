@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	bufSize         = 250 // Size of buffer storing instantaneous sensor values
-	scaleMag        = 9830.0 / 65536
+	bufSize  = 250 // Size of buffer storing instantaneous sensor values
+	scaleMag = 9830.0 / 65536
 )
 
 /*
@@ -33,8 +33,8 @@ type MPU9250 struct {
 	scaleGyro, scaleAccel float64 // Max sensor reading for value 2**15-1
 	sampleRate            int
 	enableMag             bool
-	mcal1, mcal2, mcal3   float64         // Hardware magnetometer calibration values, uT
-	cClose                chan bool       // Turn off MPU polling
+	mcal1, mcal2, mcal3   float64   // Hardware magnetometer calibration values, uT
+	cClose                chan bool // Turn off MPU polling
 }
 
 /*
@@ -399,7 +399,7 @@ func (mpu *MPU9250) readSensors() {
 }
 
 // CloseMPU stops the driver from reading the MPU.
-//TODO westphae: need a way to start it going again!
+// TODO westphae: need a way to start it going again!
 func (mpu *MPU9250) CloseMPU() {
 	// Nothing to do bitwise for the 9250?
 	mpu.cClose <- true

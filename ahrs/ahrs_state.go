@@ -39,14 +39,14 @@ type State struct {
 	f21, f22, f23 float64
 	f31, f32, f33 float64
 
-	roll, pitch, heading float64                // Fused attitude, Rad
-	headingMag           float64                // Magnetic heading, Rad (smoothed)
-	slipSkid             float64                // Slip/Skid Angle, Rad (smoothed)
-	gLoad                float64                // G Load, G vertical (smoothed)
-	turnRate             float64                // turn rate, Rad/s (smoothed)
-	needsInitialization  bool                   // Rather than computing, initialize
-	aNorm                float64                // Normalization constant by which to scale measured accelerations
-	logMap               map[string]interface{} // Map only for analysis/debugging
+	roll, pitch, heading float64        // Fused attitude, Rad
+	headingMag           float64        // Magnetic heading, Rad (smoothed)
+	slipSkid             float64        // Slip/Skid Angle, Rad (smoothed)
+	gLoad                float64        // G Load, G vertical (smoothed)
+	turnRate             float64        // turn rate, Rad/s (smoothed)
+	needsInitialization  bool           // Rather than computing, initialize
+	aNorm                float64        // Normalization constant by which to scale measured accelerations
+	logMap               map[string]any // Map only for analysis/debugging
 }
 
 // RollPitchHeading returns the current attitude values as estimated by the Kalman algorithm.
@@ -185,11 +185,11 @@ func (s *State) GetState() *State {
 }
 
 // GetLogMap returns a map providing current state and measurement values for analysis
-func (s *State) GetLogMap() (p map[string]interface{}) {
+func (s *State) GetLogMap() (p map[string]any) {
 	return s.logMap
 }
 
-func (s *State) updateLogMap(m *Measurement, p map[string]interface{}) {
+func (s *State) updateLogMap(m *Measurement, p map[string]any) {
 	var logMap = map[string]func(s *State, m *Measurement) float64{
 		"Ta":      func(s *State, m *Measurement) float64 { return s.T },
 		"Roll":    func(s *State, m *Measurement) float64 { return s.roll / Deg },
