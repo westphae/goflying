@@ -17,4 +17,4 @@ require github.com/golang/glog v1.2.5 // indirect
 // patch component. westphae/embd has a small patch. See the "Deferred
 // modernizations" section of CLAUDE.md for the periph.io migration that
 // should eventually remove this entirely.
-replace github.com/kidoman/embd => github.com/westphae/embd v0.0.0-20260512014748-136c87f723f9
+replace github.com/kidoman/embd => github.com/westphae/embd v0.1.0

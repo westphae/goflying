@@ -5,7 +5,7 @@ github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aN
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/skelterjohn/go.matrix v0.0.0-20130517144113-daa59528eefd h1:+ZLYzP9SYC3WU9buyb9H0l9DQxqVFOCkDG8QnNBMAlA=
 github.com/skelterjohn/go.matrix v0.0.0-20130517144113-daa59528eefd/go.mod h1:x7ui0Rh4QxcWEOgIfa3cr9q4W/wyLTDdzISxBmLVeX8=
-github.com/westphae/embd v0.0.0-20260512014748-136c87f723f9 h1:0gAI4CdXqjTHn3gjGEZEKphLZc5Bpg0vJBnNbBOkWHE=
-github.com/westphae/embd v0.0.0-20260512014748-136c87f723f9/go.mod h1:iy49R8LsDE79pYRGt6HKiIIy1ZfU5jaFFbXPB0Ij03U=
+github.com/westphae/embd v0.1.0 h1:k/1TrnUS+FlVXPAopvpdHB6MUiwRRs80td01eVe9CHs=
+github.com/westphae/embd v0.1.0/go.mod h1:iy49R8LsDE79pYRGt6HKiIIy1ZfU5jaFFbXPB0Ij03U=
 github.com/westphae/quaternion v0.0.0-20210908005042-fa06d546065c h1:IxoxQQ3RVVii9zMCzUDWL4RZ5HOW1u6VmVGMm3nx6Rc=
 github.com/westphae/quaternion v0.0.0-20210908005042-fa06d546065c/go.mod h1:MbIXKXI9LGjgzStrcPZ2teUcfc/1++c7vyCWPg0xvZU=
