@@ -231,6 +231,7 @@ func (icm *ICM20948) readSensors() {
 		magSampleRate                             int
 		curdata                                   *sensors.IMUData
 		akMissStreak                              int // consecutive DRDY=0 mag reads
+		akOverflowStreak                          int // consecutive HOFL=1 mag reads
 		akMode                                    byte
 	)
 	akMode = AK09916_CONTINUOUS_MODE2
@@ -395,9 +396,24 @@ func (icm *ICM20948) readSensors() {
 				}
 				akMissStreak = 0
 				if buf[8]&AK09916_HOFL != 0 {
-					log.Println("ICM20948 mag data overflow")
+					// HOFL: AK09916 saturated on this conversion. Reading
+					// ST2 (buf[8]) clears the latch, but on this die the
+					// chip can stick in a state where every subsequent
+					// conversion is also flagged HOFL (DRDY=1, HOFL=1
+					// forever), which freezes M1/M2/M3 at the last good
+					// values. Re-arm via power-down→mode toggle after a
+					// short streak to break that lockup.
+					akOverflowStreak++
+					if akOverflowStreak >= 8 {
+						log.Println("ICM20948 mag overflow lockup, re-arming")
+						if err := icm.i2cbus.WriteByteToReg(AK09916_I2C_ADDR, AK09916_CNTL2, AK09916_POWER_DOWN); err == nil {
+							icm.i2cbus.WriteByteToReg(AK09916_I2C_ADDR, AK09916_CNTL2, akMode)
+						}
+						akOverflowStreak = 0
+					}
 					continue
 				}
+				akOverflowStreak = 0
 				m1 = int16(uint16(buf[1]) | uint16(buf[2])<<8)
 				m2 = int16(uint16(buf[3]) | uint16(buf[4])<<8)
 				m3 = int16(uint16(buf[5]) | uint16(buf[6])<<8)
