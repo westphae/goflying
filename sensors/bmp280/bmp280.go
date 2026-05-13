@@ -1,464 +1,167 @@
-/*
-Reference 1: https://github.com/BoschSensortec/BMP280_driver
-Reference 2: https://forums.adafruit.com/viewtopic.php?f=19&t=89049
-*/
-
+// Package bmp280 adapts the kernel IIO BMP280 driver (via github.com/westphae/go-iio/bmp280)
+// onto the channel-based contract goflying expects (sensors.BMPData on .C and .CBuf).
+//
+// The old userspace I²C driver (kidoman/embd, register bit-banging, on-Go calibration math)
+// is gone. The kernel driver handles compensation; we just poll the sysfs-exposed values
+// and republish them on the legacy channels.
 package bmp280
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
-	"github.com/kidoman/embd"
-	_ "github.com/kidoman/embd/host/all"
-	_ "github.com/kidoman/embd/host/rpi"
+	goiiobmp "github.com/westphae/go-iio/bmp280"
 	"github.com/westphae/goflying/sensors"
 )
 
 const (
-	QNH            = 1013.25          // Sea level reference pressure in hPa
-	BufSize        = 256              // Buffer size for reading data from BMP
-	ExtraReadDelay = time.Millisecond // Delay between chip reading polls
+	QNH     = 1013.25 // Sea level reference pressure in hPa
+	bufSize = 256     // Depth of the buffered history channel
+	pollHz  = 10      // Poll rate; matches the legacy driver's effective rate at typical settings
 )
 
+// BMP280 wraps an open IIO BMP280 device and publishes samples on two channels:
+// C is unbuffered (latest reading, non-blocking publish), CBuf is a 256-deep ring.
 type BMP280 struct {
-	i2cbus *embd.I2CBus
+	Address byte // I²C address hint kept for legacy callers (0x76 or 0x77)
 
-	Address byte
-	ChipID  byte
-	config  byte
-	control byte
+	dev    *goiiobmp.BMP280
+	cancel context.CancelFunc
+	t0     time.Time
 
-	t time.Time
-
-	Delay time.Duration
-
-	DigT map[int]int32
-	DigP map[int]int64
-
-	T_fine int32
-
-	C      <-chan *sensors.BMPData
-	CBuf   <-chan *sensors.BMPData
-	cClose chan bool
+	C    <-chan *sensors.BMPData
+	CBuf <-chan *sensors.BMPData
 }
 
-/*
-NewBMP280 returns a BMP280 object with the chosen settings:
-address is one of bmp280.Address1 (0x76) or bmp280.Address2 (0x77).
-powerMode is one of bmp280.SleepMode, bmp280.ForcedMode, or bmp280.NormalMode.
-standby is one of the bmp280.StandbyTimeX (1ms up to 4000ms).
-filter is one of bmp280.FilterCoeffX.
-tempRes is one of bmp280.OversampX (up to 16x).
-presRes is one of bmp280.XMode (low power mode, etc).
-See BMP280 datasheet for details.
-*/
-func NewBMP280(i2cbus *embd.I2CBus, address, powerMode, standby, filter, tempRes, presRes byte) (bmp *BMP280, err error) {
-	bmp = new(BMP280)
-	bmp.i2cbus = i2cbus
-	bmp.Address = address
-
-	// Make sure we can connect to the chip and read a valid ChipID
-	v := make([]byte, 1)
-	if errv := bmp.i2cReadBytes(RegisterChipID, v); errv != nil {
-		err = fmt.Errorf("BMP280: couldn't find chip at address %x: %s", address, errv)
-		return nil, err
+// NewBMP280 opens the kernel-managed BMP280 IIO device and starts a goroutine
+// that polls it and publishes sensors.BMPData on C and CBuf.
+//
+// address is one of bmp280.Address1 (0x76) or bmp280.Address2 (0x77). With a
+// single sensor on the bus it is honored as a hint; with two BMP280s it
+// selects the matching sysfs path.
+//
+// oversampTemp and oversampPress accept the bmp280.OversampNx constants and
+// are translated to the integer oversampling ratios accepted by IIO.
+func NewBMP280(address, oversampTemp, oversampPress byte) (*BMP280, error) {
+	opts := []goiiobmp.Option{
+		goiiobmp.WithOversampling(decodeOversamp(oversampTemp), decodeOversamp(oversampPress)),
 	}
-	if v[0] != ChipID1 && v[0] != ChipID2 && v[0] != ChipID3 {
-		return nil, fmt.Errorf("BMP280: Wrong ChipID, got %x", v)
+	if path, ok := iioPathForAddress(address); ok {
+		opts = append(opts, goiiobmp.WithPath(path))
 	}
 
-	bmp.ChipID = v[0]
-
-	bmp.config = (standby << 5) + (filter << 2)               // combine bits for config
-	bmp.control = (tempRes << 5) + (presRes << 2) + powerMode // combine bits for control
-
-	bmp.i2cWrite(RegisterSoftReset, SoftResetCode) // reset sensor
-
-	bmp.i2cWrite(RegisterControl, bmp.control)
-	bmp.i2cWrite(RegisterConfig, bmp.config)
-
-	bmp.DigT = make(map[int]int32)
-	bmp.DigP = make(map[int]int64)
-	bmp.ReadCorrectionSettings()
-
-	bmp.t = time.Now()
-	bmp.setDelay()
-
-	go bmp.readSensor()
-
-	return
-}
-
-// Close closes the BMP280
-func (bmp *BMP280) Close() {
-	bmp.SetPowerMode(SleepMode)
-	bmp.cClose <- true
-}
-
-func (bmp *BMP280) setDelay() {
-	bmp.Delay = 1500 * time.Microsecond
-	standby, _ := bmp.GetStandbyTime()
-	if standby == 0 {
-		bmp.Delay += 500 * time.Microsecond
-	} else if standby == 1 {
-		bmp.Delay += 62500 * time.Microsecond
-	} else {
-		bmp.Delay += time.Duration(int(4000)>>uint(7-standby)) * time.Millisecond
+	dev, err := goiiobmp.Open(opts...)
+	if err != nil {
+		return nil, fmt.Errorf("bmp280: %w", err)
 	}
 
-	tempRes, _ := bmp.GetOversampTemp()
-	bmp.Delay += time.Duration(2*int(tempRes)) * time.Millisecond
-
-	pressRes, _ := bmp.GetOversampPress()
-	bmp.Delay += time.Duration(2*int(pressRes)) * time.Millisecond
-}
-
-// ReadCorrectionSettings is used to read correction settings for the chip, set at the
-// factory to read properly calibrated temperature and pressure.
-func (bmp *BMP280) ReadCorrectionSettings() (err error) {
-	var raw []byte = make([]byte, 24)
-
-	errf := bmp.i2cReadBytes(RegisterCompData, raw)
-	if errf != nil {
-		err = fmt.Errorf("BMP280: Error reading calibration: %s", errf)
-	}
-
-	bmp.DigT[1] = int32(raw[1])<<8 + int32(raw[0])
-	for i := 1; i < 3; i++ {
-		bmp.DigT[i+1] = int32(int16(raw[2*i+1])<<8 + int16(raw[2*i]))
-	}
-
-	bmp.DigP[1] = int64(raw[7])<<8 + int64(raw[6])
-	for i := 1; i < 9; i++ {
-		bmp.DigP[i+1] = int64(int16(raw[2*i+7])<<8 + int16(raw[2*i+6]))
-	}
-
-	return
-}
-
-func (bmp *BMP280) readSensor() {
-	var (
-		raw_temp    int32
-		raw_press   int64
-		temp, press float64
-		err         error
-	)
-
-	raw := make([]byte, 6)
-
+	ctx, cancel := context.WithCancel(context.Background())
 	cC := make(chan *sensors.BMPData)
+	cBuf := make(chan *sensors.BMPData, bufSize)
+
+	b := &BMP280{
+		Address: address,
+		dev:     dev,
+		cancel:  cancel,
+		t0:      time.Now(),
+		C:       cC,
+		CBuf:    cBuf,
+	}
+	go b.poll(ctx, cC, cBuf)
+	return b, nil
+}
+
+func (b *BMP280) poll(ctx context.Context, cC, cBuf chan *sensors.BMPData) {
 	defer close(cC)
-	bmp.C = cC
-	cBuf := make(chan *sensors.BMPData, BufSize)
 	defer close(cBuf)
-	bmp.CBuf = cBuf
-	bmp.cClose = make(chan bool)
-	defer close(bmp.cClose)
 
-	clock := time.NewTicker(bmp.Delay)
-	//TODO westphae: use the clock to record actual time instead of a timer
-	defer clock.Stop()
-
-	t := time.Now()
-	makeBMPData := func() *sensors.BMPData {
-		d := sensors.BMPData{
-			Temperature: temp,
-			Pressure:    press,
-			T:           t.Sub(bmp.t),
-		}
-		return &d
-	}
-
-	// Throw away initial value
-	if err = bmp.i2cReadBytes(RegisterPressDataMSB, raw); err != nil {
-		log.Printf("bmp280 warning: error reading sensor data: %s", err)
-	}
+	ticker := time.NewTicker(time.Second / pollHz)
+	defer ticker.Stop()
 
 	for {
 		select {
-		case t = <-clock.C: // Read sensor data:
-			err = bmp.i2cReadBytes(RegisterPressDataMSB, raw)
+		case <-ctx.Done():
+			return
+		case t := <-ticker.C:
+			s, err := b.dev.Read()
 			if err != nil {
-				log.Printf("bmp280 warning: error reading sensor data: %s", err)
+				log.Printf("bmp280: read error: %s", err)
 				continue
 			}
-
-			raw_temp = (int32(raw[3]) << 12) + (int32(raw[4]) << 4) + (int32(raw[5]) >> 4) // combine 3 bytes  msb 12 bits left, lsb 4 bits left, xlsb 4 bits right
-
-			raw_press = (int64(raw[0]) << 12) + (int64(raw[1]) << 4) + (int64(raw[2]) >> 4) // combine 3 bytes  msb 12 bits left, lsb 4 bits left, xlsb 4 bits right
-
-			temp = bmp.CalcCompensatedTemp(raw_temp)
-			press = bmp.CalcCompensatedPress(raw_press)
-		case cC <- makeBMPData(): // Send the latest values
-		case cBuf <- makeBMPData():
-		case <-bmp.cClose: // Stop the goroutine, ease up on the CPU
-			break
+			d := &sensors.BMPData{
+				Temperature: s.TempC,
+				Pressure:    s.PressKPa * 10.0, // kPa -> hPa
+				T:           t.Sub(b.t0),
+			}
+			select {
+			case cC <- d:
+			default:
+			}
+			select {
+			case cBuf <- d:
+			default:
+			}
 		}
 	}
 }
 
-// CalcCompensatedTemp converts the raw measurement from the sensor, a 32-bit int,
-// to an actual float temperature in deg C.
-func (bmp *BMP280) CalcCompensatedTemp(raw_temp int32) (temp float64) {
-	var var1, var2, t int32
-
-	var1 = (((raw_temp >> 3) - (bmp.DigT[1] << 1)) * bmp.DigT[2]) >> 11
-	var2 = (((((raw_temp >> 4) - bmp.DigT[1]) * ((raw_temp >> 4) - bmp.DigT[1])) >> 12) * bmp.DigT[3]) >> 14
-	bmp.T_fine = var1 + var2
-	t = (bmp.T_fine*5 + 128) >> 8
-	temp = float64(t) / 100 // Temperature in degC
-	return
+// Close stops the polling goroutine and releases the IIO device.
+func (b *BMP280) Close() {
+	b.cancel()
+	_ = b.dev.Close()
 }
 
-// CalcCompensatedPress converts the raw measurement from the sensor, a 64-bit int,
-// to an actual float pressure in hPa.
-func (bmp *BMP280) CalcCompensatedPress(raw_press int64) (press float64) {
-	var var1, var2, p int64
-
-	var1 = int64(bmp.T_fine) - 128000
-	var2 = var1 * var1 * bmp.DigP[6]
-	var2 += (var1 * bmp.DigP[5]) << 17
-	var2 += bmp.DigP[4] << 35
-	var1 = ((var1 * var1 * bmp.DigP[3]) >> 8) + ((var1 * bmp.DigP[2]) << 12)
-	var1 = ((int64(1) << 47) + var1) * bmp.DigP[1] >> 33
-	if var1 == 0 {
-		return 0
-	}
-	p = 1048576 - raw_press
-	p = (((p << 31) - var2) * 3125) / var1
-	var1 = (bmp.DigP[9] * (p >> 13) * (p >> 13)) >> 25
-	var2 = (bmp.DigP[8] * p) >> 19
-	p = ((p + var1 + var2) >> 8) + (bmp.DigP[7] << 4)
-	press = float64(p) / 25600
-	return
+// CalcAltitude returns altitude in feet for a pressure in hPa, using QNH=1013.25 hPa.
+func CalcAltitude(press float64) float64 {
+	return 145366.45 * (1.0 - math.Pow(press/QNH, 0.190284))
 }
 
-// CalcAltitude converts pressure in hPa to altitude in ft.
-func CalcAltitude(press float64) (altitude float64) {
-	altitude = 145366.45 * (1.0 - math.Pow(press/QNH, 0.190284))
-	return
+func decodeOversamp(o byte) int {
+	switch o {
+	case Oversamp1x:
+		return 1
+	case Oversamp2x:
+		return 2
+	case Oversamp4x:
+		return 4
+	case Oversamp8x:
+		return 8
+	case Oversamp16x:
+		return 16
+	default:
+		return 0 // skipped or unknown — leave the kernel default in place
+	}
 }
 
-// GetPowerMode returns the current power mode of the chip.
-// Possible values are:
-// bmp280.SleepMode     = 0x00
-// bmp280.ForcedMode    = 0x01
-// bmp280.NormalMode    = 0x03
-// See BMP280 datasheet for explanations.
-func (bmp *BMP280) GetPowerMode() (powerMode byte, err error) {
-	v := make([]byte, 1)
-	if errv := bmp.i2cReadBytes(RegisterControl, v); errv != nil {
-		err = fmt.Errorf("bmp280 error: couldn't read power mode: %s", errv)
-		return
+// iioPathForAddress walks /sys/bus/iio/devices and returns the path of the
+// first iio:deviceN whose underlying I²C bus address (1-007X) matches the
+// requested address. The boolean is false when no match is found, in which
+// case the caller should fall back to open-by-name.
+func iioPathForAddress(address byte) (string, bool) {
+	const root = "/sys/bus/iio/devices"
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return "", false
 	}
-	powerMode = v[0] & 0x03
-	return
-}
-
-// SetPowerMode sets the power mode of the chip.
-// Possible values are:
-// bmp280.SleepMode     = 0x00
-// bmp280.ForcedMode    = 0x01
-// bmp280.NormalMode    = 0x03
-// bmp280.SoftResetCode = 0xB6
-// See BMP280 datasheet for explanations.
-func (bmp *BMP280) SetPowerMode(powerMode byte) error {
-	v := make([]byte, 1)
-	if errv := bmp.i2cReadBytes(RegisterControl, v); errv != nil {
-		return fmt.Errorf("bmp280 error: couldn't read power mode: %s", errv)
+	suffix := fmt.Sprintf("-%04x", address) // e.g. "-0076"
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), "iio:device") {
+			continue
+		}
+		full := filepath.Join(root, e.Name())
+		resolved, err := filepath.EvalSymlinks(full)
+		if err != nil {
+			continue
+		}
+		if strings.HasSuffix(filepath.Base(filepath.Dir(resolved)), suffix) {
+			return full, true
+		}
 	}
-	v[0] = (v[0] & 0xfc) | powerMode
-
-	if errv := bmp.i2cWrite(RegisterControl, v[0]); errv != nil {
-		return fmt.Errorf("bmp280 error: couldn't write power mode: %s", errv)
-	}
-	return nil
-}
-
-// GetOversampPress returns the current pressure oversampling setting for the sensor.
-// Possible values are:
-// bmp280.OversampSkipped = 0x00
-// bmp280.Oversamp1x      = 0x01
-// bmp280.Oversamp2x      = 0x02
-// bmp280.Oversamp4x      = 0x03
-// bmp280.Oversamp8x      = 0x04
-// bmp280.Oversamp16x     = 0x05
-// See BMP280 datasheet for explanations.
-func (bmp *BMP280) GetOversampPress() (oversampPres byte, err error) {
-	v := make([]byte, 1)
-	if errv := bmp.i2cReadBytes(RegisterControl, v); errv != nil {
-		err = fmt.Errorf("bmp280 error: couldn't read Pressure Oversampling: %s", errv)
-		return
-	}
-	oversampPres = (v[0] & 0x1c) >> 2
-	return
-}
-
-// SetOversampPress sets the current pressure oversampling setting for the sensor.
-// Possible values are:
-// bmp280.OversampSkipped = 0x00
-// bmp280.Oversamp1x      = 0x01
-// bmp280.Oversamp2x      = 0x02
-// bmp280.Oversamp4x      = 0x03
-// bmp280.Oversamp8x      = 0x04
-// bmp280.Oversamp16x     = 0x05
-// See BMP280 datasheet for explanations.
-func (bmp *BMP280) SetOversampPress(oversampPres byte) error {
-	v := make([]byte, 1)
-	if errv := bmp.i2cReadBytes(RegisterControl, v); errv != nil {
-		return fmt.Errorf("bmp280 error: couldn't read Pressure Oversampling: %s", errv)
-	}
-	v[0] = (v[0] & 0xe3) | (oversampPres << 2)
-
-	time.Sleep(ExtraReadDelay)
-	if errv := bmp.i2cWrite(RegisterControl, v[0]); errv != nil {
-		return fmt.Errorf("bmp280 error: couldn't write Pressure Oversampling: %s", errv)
-	}
-	return nil
-}
-
-// GetOversampTemp returns the current temperature oversampling setting for the sensor.
-// Possible values are:
-// bmp280.OversampSkipped = 0x00
-// bmp280.Oversamp1x      = 0x01
-// bmp280.Oversamp2x      = 0x02
-// bmp280.Oversamp4x      = 0x03
-// bmp280.Oversamp8x      = 0x04
-// bmp280.Oversamp16x     = 0x05
-// See BMP280 datasheet for explanations.
-func (bmp *BMP280) GetOversampTemp() (oversampTemp byte, err error) {
-	v := make([]byte, 1)
-	if errv := bmp.i2cReadBytes(RegisterControl, v); errv != nil {
-		err = fmt.Errorf("bmp280 error: couldn't read Temperature Oversampling: %s", errv)
-		return
-	}
-	oversampTemp = (v[0] & 0xe0) >> 5
-	return
-}
-
-// SetOversampTemp sets the current temperature oversampling setting for the sensor.
-// Possible values are:
-// bmp280.OversampSkipped = 0x00
-// bmp280.Oversamp1x      = 0x01
-// bmp280.Oversamp2x      = 0x02
-// bmp280.Oversamp4x      = 0x03
-// bmp280.Oversamp8x      = 0x04
-// bmp280.Oversamp16x     = 0x05
-// See BMP280 datasheet for explanations.
-func (bmp *BMP280) SetOversampTemp(oversampTemp byte) error {
-	v := make([]byte, 1)
-	if errv := bmp.i2cReadBytes(RegisterControl, v); errv != nil {
-		return fmt.Errorf("bmp280 error: couldn't read Temperature Oversampling: %s", errv)
-	}
-	v[0] = (v[0] & 0x1f) | (oversampTemp << 5)
-
-	time.Sleep(bmp.Delay)
-	if errv := bmp.i2cWrite(RegisterControl, v[0]); errv != nil {
-		return fmt.Errorf("bmp280 error: couldn't write Temperature Oversampling: %s", errv)
-	}
-	return nil
-}
-
-// GetFilterCoeff returns the current filter coefficient of the sensor.
-// Possible values are:
-// bmp280.FilterCoeffOff = 0x00
-// bmp280.FilterCoeff2   = 0x01
-// bmp280.FilterCoeff4   = 0x02
-// bmp280.FilterCoeff8   = 0x03
-// bmp280.FilterCoeff16  = 0x04
-// See BMP280 datasheet for explanations.
-func (bmp *BMP280) GetFilterCoeff() (filterCoeff byte, err error) {
-	v := make([]byte, 1)
-	if errv := bmp.i2cReadBytes(RegisterConfig, v); errv != nil {
-		err = fmt.Errorf("bmp280 error: couldn't read Filter Coefficient: %s", errv)
-		return
-	}
-	filterCoeff = (v[0] & 0x1c) >> 2
-	return
-}
-
-// SetFilterCoeff sets the current filter coefficient of the sensor.
-// Possible values are:
-// bmp280.FilterCoeffOff = 0x00
-// bmp280.FilterCoeff2   = 0x01
-// bmp280.FilterCoeff4   = 0x02
-// bmp280.FilterCoeff8   = 0x03
-// bmp280.FilterCoeff16  = 0x04
-// See BMP280 datasheet for explanations.
-func (bmp *BMP280) SetFilterCoeff(filterCoeff byte) error {
-	v := make([]byte, 1)
-	if errv := bmp.i2cReadBytes(RegisterConfig, v); errv != nil {
-		return fmt.Errorf("bmp280 error: couldn't read Filter Coefficient: %s", errv)
-	}
-	v[0] = (v[0] & 0xe3) | (filterCoeff << 2)
-
-	if errv := bmp.i2cWrite(RegisterConfig, v[0]); errv != nil {
-		return fmt.Errorf("bmp280 error: couldn't write Filter Coefficient: %s", errv)
-	}
-	return nil
-}
-
-// GetStandbyTime returns the current standby time between sensor reads.
-// Possible values are:
-// bmp280.StandbyTime1ms    = 0x00
-// bmp280.StandbyTime63ms   = 0x01
-// bmp280.StandbyTime125ms  = 0x02
-// bmp280.StandbyTime250ms  = 0x03
-// bmp280.StandbyTime500ms  = 0x04
-// bmp280.StandbyTime1000ms = 0x05
-// bmp280.StandbyTime2000ms = 0x06
-// bmp280.StandbyTime4000ms = 0x07
-// See BMP280 datasheet for explanations.
-func (bmp *BMP280) GetStandbyTime() (standbyTime byte, err error) {
-	v := make([]byte, 1)
-	if errv := bmp.i2cReadBytes(RegisterConfig, v); errv != nil {
-		err = fmt.Errorf("bmp280 error: couldn't read Standby Time: %s", errv)
-		return
-	}
-	standbyTime = (v[0] & 0xe0) >> 5
-	return
-}
-
-// SetStandbyTime sets the standby time between chip reads.
-// Possible values are:
-// bmp280.StandbyTime1ms    = 0x00
-// bmp280.StandbyTime63ms   = 0x01
-// bmp280.StandbyTime125ms  = 0x02
-// bmp280.StandbyTime250ms  = 0x03
-// bmp280.StandbyTime500ms  = 0x04
-// bmp280.StandbyTime1000ms = 0x05
-// bmp280.StandbyTime2000ms = 0x06
-// bmp280.StandbyTime4000ms = 0x07
-// See BMP280 datasheet for explanations.
-func (bmp *BMP280) SetStandbyTime(standbyTime byte) error {
-	v := make([]byte, 1)
-	if errv := bmp.i2cReadBytes(RegisterConfig, v); errv != nil {
-		return fmt.Errorf("bmp280 error: couldn't read Standby Time: %s", errv)
-	}
-	v[0] = (v[0] & 0x1f) | (standbyTime << 5)
-
-	if errv := bmp.i2cWrite(RegisterConfig, v[0]); errv != nil {
-		return fmt.Errorf("bmp280 error: couldn't write Standby Time: %s", errv)
-	}
-	bmp.setDelay()
-	return nil
-}
-
-func (bmp *BMP280) i2cWrite(register, value byte) (err error) {
-	if errWrite := (*bmp.i2cbus).WriteByteToReg(bmp.Address, register, value); errWrite != nil {
-		err = fmt.Errorf("bmp280 error writing %X to %X: %s\n",
-			value, register, errWrite)
-	}
-	time.Sleep(ExtraReadDelay)
-	return
-}
-
-func (bmp *BMP280) i2cReadBytes(register byte, value []byte) (err error) {
-	if errRead := (*bmp.i2cbus).ReadFromReg(bmp.Address, register, value); errRead != nil {
-		err = fmt.Errorf("bmp280 error reading from %X: %s", register, errRead)
-	}
-	return err
+	return "", false
 }

@@ -4,19 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build & test
 
-This is a Go modules project (`go.mod` at the repo root, currently `go 1.19` — the floor imposed by the `glog` transitive dep; the code itself only needs Go 1.18 for `any`).
+This is a Go modules project (`go.mod` at the repo root, `go 1.22` — the floor imposed by the `westphae/go-iio` dep; otherwise only Go 1.18 features are used).
 
-A `replace` directive points `github.com/kidoman/embd` at `github.com/westphae/embd` because upstream embd (last touched 2017) panics on modern Raspberry Pi OS kernel strings like `6.12.62+rpt-rpi-v8` — its `parseVersion` can't handle the `+rpt` suffix on the patch component. The fork has a single-function patch in `detect.go`. The long-term fix is the periph.io migration listed under deferred modernizations. External deps (`gorilla/websocket`, `kidoman/embd`, `skelterjohn/go.matrix`, `westphae/quaternion`) are pinned in `go.mod` / `go.sum`; `go mod tidy` keeps them in sync. The repo conventionally lives at `$GOPATH/src/github.com/westphae/goflying` because that's where its sibling consumers (see below) expect it, but module mode no longer requires it.
+External deps (`gorilla/websocket`, `kidoman/embd`, `skelterjohn/go.matrix`, `westphae/go-iio`, `westphae/quaternion`) are pinned in `go.mod` / `go.sum`; `go mod tidy` keeps them in sync. The repo conventionally lives at `$GOPATH/src/github.com/westphae/goflying` because that's where its sibling consumers (see below) expect it, but module mode no longer requires it.
+
+A `replace` directive points `github.com/kidoman/embd` at `github.com/westphae/embd` because upstream embd (last touched 2017) panics on modern Raspberry Pi OS kernel strings like `6.12.62+rpt-rpi-v8` — its `parseVersion` can't handle the `+rpt` suffix on the patch component. The fork has a single-function patch in `detect.go`. The BMP280 driver no longer uses embd (see below); the remaining embd consumers are the ICM-20948 and MPU-9250 drivers. The long-term fix is the periph.io migration listed under deferred modernizations.
 
 Common commands (run from repo root):
 
 - `go test ./ahrs/...` — unit tests (quaternion math, AHRS algorithms). Single test: `go test ./ahrs -run TestName -v`.
 - `go build ./sim` — builds the simulation/replay binary (`ahrs_sim`); main package.
 - `go build ./ahrsweb/cmd/ahrsweb_server` — websocket visualization server (serves templates from `res/` — run from the cmd dir).
-- `go build ./sensors/bmp280/test`, `./sensors/mpu9250/test`, `./sensors/icm20948/test` — small `main` programs that exercise the I²C drivers; these only run on a Raspberry Pi (or other board the `embd` library supports).
+- `go build ./sensors/bmp280/test`, `./sensors/mpu9250/test`, `./sensors/icm20948/test` — small `main` programs that exercise the sensor drivers; these only run on a Raspberry Pi.
 - `go build ./...` — compile every package; CI sanity check.
 
-`embd`-importing packages will compile on any platform but only function with real hardware. Don't try to run sensor `test/` binaries in CI/dev environments — they will fail at I²C bus open.
+The sensor `test/` binaries will compile on any platform but only function with real hardware. The BMP280 test reads `/sys/bus/iio/devices/...` (kernel driver, see hardware setup below); the MPU-9250 and ICM-20948 tests open `/dev/i2c-1` directly via embd.
 
 ### Consumers
 
@@ -61,9 +63,47 @@ A `main` package (not a library). Defines a `Situation` interface implemented by
 
 `sensors/defs.go` defines the cross-driver types: `IMUData`, `BMPData`, `IMUSensor` (channels `C`/`CAvg`/`CBuf`), `PressureSensor`, and `IMUCalData` (persisted to `/etc/imu_cal.json`).
 
-Each driver (`bmp280/`, `mpu9250/`, `icm20948/`) constructs an object that embeds `IMUSensor`/`PressureSensor`+`IMUCalData`, spawns a goroutine polling the chip over I²C (`embd`), and publishes samples on channels. **All consumer access is through these channels** — there are no synchronous read functions on the chip objects.
+Each driver constructs an object that publishes samples on channels (`.C` for the latest reading, `.CBuf` for a 256-deep ring). **All consumer access is through these channels** — there are no synchronous read functions on the driver objects.
 
-The `mpu9250` and `icm20948` drivers are near-parallel because both chips use InvenSense's DMP architecture; treat them as siblings, not as one wrapping the other. The package consolidation under `sensors/` is recent (see commit `3efece4`); some external consumers and test files may still reference the old top-level paths.
+Two driver styles coexist:
+
+- **`bmp280/`** — thin adapter over `github.com/westphae/go-iio/bmp280`. The kernel owns the I²C bus and runs the compensation math; this package polls `/sys/bus/iio/devices/...` at ~10 Hz and republishes the readings as `*sensors.BMPData` on the legacy channel API. No `embd` import.
+- **`mpu9250/`, `icm20948/`** — userspace I²C drivers via `kidoman/embd`. Each spawns a polling goroutine that bit-bangs registers, runs the InvenSense DMP setup, and publishes `*sensors.IMUData`. The two drivers are near-parallel because both chips use InvenSense's DMP architecture; treat them as siblings, not as one wrapping the other.
+
+The package consolidation under `sensors/` is recent (see commit `3efece4`); some external consumers and test files may still reference the old top-level paths.
+
+#### BMP280 hardware setup
+
+The kernel needs to bind its `bmp280` IIO driver to the chip before goflying can read it. Two ways:
+
+**Persistent (boot-time) — device-tree overlay.** Add to `/boot/firmware/config.txt` (or `/boot/config.txt` on pre-Bookworm) and reboot:
+
+```
+dtparam=i2c_arm=on
+dtoverlay=i2c-sensor,bmp280,addr=0x76    # or addr=0x77
+```
+
+**Per-session — instantiate via sysfs.** Useful when you don't want to reboot or to flip between drivers (e.g. handing the bus back to a userspace embd-based driver):
+
+```sh
+sudo modprobe bmp280-i2c
+echo bmp280 0x76 | sudo tee /sys/bus/i2c/devices/i2c-1/new_device
+# When done:
+echo 0x76 | sudo tee /sys/bus/i2c/devices/i2c-1/delete_device
+```
+
+Verify the kernel sees it (the `name` file should read `bmp280`):
+
+```sh
+ls /sys/bus/iio/devices/
+cat /sys/bus/iio/devices/iio:device0/name
+```
+
+If you ever want go-iio's buffered/streaming path (not used by goflying today; we poll), also load the hrtimer trigger module and run the process with root (`CAP_SYS_ADMIN` is needed to create the trigger via configfs):
+
+```sh
+sudo modprobe iio-trig-hrtimer
+```
 
 ### `magnetometer/` — magnetometer hard/soft-iron calibration
 
@@ -84,7 +124,6 @@ Standalone parser for the iLevil AHRS extension to the GDL-90 protocol over UDP.
 Inventory of in-source TODO/FIXME markers, plus larger modernizations that are intentionally deferred. Update this section as items are addressed.
 
 ### Sensor drivers
-- `sensors/bmp280/bmp280.go:162` — TODO: use the clock to record actual time instead of a timer.
 - `sensors/icm20948/icm20948.go:210` — FIXME: temporary register-bank-2 temp config (testing only).
 - `sensors/icm20948/icm20948.go:239` — TODO: use the clock to record actual time instead of a timer.
 - `sensors/icm20948/icm20948.go:381` — TODO: `CloseMPU` needs a way to restart the polling goroutine.
@@ -105,9 +144,9 @@ Inventory of in-source TODO/FIXME markers, plus larger modernizations that are i
 
 ### Deferred modernizations (not yet started)
 - Replace `github.com/skelterjohn/go.matrix` (last release ~2013) with `gonum.org/v1/gonum/mat`. Used in `ahrs/ahrs_kalman*.go`, `ahrs/ahrs_simple.go`, `ahrs/ahrs_state.go`, `sim/situationSim.go`, `sim/situationFromFile.go`. AHRS tests should catch numerical regressions.
-- Replace `github.com/kidoman/embd` (stale since ~2017) with `periph.io/x/conn/v3`. Used in all three sensor drivers and their `test/` programs. Requires RPi hardware to validate. **Doing this would also let us drop the `westphae/embd` replace** (currently needed because upstream embd panics on modern Raspberry Pi OS kernel strings).
+- Replace `github.com/kidoman/embd` (stale since ~2017) with `periph.io/x/conn/v3` or move to kernel IIO via `github.com/westphae/go-iio`. BMP280 is already migrated to go-iio; ICM-20948 and MPU-9250 are still on embd. Doing the remaining two would let us drop the `westphae/embd` replace entirely (currently needed because upstream embd panics on modern Raspberry Pi OS kernel strings).
 - Add `context.Context` and explicit shutdown to long-running goroutines, especially in `magnetometer/research/calibration.go` (HTTP handlers spawning unbounded loops, channels never closed).
 - Add CI (GitHub Actions) — at minimum `go build ./...`, `go vet ./...`, and `go test ./ahrs/...` on Linux. Sensor `test/` binaries should be built but not run.
-- Expand test coverage: only `ahrs/` and `sensors/bmp280/test/` have any `*_test.go` files (~8% of source files). `ahrsweb/`, `gdl90Listener/`, `magnetometer/`, `sim/`, and most of `sensors/` are untested.
+- Expand test coverage: only `ahrs/` has any `*_test.go` files (~5% of source files). `ahrsweb/`, `gdl90Listener/`, `magnetometer/`, `sim/`, and all of `sensors/` are untested.
 - Modernize `math/rand.Seed()` usage in `ahrs/ahrs_test.go` (Seed is a no-op since Go 1.20; switch to `rand.New(rand.NewSource(...))` for per-test isolation, or drop the seed calls).
 - Refactor `main` packages under `sim/`, `sensors/*/test/`, `magnetometer/research/` into a `cmd/` layout for cleaner module structure.
