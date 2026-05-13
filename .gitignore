@@ -43,3 +43,7 @@ ahrsweb_server
 calibration
 AHRS_Math.pdf
 magnetometer/magnetometer
+
+# Local Go workspace (developer-specific cross-repo wiring).
+go.work
+go.work.sum

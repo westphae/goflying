@@ -43,10 +43,46 @@ Enable I²C bus 1 in `raspi-config` (or `dtparam=i2c_arm=on` in
   Verify with `cat /sys/bus/iio/devices/iio:device0/name` — it should print
   `bmp280`. Then `go run ./sensors/bmp280/test` prints a CSV of live readings.
 
-- **MPU-9250** and **ICM-20948** are still driven from userspace via
-  `github.com/kidoman/embd` over `/dev/i2c-1`. No extra kernel setup is needed
-  beyond enabling the bus; the test programs (`./sensors/mpu9250/test`,
-  `./sensors/icm20948/test`) handle chip init themselves.
+- **ICM-20948** uses an out-of-tree kernel module that lives in a sibling
+  repo, [`westphae/icm20948-mod`](https://github.com/westphae/icm20948-mod).
+  Build and install it, then load the hrtimer trigger module that goflying's
+  streaming capture needs:
+
+  ```sh
+  # Persistent: build + install dtbo + reboot
+  cd ../icm20948-mod
+  make && sudo make install
+  sudo reboot
+
+  # Per-session: insmod + bind via sysfs (no reboot)
+  sudo insmod ./icm20948.ko
+  echo icm20948 0x68 | sudo tee /sys/bus/i2c/devices/i2c-1/new_device   # or 0x69
+  # Tear down with:
+  echo 0x68 | sudo tee /sys/bus/i2c/devices/i2c-1/delete_device
+  sudo rmmod icm20948
+
+  # Always required (once per boot) before streaming:
+  sudo modprobe iio-trig-hrtimer
+  ```
+
+  To make the trigger module load automatically on every boot, drop a one-line
+  file into `/etc/modules-load.d/`:
+
+  ```sh
+  echo iio-trig-hrtimer | sudo tee /etc/modules-load.d/iio-trig-hrtimer.conf
+  ```
+
+  (The BMP280 driver autoloads via the device-tree overlay above, so no
+  equivalent file is needed for it.)
+
+  Verify with `cat /sys/bus/iio/devices/iio:device*/name` — one of them should
+  print `icm20948`. Then `sudo go run ./sensors/icm20948/test` prints a live
+  TUI of accel/gyro/mag/temp readings. Root is required because go-iio
+  creates the hrtimer trigger via configfs.
+
+- **MPU-9250** is still driven from userspace via `github.com/kidoman/embd`
+  over `/dev/i2c-1`. No extra kernel setup is needed beyond enabling the bus;
+  the test program (`./sensors/mpu9250/test`) handles chip init itself.
 
 ## Consumers
 

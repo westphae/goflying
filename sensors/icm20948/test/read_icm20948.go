@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kidoman/embd"
 	"github.com/westphae/goflying/sensors"
 	"github.com/westphae/goflying/sensors/icm20948"
 )
@@ -110,11 +109,9 @@ func (cs *chipState) update(cur *sensors.IMUData) {
 }
 
 func main() {
-	i2cbus := embd.NewI2CBus(1)
-
 	var icms []*icm20948.ICM20948
 	for i, address := range []byte{icm20948.MPU_ADDRESS1, icm20948.MPU_ADDRESS2} {
-		icm, err := icm20948.NewICM20948(&i2cbus, address, 250, 2, 1000, true, false)
+		icm, err := icm20948.NewICM20948(address, 250, 2, 1000)
 		if err != nil {
 			fmt.Printf("no ICM20948 at address %d: %s\n", i, err)
 			continue
@@ -133,11 +130,18 @@ func main() {
 	log.SetFlags(log.Ltime) // HH:MM:SS only — date is implied
 	go errs.capture(pipeR)
 
-	// Restore terminal state on Ctrl-C / SIGTERM.
+	// Restore terminal state on Ctrl-C / SIGTERM. We also tear down each
+	// driver so the kernel buffer is disabled, the hrtimer trigger is
+	// detached, and its configfs entry is removed — skipping this leaks a
+	// trigger reference into the kernel module, and the next run's
+	// buffer/enable=1 will dereference freed memory and panic the kernel.
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-sig
+		for _, icm := range icms {
+			icm.CloseMPU()
+		}
 		fmt.Printf("\033[%d;1H%s\n", 4+2*len(icms)+2+maxErrors, ansiShowCursor)
 		os.Exit(0)
 	}()
