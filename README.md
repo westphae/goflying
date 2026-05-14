@@ -2,8 +2,8 @@
 
 Go library implementing an Attitude and Heading Reference System (AHRS) for the
 [Stratux](https://github.com/cyoung/stratux) ADS-B receiver, along with sensor
-drivers (BMP280 barometer, MPU-9250 and ICM-20948 IMUs), offline simulation,
-magnetometer calibration, and a websocket visualization server.
+drivers (BMP280 barometer, ICM-20948 IMU), offline simulation, magnetometer
+calibration, and a websocket visualization server.
 
 See [CLAUDE.md](CLAUDE.md) for the full architecture overview and known TODOs.
 
@@ -17,9 +17,9 @@ go build ./...
 go test ./ahrs/...
 ```
 
-The sensor `test/` binaries (`./sensors/bmp280/test`, `./sensors/mpu9250/test`,
-`./sensors/icm20948/test`) compile on any platform but only function on a
-Raspberry Pi (or similar SBC) with the corresponding chip wired to the I²C bus.
+The sensor `test/` binaries (`./sensors/bmp280/test`, `./sensors/icm20948/test`)
+compile on any platform but only function on a Raspberry Pi (or similar SBC)
+with the corresponding chip wired to the I²C bus.
 
 ## Running on a Raspberry Pi
 
@@ -79,10 +79,6 @@ Enable I²C bus 1 in `raspi-config` (or `dtparam=i2c_arm=on` in
   print `icm20948`. Then `sudo go run ./sensors/icm20948/test` prints a live
   TUI of accel/gyro/mag/temp readings. Root is required because go-iio
   creates the hrtimer trigger via configfs.
-
-- **MPU-9250** is still driven from userspace via `github.com/kidoman/embd`
-  over `/dev/i2c-1`. No extra kernel setup is needed beyond enabling the bus;
-  the test program (`./sensors/mpu9250/test`) handles chip init itself.
 
 ## Consumers
 

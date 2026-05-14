@@ -1,9 +1,7 @@
 // Package bmp280 adapts the kernel IIO BMP280 driver (via github.com/westphae/go-iio/bmp280)
 // onto the channel-based contract goflying expects (sensors.BMPData on .C and .CBuf).
-//
-// The old userspace I²C driver (kidoman/embd, register bit-banging, on-Go calibration math)
-// is gone. The kernel driver handles compensation; we just poll the sysfs-exposed values
-// and republish them on the legacy channels.
+// The kernel driver handles compensation; we just poll the sysfs-exposed values and
+// republish them on the legacy channels.
 package bmp280
 
 import (

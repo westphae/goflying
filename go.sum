@@ -1,13 +1,7 @@
-github.com/golang/glog v1.2.5 h1:DrW6hGnjIhtvhOIiAKT6Psh/Kd/ldepEa81DKeiRJ5I=
-github.com/golang/glog v1.2.5/go.mod h1:6AhwSGph0fcJtXVM/PEHPqZlFeoLxhs7/t5UDAwmO+w=
-github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
-github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
 github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/skelterjohn/go.matrix v0.0.0-20130517144113-daa59528eefd h1:+ZLYzP9SYC3WU9buyb9H0l9DQxqVFOCkDG8QnNBMAlA=
 github.com/skelterjohn/go.matrix v0.0.0-20130517144113-daa59528eefd/go.mod h1:x7ui0Rh4QxcWEOgIfa3cr9q4W/wyLTDdzISxBmLVeX8=
-github.com/westphae/embd v0.1.0 h1:k/1TrnUS+FlVXPAopvpdHB6MUiwRRs80td01eVe9CHs=
-github.com/westphae/embd v0.1.0/go.mod h1:iy49R8LsDE79pYRGt6HKiIIy1ZfU5jaFFbXPB0Ij03U=
 github.com/westphae/go-iio v0.2.0 h1:j+bHJfcU9aNoIqxkiM5zOdlFXRPc/gXgmdJy8xiLd4I=
 github.com/westphae/go-iio v0.2.0/go.mod h1:X5chNz0NzMy14oym4q796Y7dIs9FA47POY1nlkDA1po=
 github.com/westphae/quaternion v0.0.0-20210908005042-fa06d546065c h1:IxoxQQ3RVVii9zMCzUDWL4RZ5HOW1u6VmVGMm3nx6Rc=
