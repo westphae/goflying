@@ -6,6 +6,8 @@ package icm20948
 import (
 	"context"
 	"fmt"
+	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +19,15 @@ import (
 )
 
 const bufSize = 256
+
+// magSatLimitUT is just below the AK09916's ±4912 µT full-scale. Readings at
+// or beyond this magnitude correspond to a HOFL (magnetic sensor overflow)
+// event in the chip's ST2 register: the analog input clipped and the LSB
+// bytes returned are garbage. The kernel IIO driver does not expose ST2, so
+// we infer overflow from the µT magnitude instead. Any legitimate ambient
+// field on a flight installation (Earth ≈ 50 µT, worst-case avionics
+// disturbances ≲ 1000 µT) sits well below this threshold.
+const magSatLimitUT = 4900.0
 
 // ICM20948 wraps the kernel-IIO ICM-20948 driver and republishes its samples
 // on the goflying channel API. The kernel owns the I²C bus, the chip init,
@@ -92,6 +103,12 @@ func NewICM20948(address byte, sensitivityGyro, sensitivityAccel, sampleRate int
 	return icm, nil
 }
 
+// hoflPollInterval drives the periodic check of the kernel's sticky
+// in_magn_overrange flag. A 1 s cadence is plenty fast for the EKF-grade
+// downstream consumers (saturation events are rare-but-bursty, not
+// continuous) and keeps sysfs traffic negligible.
+const hoflPollInterval = 1 * time.Second
+
 func (i *ICM20948) relay(in <-chan goiioicm.Sample, cC, cAvg, cBuf chan *sensors.IMUData) {
 	defer close(cC)
 	defer close(cAvg)
@@ -101,80 +118,159 @@ func (i *ICM20948) relay(in <-chan goiioicm.Sample, cC, cAvg, cBuf chan *sensors
 		prev   time.Time
 		prevOK bool
 		avgT0  time.Time
+
+		// Last in-range magnetometer reading. Used to substitute when the
+		// AK09916 reports a saturated/overflowed sample so downstream
+		// consumers see a brief stall instead of a 4915 µT spike that
+		// would otherwise wreck e.g. an EKF calibration.
+		lastMag    [3]float64
+		lastMagOK  bool
+		magOvfN    int
+		magOvfLog  time.Time
+
+		// magTripSinceLastPoll tracks whether the per-sample magnitude
+		// check has fired since the last hoflPollInterval tick. The
+		// periodic poll uses it to distinguish "kernel saw HOFL we also
+		// caught by magnitude" (expected) from "kernel saw HOFL the
+		// magnitude check missed" (logged as a threshold warning).
+		magTripSinceLastPoll bool
 	)
-	for s := range in {
-		d := &sensors.IMUData{
-			G1:   s.GyroX - i.G01,
-			G2:   s.GyroY - i.G02,
-			G3:   s.GyroZ - i.G03,
-			A1:   s.AccelX - i.A01,
-			A2:   s.AccelY - i.A02,
-			A3:   s.AccelZ - i.A03,
-			Temp: s.TempC,
-			N:    1, NM: 1,
-			T:  s.Time,
-			TM: s.Time,
-		}
-		mm1 := s.MagX - i.M01
-		mm2 := s.MagY - i.M02
-		mm3 := s.MagZ - i.M03
-		d.M1 = i.Ms11*mm1 + i.Ms12*mm2 + i.Ms13*mm3
-		d.M2 = i.Ms21*mm1 + i.Ms22*mm2 + i.Ms23*mm3
-		d.M3 = i.Ms31*mm1 + i.Ms32*mm2 + i.Ms33*mm3
-		if prevOK {
-			d.DT = s.Time.Sub(prev)
-			d.DTM = d.DT
-		}
-		prev = s.Time
-		prevOK = true
 
-		select {
-		case cC <- d:
-		default:
-		}
-		select {
-		case cBuf <- d:
-		default:
-		}
+	pollTicker := time.NewTicker(hoflPollInterval)
+	defer pollTicker.Stop()
 
-		i.mu.Lock()
-		if i.avgN == 0 {
-			avgT0 = s.Time
-		}
-		i.avg.G1 += d.G1
-		i.avg.G2 += d.G2
-		i.avg.G3 += d.G3
-		i.avg.A1 += d.A1
-		i.avg.A2 += d.A2
-		i.avg.A3 += d.A3
-		i.avg.M1 += d.M1
-		i.avg.M2 += d.M2
-		i.avg.M3 += d.M3
-		i.avg.Temp += d.Temp
-		i.avgN++
-		n := float64(i.avgN)
-		a := &sensors.IMUData{
-			G1:   i.avg.G1 / n,
-			G2:   i.avg.G2 / n,
-			G3:   i.avg.G3 / n,
-			A1:   i.avg.A1 / n,
-			A2:   i.avg.A2 / n,
-			A3:   i.avg.A3 / n,
-			M1:   i.avg.M1 / n,
-			M2:   i.avg.M2 / n,
-			M3:   i.avg.M3 / n,
-			Temp: i.avg.Temp / n,
-			N:    i.avgN, NM: i.avgN,
-			T: s.Time, TM: s.Time,
-			DT: s.Time.Sub(avgT0), DTM: s.Time.Sub(avgT0),
-		}
+	for {
 		select {
-		case cAvg <- a:
-			i.avg = sensors.IMUData{}
-			i.avgN = 0
-		default:
+		case <-pollTicker.C:
+			// Test-and-clear on the sticky overrange flag. If the chip
+			// reports a HOFL event without a corresponding magnitude
+			// trip, our threshold may be drifting against the chip's
+			// actual saturation point.
+			if hofl, err := i.dev.Overrange(); err == nil && hofl {
+				if !magTripSinceLastPoll {
+					log.Printf("icm20948: kernel HOFL latched without a magnitude trip; threshold may need tuning")
+				}
+				_ = i.dev.ClearOverrange()
+			}
+			magTripSinceLastPoll = false
+
+		case s, ok := <-in:
+			if !ok {
+				return
+			}
+			d := &sensors.IMUData{
+				G1:   s.GyroX - i.G01,
+				G2:   s.GyroY - i.G02,
+				G3:   s.GyroZ - i.G03,
+				A1:   s.AccelX - i.A01,
+				A2:   s.AccelY - i.A02,
+				A3:   s.AccelZ - i.A03,
+				Temp: s.TempC,
+				N:    1, NM: 1,
+				T:  s.Time,
+				TM: s.Time,
+			}
+			mx, my, mz := s.MagX, s.MagY, s.MagZ
+			if math.Abs(mx) > magSatLimitUT ||
+				math.Abs(my) > magSatLimitUT ||
+				math.Abs(mz) > magSatLimitUT {
+				// AK09916 saturated this sample. The reading is garbage
+				// — substitute the last valid reading; mag changes slowly
+				// enough (≤ 100 Hz update rate) that a brief stall is
+				// invisible downstream. If we have nothing yet (overflow
+				// on the first sample), pass through zero so the EKF can
+				// reject it via NIS rather than seeding from clipped data.
+				magOvfN++
+				magTripSinceLastPoll = true
+
+				// Cross-check with the chip's own ST2.HOFL bit (latched
+				// into the kernel's in_magn_overrange sticky flag). If
+				// it agrees, clear so future events still latch a fresh
+				// 1. If it disagrees, our magnitude threshold caught
+				// something the chip didn't flag — log so the mismatch
+				// is visible.
+				if hofl, err := i.dev.Overrange(); err == nil {
+					if hofl {
+						_ = i.dev.ClearOverrange()
+					} else if time.Since(magOvfLog) > 5*time.Second {
+						log.Printf("icm20948: magnitude trip without HOFL latched; threshold may be too tight")
+					}
+				}
+
+				if lastMagOK {
+					mx, my, mz = lastMag[0], lastMag[1], lastMag[2]
+				} else {
+					mx, my, mz = 0, 0, 0
+				}
+				if time.Since(magOvfLog) > 5*time.Second {
+					log.Printf("icm20948: AK09916 overflow (count=%d); reusing last in-range reading", magOvfN)
+					magOvfLog = time.Now()
+				}
+			} else {
+				lastMag[0], lastMag[1], lastMag[2] = mx, my, mz
+				lastMagOK = true
+			}
+			mm1 := mx - i.M01
+			mm2 := my - i.M02
+			mm3 := mz - i.M03
+			d.M1 = i.Ms11*mm1 + i.Ms12*mm2 + i.Ms13*mm3
+			d.M2 = i.Ms21*mm1 + i.Ms22*mm2 + i.Ms23*mm3
+			d.M3 = i.Ms31*mm1 + i.Ms32*mm2 + i.Ms33*mm3
+			if prevOK {
+				d.DT = s.Time.Sub(prev)
+				d.DTM = d.DT
+			}
+			prev = s.Time
+			prevOK = true
+
+			select {
+			case cC <- d:
+			default:
+			}
+			select {
+			case cBuf <- d:
+			default:
+			}
+
+			i.mu.Lock()
+			if i.avgN == 0 {
+				avgT0 = s.Time
+			}
+			i.avg.G1 += d.G1
+			i.avg.G2 += d.G2
+			i.avg.G3 += d.G3
+			i.avg.A1 += d.A1
+			i.avg.A2 += d.A2
+			i.avg.A3 += d.A3
+			i.avg.M1 += d.M1
+			i.avg.M2 += d.M2
+			i.avg.M3 += d.M3
+			i.avg.Temp += d.Temp
+			i.avgN++
+			n := float64(i.avgN)
+			a := &sensors.IMUData{
+				G1:   i.avg.G1 / n,
+				G2:   i.avg.G2 / n,
+				G3:   i.avg.G3 / n,
+				A1:   i.avg.A1 / n,
+				A2:   i.avg.A2 / n,
+				A3:   i.avg.A3 / n,
+				M1:   i.avg.M1 / n,
+				M2:   i.avg.M2 / n,
+				M3:   i.avg.M3 / n,
+				Temp: i.avg.Temp / n,
+				N:    i.avgN, NM: i.avgN,
+				T: s.Time, TM: s.Time,
+				DT: s.Time.Sub(avgT0), DTM: s.Time.Sub(avgT0),
+			}
+			select {
+			case cAvg <- a:
+				i.avg = sensors.IMUData{}
+				i.avgN = 0
+			default:
+			}
+			i.mu.Unlock()
 		}
-		i.mu.Unlock()
 	}
 }
 
