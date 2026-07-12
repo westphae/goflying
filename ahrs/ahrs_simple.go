@@ -26,6 +26,7 @@ const (
 	minDT                      = 1e-6 // Below this time interval, don't recalculate
 	maxDT                      = 10.0 // Above this time interval, re-initialize--too stale
 	minGS                      = 5.0  // Below this GS, don't use any GPS data
+	gpsStaleReminderSec        = 30.0 // While GPS updates are stalled, remind at most this often
 	fastSmoothConstDefault     = 0.7  // Sensible default for fast smoothing of AHRS values
 	slowSmoothConstDefault     = 0.1  // Sensible default for slow smoothing of AHRS values
 	verySlowSmoothConstDefault = 0.02 // Five-second smoothing mainly for groundspeed, to decide static mode
@@ -50,6 +51,10 @@ type SimpleState struct {
 	smoothW1, smoothW2, smoothGS  float64 // Smoothed groundspeed used to determine if stationary
 	staticMode                    bool    // For low groundspeed or invalid GPS
 	headingValid                  bool    // Whether to slew quickly to correct heading
+	noGPSUpdate                   bool    // True while moving but the GPS timestamp is not advancing
+	noGPSCount                    int     // AHRS cycles spent in the stalled-GPS condition
+	noGPSEnterT                   float64 // Measurement time (s) when the stall began
+	noGPSLastLogT                 float64 // Measurement time (s) of the last stall reminder
 }
 
 // NewSimpleAHRS returns a new Simple AHRS object.
@@ -70,6 +75,8 @@ func (s *SimpleState) init(m *Measurement) {
 	s.State.init(m)
 
 	s.headingValid = false
+	s.noGPSUpdate = false
+	s.noGPSCount = 0
 	s.tW = m.TW
 	if m.WValid {
 		s.gs = math.Hypot(m.W1, m.W2)
@@ -152,8 +159,26 @@ func (s *SimpleState) Compute(m *Measurement) {
 			return
 		}
 		if dtw < minDT {
-			log.Printf("No GPS update at %f\n", m.T)
+			// No fresh GPS fix this cycle. Log once on entering the stalled
+			// state and at most every gpsStaleReminderSec thereafter, instead
+			// of once per AHRS cycle (~10 Hz), so the journal is not flooded.
+			if !s.noGPSUpdate {
+				s.noGPSUpdate = true
+				s.noGPSCount = 0
+				s.noGPSEnterT = m.T
+				s.noGPSLastLogT = m.T
+				log.Printf("AHRS: GPS updates stalled at %.1f\n", m.T)
+			} else if m.T-s.noGPSLastLogT >= gpsStaleReminderSec {
+				s.noGPSLastLogT = m.T
+				log.Printf("AHRS: GPS updates still stalled after %.0fs (%d cycles)\n", m.T-s.noGPSEnterT, s.noGPSCount)
+			}
+			s.noGPSCount++
 			return
+		}
+		if s.noGPSUpdate {
+			log.Printf("AHRS: GPS updates resumed after %.0fs (%d cycles)\n", m.T-s.noGPSEnterT, s.noGPSCount)
+			s.noGPSUpdate = false
+			s.noGPSCount = 0
 		}
 		ve = [3]float64{m.W1, m.W2, m.W3} // Instantaneous groundspeed in earth frame
 		// Instantaneous acceleration in earth frame based on change in GPS groundspeed
